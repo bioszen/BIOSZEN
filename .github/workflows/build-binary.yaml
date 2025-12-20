@@ -38,6 +38,14 @@ jobs:
         run: |
           Rscript -e "install.packages(c('desc', 'remotes', 'pak'), repos = 'https://cran.rstudio.com')"
 
+      - name: Read package metadata
+        run: |
+          PKG_NAME=$(Rscript -e "cat(as.character(desc::desc_get('Package')))")
+          PKG_VERSION=$(Rscript -e "cat(as.character(desc::desc_get('Version')))")
+          echo "PKG_NAME=$PKG_NAME" >> $GITHUB_ENV
+          echo "PKG_VERSION=$PKG_VERSION" >> $GITHUB_ENV
+          echo "PKG_TARBALL=${PKG_NAME}_${PKG_VERSION}.tar.gz" >> $GITHUB_ENV
+
       - name: Install system libraries (macOS)
         if: matrix.os == 'macos-latest'
         run: |
@@ -65,12 +73,12 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           R CMD build .
-          ls -1 BIOSZEN_*tar.gz
+          ls -1 "$PKG_TARBALL"
 
       - name: Build macOS single-file launcher
         if: matrix.os == 'macos-latest'
         run: |
-          archive=$(ls -1 BIOSZEN_*tar.gz | head -n 1)
+          archive="$PKG_TARBALL"
           Rscript utils/make_embedded_launcher.R inst/launchers/App.R "$archive" BIOSZEN-mac-App.R
 
       - name: Build macOS portable bundle (no self-extract)
@@ -79,19 +87,19 @@ jobs:
           bundle_dir=$(pwd)/bundle-mac
           mkdir -p "$bundle_dir"
           cp inst/launchers/App.R "$bundle_dir"/
-          cp BIOSZEN_*tar.gz "$bundle_dir"/
+          cp "$PKG_TARBALL" "$bundle_dir"/
           tar -C "$bundle_dir" -czf BIOSZEN-mac-portable.tar.gz .
 
       - name: Build Windows source tarball
         if: matrix.os == 'windows-latest'
         run: |
           R CMD build .
-          ls -1 BIOSZEN_*tar.gz
+          ls -1 "$PKG_TARBALL"
 
       - name: Build Windows single-file launcher
         if: matrix.os == 'windows-latest'
         run: |
-          archive=$(ls -1 BIOSZEN_*tar.gz | head -n 1)
+          archive="$PKG_TARBALL"
           Rscript utils/make_embedded_launcher.R inst/launchers/App.R "$archive" BIOSZEN-win-App.R
 
       - name: Build Windows portable bundle (zip, no SFX)
@@ -99,7 +107,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path bundle-win | Out-Null
-          Copy-Item -Path BIOSZEN_*tar.gz -Destination bundle-win
+          Copy-Item -Path $env:PKG_TARBALL -Destination bundle-win
           Copy-Item -Path inst\launchers\App.R -Destination bundle-win
           Compress-Archive -Path bundle-win\* -DestinationPath BIOSZEN-win-portable.zip -Force
 

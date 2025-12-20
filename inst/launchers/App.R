@@ -127,7 +127,7 @@ base64_decode <- function(x) {
   bytes
 }
 
-read_embedded_payload <- function(path) {
+read_embedded_payload <- function(path, with_raw = TRUE) {
   if (!nzchar(path) || !file.exists(path)) return(NULL)
   lines <- readLines(path, warn = FALSE)
   marker_idx <- grep("^##==BIOSZEN_PAYLOAD:", lines)
@@ -140,6 +140,10 @@ read_embedded_payload <- function(path) {
   }
 
   if (marker_idx[1] >= length(lines)) return(NULL)
+  if (!with_raw) {
+    return(list(name = payload_name, raw = NULL))
+  }
+
   payload_lines <- lines[(marker_idx[1] + 1L):length(lines)]
   if (!length(payload_lines)) return(NULL)
 
@@ -148,6 +152,105 @@ read_embedded_payload <- function(path) {
   if (!nzchar(payload_b64)) return(NULL)
 
   list(name = payload_name, raw = base64_decode(payload_b64))
+}
+
+# -------- version helpers --------
+parse_pkg_version <- function(x) {
+  if (!is.character(x) || !nzchar(x)) return(NULL)
+  tryCatch(package_version(x), error = function(e) NULL)
+}
+
+extract_version_from_filename <- function(path, pkg_name = "BIOSZEN") {
+  base <- basename(path)
+  pattern <- paste0("^", pkg_name, "_([0-9A-Za-z\\.\\-]+)\\.(tar\\.gz|zip)$")
+  match <- regexec(pattern, base, ignore.case = TRUE)
+  parts <- regmatches(base, match)[[1]]
+  if (length(parts) >= 2) return(parse_pkg_version(parts[2]))
+  NULL
+}
+
+read_archive_description_version <- function(archive_path, pkg_name = "BIOSZEN") {
+  if (!file.exists(archive_path)) return(NULL)
+
+  is_zip <- grepl("\\.zip$", archive_path, ignore.case = TRUE)
+  entries <- tryCatch(
+    if (is_zip) utils::unzip(archive_path, list = TRUE)$Name else utils::untar(archive_path, list = TRUE),
+    error = function(e) character(0)
+  )
+  if (!length(entries)) return(NULL)
+
+  desc_entry <- entries[grepl("(^|/|\\\\)DESCRIPTION$", entries)][1]
+  if (!nzchar(desc_entry)) return(NULL)
+  desc_entry <- sub("^\\./", "", desc_entry)
+
+  exdir <- tempfile("bioszen_desc_")
+  dir.create(exdir)
+  on.exit(unlink(exdir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  ok <- tryCatch({
+    if (is_zip) {
+      utils::unzip(archive_path, files = desc_entry, exdir = exdir)
+    } else {
+      utils::untar(archive_path, files = desc_entry, exdir = exdir)
+    }
+    TRUE
+  }, error = function(e) FALSE)
+  if (!ok) return(NULL)
+
+  desc_path <- file.path(exdir, desc_entry)
+  if (!file.exists(desc_path)) return(NULL)
+  dcf <- tryCatch(read.dcf(desc_path), error = function(e) NULL)
+  if (is.null(dcf) || nrow(dcf) < 1) return(NULL)
+  if (!"Version" %in% colnames(dcf)) return(NULL)
+  if ("Package" %in% colnames(dcf)) {
+    pkg <- dcf[1, "Package"]
+    if (nzchar(pkg) && !identical(tolower(pkg), tolower(pkg_name))) return(NULL)
+  }
+
+  parse_pkg_version(dcf[1, "Version"])
+}
+
+get_archive_version <- function(archive_path, pkg_name = "BIOSZEN") {
+  ver <- extract_version_from_filename(archive_path, pkg_name)
+  if (!is.null(ver)) return(ver)
+  read_archive_description_version(archive_path, pkg_name)
+}
+
+get_local_version <- function(pkg_name, lib_dir) {
+  tryCatch(packageVersion(pkg_name, lib.loc = lib_dir), error = function(e) NULL)
+}
+
+pick_best_archive <- function(infos) {
+  if (!length(infos)) return(NULL)
+
+  with_version <- Filter(function(x) !is.null(x$version), infos)
+  if (length(with_version)) {
+    best <- with_version[[1]]
+    if (length(with_version) > 1) {
+      for (info in with_version[-1]) {
+        if (info$version > best$version) {
+          best <- info
+        } else if (info$version == best$version) {
+          if (is.na(best$mtime) || (!is.na(info$mtime) && info$mtime > best$mtime)) {
+            best <- info
+          }
+        }
+      }
+    }
+    return(best)
+  }
+
+  best <- infos[[1]]
+  if (length(infos) > 1) {
+    for (info in infos[-1]) {
+      if (is.na(best$mtime)) {
+        best <- info
+      } else if (!is.na(info$mtime) && info$mtime > best$mtime) {
+        best <- info
+      }
+    }
+  }
+  best
 }
 
 # -------- browser launch helpers --------
@@ -305,34 +408,79 @@ remove_incomplete_install <- function(lib_dir, pkg_name = "BIOSZEN") {
 # -------- ensure BIOSZEN --------
 remove_incomplete_install(local_lib, pkg)
 
-if (!requireNamespace(pkg, quietly = TRUE)) {
-  cat("\nBIOSZEN not found in .libPaths(). Looking for archives...\n")
+local_version <- get_local_version(pkg, local_lib)
+if (!is.null(local_version)) {
+  cat("\nLocal BIOSZEN version: ", as.character(local_version), "\n", sep = "")
+} else {
+  cat("\nLocal BIOSZEN not installed.\n")
+}
 
-embedded <- read_embedded_payload(script_path)
-  embedded_path <- NULL
-  if (!is.null(embedded)) {
-    embedded_path <- file.path(script_dir, embedded$name)
+embedded <- read_embedded_payload(script_path, with_raw = FALSE)
+embedded_path <- NULL
+if (!is.null(embedded)) {
+  embedded_path <- file.path(script_dir, embedded$name)
+}
+
+archive_dir <- script_dir
+archives <- c(
+  embedded_path,
+  list.files(archive_dir, pattern = "^BIOSZEN_.*\\.tar\\.gz$", full.names = TRUE, ignore.case = TRUE),
+  list.files(archive_dir, pattern = "^BIOSZEN_.*\\.zip$", full.names = TRUE, ignore.case = TRUE)
+)
+archives <- unique(archives[!is.na(archives) & nzchar(archives)])
+
+archive_info <- list()
+if (length(archives)) {
+  archive_info <- lapply(archives, function(path) {
+    list(
+      path = path,
+      version = get_archive_version(path, pkg),
+      mtime = tryCatch(file.info(path)$mtime, error = function(e) as.POSIXct(NA))
+    )
+  })
+}
+
+archive_choice <- pick_best_archive(archive_info)
+archive_path <- if (!is.null(archive_choice)) archive_choice$path else NULL
+archive_version <- if (!is.null(archive_choice)) archive_choice$version else NULL
+
+if (is.null(archive_path) && is.null(local_version)) {
+  stop("No BIOSZEN_*.tar.gz or BIOSZEN_*.zip found in: ", archive_dir)
+}
+
+if (!is.null(archive_path)) {
+  cat("\nArchive candidate: ", archive_path, "\n", sep = "")
+  if (!is.null(archive_version)) {
+    cat("Archive version : ", as.character(archive_version), "\n", sep = "")
+  } else {
+    cat("Archive version : unknown\n")
+  }
+}
+
+install_needed <- FALSE
+if (is.null(local_version)) {
+  install_needed <- !is.null(archive_path)
+} else if (!is.null(archive_version)) {
+  install_needed <- archive_version > local_version
+}
+
+if (install_needed) {
+  if (!file.exists(archive_path)) {
+    embedded_full <- read_embedded_payload(script_path, with_raw = TRUE)
+    if (is.null(embedded_full) || is.null(embedded_path) || !identical(archive_path, embedded_path)) {
+      stop("Archive not found: ", archive_path)
+    }
     if (!file.exists(embedded_path) || file.info(embedded_path)$size == 0) {
       cat("[install] Writing embedded archive: ", embedded_path, "\n", sep = "")
-      writeBin(embedded$raw, embedded_path)
+      writeBin(embedded_full$raw, embedded_path)
     }
   }
 
-  archive_dir <- script_dir
-  archives <- c(
-    embedded_path,
-    list.files(archive_dir, pattern = "^BIOSZEN_.*\\.tar\\.gz$", full.names = TRUE),
-    list.files(archive_dir, pattern = "^BIOSZEN_.*\\.zip$", full.names = TRUE)
-  )
-  archives <- unique(archives[!is.na(archives) & nzchar(archives)])
-
-  if (length(archives) == 0) {
-    stop("No BIOSZEN_*.tar.gz or BIOSZEN_*.zip found in: ", archive_dir)
+  if (!is.null(local_version) && !is.null(archive_version)) {
+    cat("[install] Updating BIOSZEN: ", as.character(local_version), " -> ", as.character(archive_version), "\n", sep = "")
+  } else {
+    cat("[install] Installing BIOSZEN from archive.\n")
   }
-
-  archives <- archives[order(file.info(archives)$mtime, decreasing = TRUE)]
-  archive_path <- archives[[1]]
-  cat("Using archive: ", archive_path, "\n", sep = "")
 
   if (grepl("\\.zip$", archive_path, ignore.case = TRUE)) {
     install_from_zip_by_unzip(archive_path, local_lib, pkg)
@@ -340,13 +488,15 @@ embedded <- read_embedded_payload(script_path)
     install_from_tarball(archive_path, local_lib, pkg)
   }
   remove_incomplete_install(local_lib, pkg)
+} else if (!is.null(local_version)) {
+  cat("[install] Local BIOSZEN is up to date; skipping install.\n")
 }
 
-if (!requireNamespace(pkg, quietly = TRUE)) {
+if (!requireNamespace(pkg, quietly = TRUE, lib.loc = local_lib)) {
   stop("BIOSZEN is still not loadable. Check bioszen_r.log.")
 }
 
-cat("\nBIOSZEN version: ", as.character(packageVersion(pkg)), "\n", sep = "")
+cat("\nBIOSZEN version: ", as.character(packageVersion(pkg, lib.loc = local_lib)), "\n", sep = "")
 
 # -------- run app --------
 run_fun <- tryCatch(getExportedValue(pkg, "run_app"), error = function(e) NULL)
