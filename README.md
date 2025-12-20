@@ -74,9 +74,9 @@ Esto producirá el archivo `BIOSZEN_*.tar.gz` en tu directorio de trabajo.
   ### Lanzadores sencillos (sin instalaciones ocultas)
   Los artefactos incluyen el backend común `inst/launchers/App.R`, que fija
   host/puerto (127.0.0.1:4321), evita abrir el navegador desde R y usa una
-  librería local `R_libs` para dejar el entorno autocontenido. Si no encuentra el
-  paquete, extrae el `BIOSZEN_*.tar.gz` incluido dentro de `R_libs` y luego
-  lanza la app.
+  librería local `R_libs` para dejar el entorno autocontenido. Si no encuentra
+  BIOSZEN en `R_libs` o el `BIOSZEN_*.tar.gz` trae una versión superior, instala
+  o actualiza dentro de `R_libs` y luego lanza la app.
 
   - **Windows:** abre una terminal en la carpeta extraída y ejecuta
     `Rscript App.R`. Esto instala las dependencias en `R_libs` dentro de la
@@ -109,11 +109,13 @@ Esto producirá el archivo `BIOSZEN_*.tar.gz` en tu directorio de trabajo.
     2. (Opcional) instala el paquete manualmente desde el archivo incluido.
     - macOS/Linux/Windows: `install.packages('BIOSZEN_*.tar.gz', repos = NULL, type = 'source')`
     3. Ejecuta `Rscript App.R` dentro de la carpeta extraída. El script usa
-       `R_libs` local, instala el paquete desde el tar.gz incluido si no lo
-       detecta y abre la app en 127.0.0.1:4321.
+       `R_libs` local, instala o actualiza el paquete desde el tar.gz incluido
+       si no lo detecta o si el tar.gz tiene una versión superior, y abre la app
+       en 127.0.0.1:4321.
   - Lo que hace internamente: el script fija host/puerto, evita abrir navegador desde R
-    y usa la librería local `R_libs`. Si BIOSZEN no está cargado, extrae el tarball
-    incluido dentro de `R_libs` antes de correr `BIOSZEN::run_app()`.
+    y usa la librería local `R_libs`. Si BIOSZEN no está en `R_libs` o el tarball
+    tiene versión superior, instala/actualiza dentro de `R_libs` antes de correr
+    `BIOSZEN::run_app()`.
 
 **Caso 2: bundle portable para macOS (`BIOSZEN-mac-portable.tar.gz`)**
 - Requisitos: tener R instalado. No necesita instalar BIOSZEN previamente.
@@ -123,9 +125,9 @@ Esto producirá el archivo `BIOSZEN_*.tar.gz` en tu directorio de trabajo.
 
   2. Ejecuta `Rscript App.R` desde esa carpeta.
 
-  3. `App.R` crea `R_libs` dentro de la carpeta del bundle, instala BIOSZEN
-     desde el tarball incluido si no lo detecta y lanza la app en 127.0.0.1:4321
-     sin abrir navegador desde R.
+  3. `App.R` crea `R_libs` dentro de la carpeta del bundle, instala o actualiza
+     BIOSZEN desde el tarball incluido si no lo detecta o si el tarball tiene
+     versión superior, y lanza la app en 127.0.0.1:4321 sin abrir navegador desde R.
 
 **Caso 3: bundle portable para Windows (`BIOSZEN-win-portable.zip`)**
 - Requisitos: tener R instalado. No necesita instalación manual del paquete.
@@ -133,18 +135,20 @@ Esto producirá el archivo `BIOSZEN_*.tar.gz` en tu directorio de trabajo.
   1. Extrae el zip en una carpeta (no hay ejecutable SFX ni instalación
      silenciosa, lo que reduce falsos positivos de antivirus).
   2. Ejecuta `Rscript App.R` desde esa carpeta.
-  3. `App.R` crea la librería local `R_libs`, instala BIOSZEN desde el
-     `BIOSZEN_*.tar.gz` que viene en la carpeta y llama a `BIOSZEN::run_app()`
-     en el puerto 4321. La app se abre en el navegador predeterminado, mientras
-     el proceso sigue en segundo plano.
+  3. `App.R` crea la librería local `R_libs`, instala o actualiza BIOSZEN desde
+     el `BIOSZEN_*.tar.gz` que viene en la carpeta si no lo detecta o si ese
+     tar.gz tiene versión superior, y llama a `BIOSZEN::run_app()` en el puerto
+     4321. La app se abre en el navegador predeterminado, mientras el proceso
+     sigue en segundo plano.
 
 **Notas generales**
 - En todos los casos el paquete se instala solo dentro de la carpeta extraída
   (`R_libs`), por lo que no modifica las bibliotecas globales de R ni toca
   otras rutas del sistema.
 
-- Si ya tienes BIOSZEN instalado globalmente, el lanzador lo usará tal cual y
-  omitirá la instalación desde el artefacto.
+- El lanzador usa siempre la librería local `R_libs` para BIOSZEN y solo
+  actualiza si el `BIOSZEN_*.tar.gz` incluido tiene una versión mayor. La
+  instalación global no se usa para evitar interferencias.
 
 ## Instalación local desde un tarball
 
