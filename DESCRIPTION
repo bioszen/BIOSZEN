@@ -1,0 +1,59 @@
+Package: BIOSZEN
+Type: Package
+Title: Centro de Gráficos y Análisis
+Version: 1.2.0
+Authors@R: person("Pinkus", "Szenfeld",
+                  email = "bioszenf@gmail.com",
+                  role  = c("aut", "cre"))
+Description: Aplicación para análisis de resultados experimentales
+    y obtención de parámetros de curvas.
+License: MIT + file LICENSE
+Encoding: UTF-8
+ByteCompile: true
+Depends: R (>= 4.1.0)
+Imports:
+    shiny,
+    ggplot2,
+    plotly,
+    dplyr,
+    tidyr,
+    readxl,
+    openxlsx,
+    rstatix,
+    PMCMRplus,
+    DescTools,
+    broom,
+    viridis,
+    RColorBrewer,
+    gcplyr,
+    patchwork,
+    shinyjs,
+    DT,
+    nortest,
+    officer,
+    rvg,
+    stringr,
+    forcats,
+    tibble,
+    scales,
+    bslib,
+    htmlwidgets,
+    webshot2,
+    shinyBS,
+    multcomp,
+    dunn.test,
+    webshot,
+    ggrepel,
+    rlang,
+    writexl,
+    readr,
+    rmarkdown,
+    zip,
+    future,
+    future.apply,
+    parallelly
+Suggests:
+    knitr,
+    doconv
+RoxygenNote: 7.3.1
+NeedsCompilation: no

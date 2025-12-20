@@ -1,0 +1,124 @@
+name: Build binary
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    name: Package BIOSZEN (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+
+      - name: Configure CRAN mirror
+        run: |
+          echo 'options(repos = c(CRAN = "https://cran.rstudio.com"))' >> ~/.Rprofile
+
+      - name: Install dependency helpers
+        run: |
+          Rscript -e "install.packages(c('desc', 'remotes', 'pak'), repos = 'https://cran.rstudio.com')"
+
+      - name: Install system libraries (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew update
+          brew install gmp
+
+      - name: Install R package dependencies (macOS, source)
+        if: matrix.os == 'macos-latest'
+        run: |
+          Rscript -e "cat('DESCRIPTION deps:\n'); print(desc::desc_get_deps('.'))"
+          Rscript -e "cat('Remotes entries:\n'); print(desc::desc_get_remotes())"
+          Rscript -e "options(pkgType='source')"
+          Rscript -e "remotes::install_deps(dependencies = TRUE, type = 'source')"
+          Rscript -e "if (requireNamespace('pak', quietly = TRUE)) try(pak::lockfile_create('pkg.lock'), silent = TRUE)"
+
+      - name: Install R package dependencies (Windows, binaries)
+        if: matrix.os == 'windows-latest'
+        run: |
+          Rscript -e "cat('DESCRIPTION deps:\n'); print(desc::desc_get_deps('.'))"
+          Rscript -e "cat('Remotes entries:\n'); print(desc::desc_get_remotes())"
+          Rscript -e "remotes::install_deps(dependencies = TRUE, type = 'binary')"
+          Rscript -e "if (requireNamespace('pak', quietly = TRUE)) try(pak::lockfile_create('pkg.lock'), silent = TRUE)"
+
+      - name: Build macOS source tarball
+        if: matrix.os == 'macos-latest'
+        run: |
+          R CMD build .
+          ls -1 BIOSZEN_*tar.gz
+
+      - name: Build macOS single-file launcher
+        if: matrix.os == 'macos-latest'
+        run: |
+          archive=$(ls -1 BIOSZEN_*tar.gz | head -n 1)
+          Rscript utils/make_embedded_launcher.R inst/launchers/App.R "$archive" BIOSZEN-mac-App.R
+
+      - name: Build macOS portable bundle (no self-extract)
+        if: matrix.os == 'macos-latest'
+        run: |
+          bundle_dir=$(pwd)/bundle-mac
+          mkdir -p "$bundle_dir"
+          cp inst/launchers/App.R "$bundle_dir"/
+          cp BIOSZEN_*tar.gz "$bundle_dir"/
+          tar -C "$bundle_dir" -czf BIOSZEN-mac-portable.tar.gz .
+
+      - name: Build Windows source tarball
+        if: matrix.os == 'windows-latest'
+        run: |
+          R CMD build .
+          ls -1 BIOSZEN_*tar.gz
+
+      - name: Build Windows single-file launcher
+        if: matrix.os == 'windows-latest'
+        run: |
+          archive=$(ls -1 BIOSZEN_*tar.gz | head -n 1)
+          Rscript utils/make_embedded_launcher.R inst/launchers/App.R "$archive" BIOSZEN-win-App.R
+
+      - name: Build Windows portable bundle (zip, no SFX)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bundle-win | Out-Null
+          Copy-Item -Path BIOSZEN_*tar.gz -Destination bundle-win
+          Copy-Item -Path inst\launchers\App.R -Destination bundle-win
+          Compress-Archive -Path bundle-win\* -DestinationPath BIOSZEN-win-portable.zip -Force
+
+      - name: Upload macOS artifact
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: BIOSZEN-macos-tarball
+          path: |
+            BIOSZEN_*tar.gz
+            BIOSZEN-mac-App.R
+            BIOSZEN-mac-portable.tar.gz
+
+      - name: Upload Windows artifact
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: BIOSZEN-windows-binary
+          path: |
+            BIOSZEN_*tar.gz
+            BIOSZEN-win-App.R
+            BIOSZEN-win-portable.zip

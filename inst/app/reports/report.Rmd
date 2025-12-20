@@ -1,0 +1,49 @@
+---
+title: "Reporte BIOSZEN"
+output:
+  html_document: default
+  pdf_document: default
+params:
+  plots: NULL
+  norm: NULL
+  sig: NULL
+  metadata: NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Gráficos generados
+
+```{r plots, results='asis'}
+if (length(params$plots)) {
+  for (p in params$plots) {
+    cat('![](', p, ')', '\n\n')
+  }
+}
+```
+
+## Resultados de normalidad
+
+```{r norm}
+if (!is.null(params$norm) && nrow(params$norm) > 0) {
+  knitr::kable(params$norm)
+}
+```
+
+## Resultados de significancia
+
+```{r sig}
+if (!is.null(params$sig) && nrow(params$sig) > 0) {
+  knitr::kable(params$sig)
+}
+```
+
+## Metadata de los gráficos
+
+```{r meta}
+if (!is.null(params$metadata) && nrow(params$metadata) > 0) {
+  knitr::kable(params$metadata)
+}
+```
