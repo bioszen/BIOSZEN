@@ -1,0 +1,12 @@
+name: Bioszen_plus
+title: Bioszen_plus
+username: szen
+account: szen
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 15175957
+bundleId: 11329348
+url: https://szen.shinyapps.io/Bioszen_plus/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

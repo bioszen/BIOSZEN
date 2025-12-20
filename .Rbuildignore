@@ -1,0 +1,3 @@
+^inst/app/www/.*\.(docx)$
+^app\.R$
+^tests/testthat$ # include tests but not the results
