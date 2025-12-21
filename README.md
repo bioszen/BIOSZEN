@@ -52,10 +52,10 @@ platforms:
   directamente desde el tar.gz (ya no se genera zip binario).
 
 - **BIOSZEN-mac-App.R / BIOSZEN-win-App.R**: lanzadores de un solo archivo.
-  Para macOS se incluye el paquete embebido; para Windows se distribuye sin
-  payload para evitar un archivo gigante de miles de líneas. Ejecuta
-  `Rscript BIOSZEN-*-App.R` y se instala en `R_libs` local, abriendo la app en
-  el navegador predeterminado (ventana tipo app si es posible).
+  Para macOS y Windows se incluye el paquete embebido (base64) dentro del App.R.
+  Ejecuta `Rscript BIOSZEN-*-App.R`: instala/actualiza en `R_libs` solo si la
+  version embebida es mayor y abre la app en el navegador predeterminado
+  (ventana tipo app si es posible).
 - **BIOSZEN-mac-portable.tar.gz / BIOSZEN-win-portable.zip**: bundles
   portables sin autoextracción. Incluyen el paquete (`tar.gz` en ambos casos) y
   `App.R` en una carpeta comprimida para minimizar alertas de antivirus; solo

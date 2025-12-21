@@ -1,7 +1,7 @@
 # app.R (backend) - BIOSZEN launcher
 # Goals:
 # 1) Fix host/port for the launcher
-# 2) Open the app in a browser app window when possible
+# 2) Open the app in a browser app window when possible (prefer Chrome; else default browser)
 # 3) Use a local ./R_libs
 # 4) Install BIOSZEN from embedded or nearby archives if needed
 
@@ -253,7 +253,49 @@ pick_best_archive <- function(infos) {
   best
 }
 
-# -------- browser launch helpers --------
+# -------- browser launch helpers (multi-browser app mode) --------
+
+# Windows: find installed Chromium browsers (try in this order)
+find_chromium_windows <- function() {
+  candidates <- c(
+    # From PATH
+    Sys.which("chrome.exe"),
+    Sys.which("msedge.exe"),
+    Sys.which("brave.exe"),
+    Sys.which("vivaldi.exe"),
+    Sys.which("opera.exe"),
+    Sys.which("chromium.exe"),
+
+    # Common install locations
+    "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+    file.path(Sys.getenv("LOCALAPPDATA"), "Google/Chrome/Application/chrome.exe"),
+
+    "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+    "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+    file.path(Sys.getenv("LOCALAPPDATA"), "Microsoft/Edge/Application/msedge.exe"),
+
+    file.path(Sys.getenv("LOCALAPPDATA"), "BraveSoftware/Brave-Browser/Application/brave.exe"),
+    "C:/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe",
+    "C:/Program Files (x86)/BraveSoftware/Brave-Browser/Application/brave.exe",
+
+    file.path(Sys.getenv("LOCALAPPDATA"), "Vivaldi/Application/vivaldi.exe"),
+    "C:/Program Files/Vivaldi/Application/vivaldi.exe",
+    "C:/Program Files (x86)/Vivaldi/Application/vivaldi.exe",
+
+    file.path(Sys.getenv("LOCALAPPDATA"), "Programs/Opera/opera.exe"),
+    "C:/Program Files/Opera/opera.exe",
+    "C:/Program Files (x86)/Opera/opera.exe"
+  )
+
+  candidates <- candidates[nzchar(candidates)]
+  candidates <- unique(candidates)
+  candidates <- candidates[file.exists(candidates)]
+  if (!length(candidates)) return(character(0))
+  normalizePath(candidates, winslash = "/", mustWork = TRUE)
+}
+
+# Windows: locate default browser executable (fallback)
 extract_exe_from_cmd <- function(cmd) {
   if (is.null(cmd) || !nzchar(cmd)) return(NULL)
   cmd <- trimws(cmd)
@@ -266,7 +308,7 @@ extract_exe_from_cmd <- function(cmd) {
   path
 }
 
-open_app_windows <- function(url) {
+get_default_browser_exe_windows <- function() {
   cmd <- NULL
   try({
     reg <- utils::readRegistry(
@@ -274,9 +316,7 @@ open_app_windows <- function(url) {
     )
     prog_id <- reg[["ProgId"]]
     if (!is.null(prog_id) && nzchar(prog_id)) {
-      reg2 <- utils::readRegistry(
-        paste0("HKEY_CLASSES_ROOT\\", prog_id, "\\shell\\open\\command")
-      )
+      reg2 <- utils::readRegistry(paste0("HKEY_CLASSES_ROOT\\", prog_id, "\\shell\\open\\command"))
       cmd <- reg2[[""]]
     }
   }, silent = TRUE)
@@ -288,60 +328,61 @@ open_app_windows <- function(url) {
     }, silent = TRUE)
   }
 
-  exe <- extract_exe_from_cmd(cmd)
-  if (is.null(exe)) return(FALSE)
-
-  exe_name <- tolower(basename(exe))
-  chromium <- c("chrome.exe", "msedge.exe", "brave.exe", "vivaldi.exe", "opera.exe", "chromium.exe")
-  if (!exe_name %in% chromium) return(FALSE)
-
-  args <- c(paste0("--app=", url), "--new-window")
-  ok <- tryCatch({
-    system2(exe, args = args, wait = FALSE)
-    TRUE
-  }, error = function(e) FALSE)
-  ok
+  extract_exe_from_cmd(cmd)
 }
 
-get_default_browser_bundle_id <- function() {
-  out <- tryCatch(
-    system2(
-      "osascript",
-      c("-e", "id of application (path to default application for \"http:\")"),
-      stdout = TRUE,
-      stderr = TRUE
-    ),
-    error = function(e) NULL
-  )
-  if (is.null(out)) return(NULL)
+is_chromium_exe <- function(exe) {
+  if (is.null(exe) || !nzchar(exe)) return(FALSE)
+  exe_name <- tolower(basename(exe))
+  exe_name %in% c("chrome.exe", "msedge.exe", "brave.exe", "vivaldi.exe", "opera.exe", "chromium.exe")
+}
+
+open_app_windows <- function(url) {
+  # 1) Try any installed Chromium browser as app
+  exes <- find_chromium_windows()
+  if (length(exes)) {
+    for (exe in exes) {
+      ok <- tryCatch({
+        system2(exe, args = c(paste0("--app=", url), "--new-window"), wait = FALSE)
+        TRUE
+      }, error = function(e) FALSE)
+      if (ok) return(TRUE)
+    }
+  }
+
+  # 2) Try default browser if it is Chromium-based
+  def <- get_default_browser_exe_windows()
+  if (!is.null(def) && is_chromium_exe(def)) {
+    ok <- tryCatch({
+      system2(def, args = c(paste0("--app=", url), "--new-window"), wait = FALSE)
+      TRUE
+    }, error = function(e) FALSE)
+    if (ok) return(TRUE)
+  }
+
+  FALSE
+}
+
+# macOS: try common Chromium apps (if installed), else default browser (normal)
+mac_app_exists <- function(app_name) {
+  out <- tryCatch(system2("open", c("-Ra", app_name), stdout = TRUE, stderr = TRUE), error = function(e) NULL)
+  if (is.null(out)) return(FALSE)
   status <- attr(out, "status")
-  if (!is.null(status) && status != 0) return(NULL)
-  id <- trimws(out[1])
-  if (!nzchar(id)) return(NULL)
-  id
+  is.null(status) || status == 0
 }
 
 open_app_macos <- function(url) {
-  bundle_id <- get_default_browser_bundle_id()
-  if (is.null(bundle_id)) return(FALSE)
-
-  chromium_ids <- c(
-    "com.google.Chrome",
-    "com.microsoft.edgemac",
-    "com.brave.Browser",
-    "com.brave.browser",
-    "org.chromium.Chromium",
-    "com.vivaldi.Vivaldi",
-    "com.operasoftware.Opera"
-  )
-  if (!bundle_id %in% chromium_ids) return(FALSE)
-
-  args <- c("-b", bundle_id, "--args", paste0("--app=", url))
-  ok <- tryCatch({
-    system2("open", args = args, wait = FALSE)
-    TRUE
-  }, error = function(e) FALSE)
-  ok
+  apps <- c("Google Chrome", "Microsoft Edge", "Brave Browser", "Vivaldi", "Opera", "Chromium")
+  for (app in apps) {
+    if (mac_app_exists(app)) {
+      ok <- tryCatch({
+        system2("open", args = c("-a", app, "--args", paste0("--app=", url)), wait = FALSE)
+        TRUE
+      }, error = function(e) FALSE)
+      if (ok) return(TRUE)
+    }
+  }
+  FALSE
 }
 
 open_app_browser <- function(url) {
