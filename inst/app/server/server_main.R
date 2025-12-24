@@ -1,5 +1,12 @@
 # --- Server logic ---
+active_sessions <- 0
 server <- function(input, output, session) {
+
+  active_sessions <<- active_sessions + 1
+  session$onSessionEnded(function() {
+    active_sessions <<- max(0, active_sessions - 1)
+    if (active_sessions == 0) shiny::stopApp()
+  })
   
   # almacenamiento reactivo de los plots que el usuario añade
   plot_bank  <- reactiveValues(all = list())
@@ -21,6 +28,31 @@ server <- function(input, output, session) {
   is_group_data <- reactiveVal(FALSE)
   bundle_store  <- reactiveValues(datasets = list(), versions = list())
   current_dataset_key <- reactiveVal(NULL)
+
+  ylims <- reactiveValues()
+
+  clear_reactive_values <- function(rv) {
+    current <- shiny::reactiveValuesToList(rv)
+    if (!length(current)) return(invisible(NULL))
+    for (nm in names(current)) rv[[nm]] <- NULL
+    invisible(NULL)
+  }
+
+  reset_curve_state <- function() {
+    cur_data_box(NULL)
+    cur_cfg_box(NULL)
+    ylims$Curvas <- NULL
+  }
+
+  reset_dataset_state <- function() {
+    datos_box(NULL)
+    plot_cfg_box(NULL)
+    sig_list(list())
+    sig_preselect(NULL)
+    reset_curve_state()
+    clear_reactive_values(ylims)
+    clear_reactive_values(meta_store)
+  }
 
   curve_data     <- reactive(cur_data_box())
   curve_settings <- reactive(cur_cfg_box())
@@ -439,6 +471,7 @@ server <- function(input, output, session) {
   
   
   observeEvent(input$curveFile, {
+    reset_curve_state()
     ok <- tryCatch({
       # 1) Leer curvas (Sheet1)
       d <- read_excel_tmp(input$curveFile$datapath, sheet = "Sheet1")
@@ -553,6 +586,7 @@ server <- function(input, output, session) {
   
   # ── Lectura robusta del Excel de metadata+parámetros ─────────────────────────
   observeEvent(input$dataFile, {
+    reset_dataset_state()
 
     ok <- tryCatch({
 
@@ -580,7 +614,6 @@ server <- function(input, output, session) {
       df   <- prep$datos
       cfg  <- prep$cfg
 
-      ylims <<- reactiveValues()
       for (p in cfg$Parameter) {
         row <- cfg[cfg$Parameter == p, ]
         ylims[[p]] <- list(
@@ -592,7 +625,6 @@ server <- function(input, output, session) {
           ybreak = 0.2
         )
       }
-      datos_box(NULL);          plot_cfg_box(NULL)
       datos_box(df);            plot_cfg_box(cfg)
 
       is_group_data(is_group)
@@ -1508,25 +1540,33 @@ server <- function(input, output, session) {
   # (deja los tuyos: order_filter_strain() / order_filter_group())  
   
   # ── Data frame unificado para Significancia ───────────────  
-  make_test_df <- function() {  
-    p   <- safe_param()                                  # puede traer *_Norm  
-    src <- if (isTRUE(input$doNorm))                     # ← NUEVO  
-      datos_agrupados_norm() else datos_agrupados()  
-    
-    if (input$scope == "Por Cepa") {  
-      src %>%  
-        filter(Strain == input$strain) %>%  
-        order_filter_strain() %>%  
-        filter_reps_strain() %>%  
-        transmute(Label = Media,  
-                  Valor = .data[[p]])  
-    } else {  
-      src %>%  
-        order_filter_group() %>%  
-        transmute(Label,  
-                  Valor = .data[[p]])  
-    }  
-  }  
+  make_test_df <- function() {
+    empty_df <- tibble::tibble(Label = character(), Valor = numeric())
+    p <- input$param
+    if (is.null(p) || !length(p) || is.na(p[1]) || !nzchar(p[1])) return(empty_df)
+    if (isTRUE(input$doNorm) && !is.null(input$ctrlMedium)) p <- paste0(p, "_Norm")
+
+    src <- if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+    if (!is.data.frame(src) || !nrow(src) || !p %in% names(src)) return(empty_df)
+    if (input$scope == "Por Cepa" &&
+        (is.null(input$strain) || is.na(input$strain) || !nzchar(input$strain))) {
+      return(empty_df)
+    }
+
+    if (input$scope == "Por Cepa") {
+      src %>%
+        filter(Strain == input$strain) %>%
+        order_filter_strain() %>%
+        filter_reps_strain() %>%
+        transmute(Label = Media,
+                  Valor = .data[[p]])
+    } else {
+      src %>%
+        order_filter_group() %>%
+        transmute(Label,
+                  Valor = .data[[p]])
+    }
+  }
   
   
   
