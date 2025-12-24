@@ -253,6 +253,75 @@ pick_best_archive <- function(infos) {
   best
 }
 
+# -------- dependency helpers --------
+normalize_dep_field <- function(x) {
+  if (is.null(x) || !nzchar(x)) return(character(0))
+  x <- gsub("[\r\n]", " ", x)
+  x <- gsub("\\s*\\([^\\)]+\\)", "", x)
+  parts <- unlist(strsplit(x, ",", fixed = TRUE), use.names = FALSE)
+  parts <- trimws(parts)
+  parts[nzchar(parts)]
+}
+
+get_pkg_dependencies <- function(pkg_name, lib_dir) {
+  desc_path <- file.path(lib_dir, pkg_name, "DESCRIPTION")
+  if (!file.exists(desc_path)) return(character(0))
+
+  dcf <- tryCatch(read.dcf(desc_path), error = function(e) NULL)
+  if (is.null(dcf) || nrow(dcf) < 1) return(character(0))
+
+  fields <- c("Depends", "Imports")
+  deps <- unlist(lapply(fields, function(field) {
+    if (!field %in% colnames(dcf)) return(character(0))
+    normalize_dep_field(dcf[1, field])
+  }), use.names = FALSE)
+  deps <- unique(deps)
+  deps[deps != "R"]
+}
+
+ensure_cran_repo <- function() {
+  repos <- getOption("repos")
+  cran <- if (is.null(repos)) "" else repos[["CRAN"]]
+  if (is.null(cran) || is.na(cran) || !nzchar(cran) || cran == "@CRAN@") {
+    options(repos = c(CRAN = "https://cran.rstudio.com"))
+  }
+}
+
+ensure_pkg_dependencies <- function(pkg_name, lib_dir) {
+  deps <- get_pkg_dependencies(pkg_name, lib_dir)
+  if (!length(deps)) {
+    cat("[deps] No dependency metadata found.\n")
+    return(invisible(TRUE))
+  }
+
+  missing <- deps[!vapply(deps, requireNamespace, logical(1), quietly = TRUE)]
+  if (!length(missing)) {
+    cat("[deps] All dependencies are already installed.\n")
+    return(invisible(TRUE))
+  }
+
+  ensure_cran_repo()
+  cat("[deps] Installing missing packages: ", paste(missing, collapse = ", "), "\n", sep = "")
+  ok <- tryCatch({
+    utils::install.packages(
+      missing,
+      lib = lib_dir,
+      dependencies = c("Depends", "Imports", "LinkingTo")
+    )
+    TRUE
+  }, error = function(e) {
+    cat("[deps] install.packages failed: ", conditionMessage(e), "\n", sep = "")
+    FALSE
+  })
+  if (!ok) stop("Failed installing dependencies. Check bioszen_r.log.")
+
+  missing_after <- missing[!vapply(missing, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing_after)) {
+    stop("Missing packages after install: ", paste(missing_after, collapse = ", "))
+  }
+  invisible(TRUE)
+}
+
 # -------- browser launch helpers (multi-browser app mode) --------
 
 # Windows: find installed Chromium browsers (try in this order)
@@ -532,6 +601,8 @@ if (install_needed) {
 } else if (!is.null(local_version)) {
   cat("[install] Local BIOSZEN is up to date; skipping install.\n")
 }
+
+ensure_pkg_dependencies(pkg, local_lib)
 
 if (!requireNamespace(pkg, quietly = TRUE, lib.loc = local_lib)) {
   stop("BIOSZEN is still not loadable. Check bioszen_r.log.")
