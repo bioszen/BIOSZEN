@@ -169,7 +169,7 @@ extract_version_from_filename <- function(path, pkg_name = "BIOSZEN") {
   NULL
 }
 
-read_archive_description_version <- function(archive_path, pkg_name = "BIOSZEN") {
+read_archive_description <- function(archive_path) {
   if (!file.exists(archive_path)) return(NULL)
 
   is_zip <- grepl("\\.zip$", archive_path, ignore.case = TRUE)
@@ -201,6 +201,12 @@ read_archive_description_version <- function(archive_path, pkg_name = "BIOSZEN")
   if (!file.exists(desc_path)) return(NULL)
   dcf <- tryCatch(read.dcf(desc_path), error = function(e) NULL)
   if (is.null(dcf) || nrow(dcf) < 1) return(NULL)
+  dcf
+}
+
+read_archive_description_version <- function(archive_path, pkg_name = "BIOSZEN") {
+  dcf <- read_archive_description(archive_path)
+  if (is.null(dcf)) return(NULL)
   if (!"Version" %in% colnames(dcf)) return(NULL)
   if ("Package" %in% colnames(dcf)) {
     pkg <- dcf[1, "Package"]
@@ -263,20 +269,29 @@ normalize_dep_field <- function(x) {
   parts[nzchar(parts)]
 }
 
-get_pkg_dependencies <- function(pkg_name, lib_dir) {
-  desc_path <- file.path(lib_dir, pkg_name, "DESCRIPTION")
-  if (!file.exists(desc_path)) return(character(0))
-
-  dcf <- tryCatch(read.dcf(desc_path), error = function(e) NULL)
+deps_from_dcf <- function(dcf) {
   if (is.null(dcf) || nrow(dcf) < 1) return(character(0))
 
-  fields <- c("Depends", "Imports")
+  fields <- c("Depends", "Imports", "LinkingTo")
   deps <- unlist(lapply(fields, function(field) {
     if (!field %in% colnames(dcf)) return(character(0))
     normalize_dep_field(dcf[1, field])
   }), use.names = FALSE)
   deps <- unique(deps)
   deps[deps != "R"]
+}
+
+get_pkg_dependencies <- function(pkg_name, lib_dir) {
+  desc_path <- file.path(lib_dir, pkg_name, "DESCRIPTION")
+  if (!file.exists(desc_path)) return(character(0))
+
+  dcf <- tryCatch(read.dcf(desc_path), error = function(e) NULL)
+  deps_from_dcf(dcf)
+}
+
+get_archive_dependencies <- function(archive_path) {
+  dcf <- read_archive_description(archive_path)
+  deps_from_dcf(dcf)
 }
 
 ensure_cran_repo <- function() {
@@ -287,8 +302,7 @@ ensure_cran_repo <- function() {
   }
 }
 
-ensure_pkg_dependencies <- function(pkg_name, lib_dir) {
-  deps <- get_pkg_dependencies(pkg_name, lib_dir)
+ensure_dependencies <- function(deps, lib_dir) {
   if (!length(deps)) {
     cat("[deps] No dependency metadata found.\n")
     return(invisible(TRUE))
@@ -574,18 +588,32 @@ if (is.null(local_version)) {
   install_needed <- archive_version > local_version
 }
 
-if (install_needed) {
-  if (!file.exists(archive_path)) {
-    embedded_full <- read_embedded_payload(script_path, with_raw = TRUE)
-    if (is.null(embedded_full) || is.null(embedded_path) || !identical(archive_path, embedded_path)) {
-      stop("Archive not found: ", archive_path)
-    }
-    if (!file.exists(embedded_path) || file.info(embedded_path)$size == 0) {
-      cat("[install] Writing embedded archive: ", embedded_path, "\n", sep = "")
-      writeBin(embedded_full$raw, embedded_path)
-    }
+if (install_needed && !is.null(archive_path) && !file.exists(archive_path)) {
+  embedded_full <- read_embedded_payload(script_path, with_raw = TRUE)
+  if (is.null(embedded_full) || is.null(embedded_path) || !identical(archive_path, embedded_path)) {
+    stop("Archive not found: ", archive_path)
   }
+  if (!file.exists(embedded_path) || file.info(embedded_path)$size == 0) {
+    cat("[install] Writing embedded archive: ", embedded_path, "\n", sep = "")
+    writeBin(embedded_full$raw, embedded_path)
+  }
+}
 
+deps <- character(0)
+deps_source <- ""
+if (install_needed && !is.null(archive_path) && file.exists(archive_path)) {
+  deps <- get_archive_dependencies(archive_path)
+  deps_source <- "archive"
+} else if (!is.null(local_version)) {
+  deps <- get_pkg_dependencies(pkg, local_lib)
+  deps_source <- "installed"
+}
+if (length(deps) && nzchar(deps_source)) {
+  cat("[deps] Using ", deps_source, " metadata.\n", sep = "")
+}
+ensure_dependencies(deps, local_lib)
+
+if (install_needed) {
   if (!is.null(local_version) && !is.null(archive_version)) {
     cat("[install] Updating BIOSZEN: ", as.character(local_version), " -> ", as.character(archive_version), "\n", sep = "")
   } else {
@@ -601,8 +629,6 @@ if (install_needed) {
 } else if (!is.null(local_version)) {
   cat("[install] Local BIOSZEN is up to date; skipping install.\n")
 }
-
-ensure_pkg_dependencies(pkg, local_lib)
 
 if (!requireNamespace(pkg, quietly = TRUE, lib.loc = local_lib)) {
   stop("BIOSZEN is still not loadable. Check bioszen_r.log.")
