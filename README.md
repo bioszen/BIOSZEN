@@ -22,7 +22,7 @@ local tarball and then launch the application:
 2. Abre R o RStudio y ejecuta:
 
    ```R
-   install.packages("ruta/al/BIOSZEN_1.2.0.tar.gz",
+   install.packages("ruta/al/BIOSZEN_1.3.0.tar.gz",
                     repos = NULL, type = "source")
    library(BIOSZEN)
    BIOSZEN::run_app()
@@ -79,7 +79,7 @@ Esto producirá el archivo `BIOSZEN_*.tar.gz` en tu directorio de trabajo.
   o actualiza dentro de `R_libs` y luego lanza la app.
 
   - **Windows:** abre una terminal en la carpeta extraída y ejecuta
-    `Rscript App.R`. Esto instala las dependencias en `R_libs` dentro de la
+    `Rscript App.R`. Esto instala solo las dependencias faltantes en `R_libs` dentro de la
     carpeta y arranca la app en el navegador.
   - **macOS:** ejecuta `Rscript App.R` desde la carpeta extraída (Terminal). El
     script usa `R_libs` local y no requiere instaladores adicionales.
@@ -158,7 +158,7 @@ Una vez tengas el archivo `BIOSZEN_*.tar.gz`, sigue estos pasos:
 2. Ejecuta:
 
    ```R
-   install.packages("BIOSZEN_1.2.0.tar.gz", repos = NULL, type = "source")
+   install.packages("BIOSZEN_1.3.0.tar.gz", repos = NULL, type = "source")
    library(BIOSZEN)
    BIOSZEN::run_app()
    ```

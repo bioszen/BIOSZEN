@@ -1,7 +1,7 @@
 Package: BIOSZEN
 Type: Package
 Title: Centro de Gráficos y Análisis
-Version: 1.2.0
+Version: 1.3.0
 Authors@R: person("Pinkus", "Szenfeld",
                   email = "bioszenf@gmail.com",
                   role  = c("aut", "cre"))
