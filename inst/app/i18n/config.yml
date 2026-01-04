@@ -1,0 +1,4 @@
+# Optional config to silence shiny.i18n warning
+cultural_bignumer_mark: null
+cultural_punctuation_mark: null
+cultural_date_format: null

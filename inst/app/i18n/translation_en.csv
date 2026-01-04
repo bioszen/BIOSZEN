@@ -1,0 +1,293 @@
+key,en
+lang_label,Language
+lang_es,Spanish
+lang_en,English
+theme_light,Light Theme
+theme_dark,Dark Theme
+app_title,Graphics and Analysis Center
+tab_plots,Plots and Stats
+tab_growth,Growth Parameter Extraction
+tab_composition,Composition Panel
+file_data,Load Data (.xlsx):
+file_curves,Load Curves (.xlsx)
+file_meta,Load design metadata (.xlsx)
+file_meta_help,Files must be named metadata_Type.xlsx (for example metadata_Boxplot.xlsx)
+manual_download,Instructions (download)
+download_refs,Reference input files (download)
+scope_label,Scope:
+scope_by_strain,By Strain
+scope_combined,Combined
+strain_label,Strain:
+plot_type_label,Plot:
+plot_boxplot,Boxplot
+plot_bars,Barplot
+plot_violin,Violin
+plot_curves,Curves
+plot_stacked,Stacked
+plot_correlation,Correlation
+stack_settings,Stacked Settings
+stack_params,Included parameters:
+stack_order,Parameter order (CSV bottom to top):
+stack_show_errbars,Show deviation bars
+stack_outline_only,Black outline only for total bar
+stack_errbar_param_color,Error bar color by parameter
+errbar_size,Error bar thickness:
+violin_linewidth,Violin outline thickness:
+violin_width,Violin width:
+plot_width,Width px:
+plot_height,Height px:
+download_plot,Download plot
+download_data,Download Data
+download_metadata,Download Metadata
+download_stats,Download Statistical Results
+download_bundle,Download package (ZIP)
+copy_plot,Copy plot
+save_version,Save version
+notify_copy_success,Plot copied to clipboard.
+notify_copy_error_prefix,Could not copy plot:
+notify_version_saved,Version saved to bundle.
+norm_ctrl_required,Select the control medium first.
+sig_reorder_single,Select exactly one bar to reorder.
+norm_min_groups,Need at least 2 groups with data for normality.
+norm_low_obs,Groups with fewer than two observations: %s
+norm_groups_insufficient,Not enough groups to run the test.
+sig_insufficient_obs,Groups with insufficient observations: %s
+sig_test_error_prefix,Test error:
+corr_min_points,Need at least 3 points to compute correlation.
+plot_pdf_failed,Could not generate the plot PDF.
+metadata_capture_failed,Could not capture metadata.
+metadata_invalid_sheet,Invalid structure in %s: could not read sheet 'Metadata'.
+metadata_invalid_columns,Invalid structure in %s: sheet 'Metadata' must contain columns 'Campo' and 'Valor'.
+need_curves_params,Generate a curves file and a parameters file first.
+global_error_template,Error in %s: %s
+control_group_insufficient,Control group %s has insufficient observations.
+plot_capture_failed,Could not capture the current plot.
+metadata_type_unknown,Could not identify plot type in %s. Include a 'tipo' field in Metadata with one of: %s
+metadata_type_mismatch,Warning: %s indicates type %s by filename but Metadata shows %s - using %s.
+sig_remove_select,Select at least one bar to remove.
+curve_file_invalid,Invalid curves file: %s
+data_file_invalid,Invalid data file: %s
+add_to_panel,Add to panel
+comments_label,Comments and suggestions to 
+missing_params_warning,These parameters are missing in the data and were omitted: %s
+corr_select_two_params,Select two parameters.
+no_data_normality,No data available for normality.
+no_sig_results,No significance results.
+no_valid_comparisons,No valid comparisons.
+param_not_available,Parameter not available in the data.
+no_data_selection,No data to display for the current selection.
+no_params_to_show,No parameters to display.
+select_param_at_least_one,Select at least one parameter in %s.
+yes_label,Yes
+no_label,No
+import_metadata_first,Load the metadata-parameters file in Plots and Stats first.
+composition_meta_invalid,❌ Invalid composition metadata
+param_no_data_selection,Parameter has no data for the current selection.
+select_params_prompt,Select at least one parameter.
+missing_params_list,Could not find parameter(s): %s
+growth_files,Load growth curves (.xlsx)
+growth_max_time,Max time
+growth_interval,Interval (by)
+growth_run,Calculate parameters
+growth_download,Download results
+growth_import,Import to Plots and Stats
+size_section,Size and Font
+base_size,Base size (pts)
+title_size,Title size:
+axis_size,Axis size:
+legend_size,Legend size:
+axis_line_size,Axis line thickness:
+y_label,Y axis label:
+plot_title,Plot title:
+point_size,Point size:
+box_width,Box width:
+bundle_label_placeholder,Bundle label (optional)
+comp_all,All vs All
+comp_control,Control vs All
+comp_pair,Pair
+control_label,Control:
+corr_label_size,Label size (pts):
+corr_method_label,Correlation method:
+corr_method_pearson,Pearson
+corr_method_spearman,Spearman
+corr_norm_target,Normalization for correlation:
+corr_norm_both,Both parameters
+corr_norm_x,X axis only
+corr_norm_y,Y axis only
+corr_show_r,Show correlation r
+corr_show_p,Show p-value
+corr_show_r2,Show R^2
+corr_show_eq,Show regression equation
+corr_show_labels,Show labels
+corr_show_line,Show regression line
+corr_xbreak,X interval:
+corr_xlab,X axis label:
+corr_xmax,X max:
+corr_xmin,X min:
+corr_ybreak,Y interval:
+corr_ylab,Y axis label:
+corr_ymax,Y max:
+corr_ymin,Y min:
+curves_linewidth,Curve line width:
+curves_settings,Curve Settings
+curves_xbreak,X interval:
+curves_xlab,X axis label:
+curves_xmax,X max:
+curves_ybreak,Y interval:
+curves_ylab,Y axis label:
+curves_ymax,Y max:
+filter_groups,Filter Groups
+filter_media,Filter Media
+group1_label,Group 1:
+group2_label,Group 2:
+label_mode,Show strain only in labels
+norm_ad,Anderson-Darling
+norm_by_control,Normalize by control
+norm_ks,Kolmogorov-Smirnov
+norm_shapiro,Shapiro-Wilk
+order_csv,Order (csv):
+point_jitter,Point jitter:
+reps_by_media,Replicates by medium
+run_normality,Run Normality
+run_significance,Run Significance
+sig_add_bar,Add bar
+sig_bars_title,Significance Bars
+sig_clear,Clear all
+sig_current_label,Current bars
+sig_current_placeholder,Select bars to reorder/remove
+sig_hide_caps,Hide caps
+sig_label,"Label (*, **, n.s.):"
+sig_label_param_color,Use parameter color for label
+sig_linewidth,Line width:
+sig_mode_bars,Bars
+sig_mode_labels,Labels
+sig_move_down,Move down
+sig_move_up,Move up
+sig_offset,Offset:
+sig_param_label,Parameter:
+sig_remove,Remove
+sig_sep,Bar spacing:
+sig_textpad,Text padding:
+sig_textsize,Text size (pts):
+sigtest_anova,ANOVA
+sigtest_kruskal,Kruskal-Wallis
+sigtest_ttest,Independent t-test
+sigtest_wilcox,Independent Wilcoxon
+stats_tab_normality,Normality
+stats_tab_significance,Significance
+stats_title,Statistical Analysis
+toggle_all,Select / Deselect all
+x_angle,X label angle:
+x_wrap,Wrap X labels
+x_wrap_lines,Max lines:
+y_axis_settings,Y Axis Settings
+y_interval,Y interval
+y_max,Y max
+corr_settings,Correlation Settings
+corr_param_x,X axis parameter:
+corr_param_y,Y axis parameter:
+palette_label,Color palette:
+palette_original,Original
+palette_default,Default
+palette_default_soft,Default Soft
+palette_bw,Black and White
+palette_bw_soft,Black and White Soft
+palette_viridis,Viridis
+palette_viridis_soft,Viridis Soft
+palette_plasma,Plasma
+palette_plasma_soft,Plasma Soft
+palette_magma,Magma
+palette_magma_soft,Magma Soft
+palette_cividis,Cividis
+palette_cividis_soft,Cividis Soft
+palette_set1,Set1
+palette_set1_soft,Set1 Soft
+palette_set2,Set2
+palette_set2_soft,Set2 Soft
+palette_set3,Set3
+palette_set3_soft,Set3 Soft
+palette_dark2,Dark2
+palette_dark2_soft,Dark2 Soft
+palette_accent,Accent
+palette_accent_soft,Accent Soft
+palette_paired,Paired
+palette_paired_soft,Paired Soft
+palette_pastel1,Pastel1
+palette_pastel1_soft,Pastel1 Soft
+palette_pastel2,Pastel2
+palette_pastel2_soft,Pastel2 Soft
+palette_okabeito,Okabe-Ito
+palette_okabeito_soft,Okabe-Ito Soft
+palette_tableau,Tableau
+palette_tableau_soft,Tableau Soft
+repeat_colors_combined,Repeat colors by strain (Combined)
+palette_advanced,Advanced palette controls
+palette_advanced_enable,Use advanced palette
+palette_type_label,Palette type:
+palette_type_seq,Sequential
+palette_type_div,Divergent
+palette_type_qual,Qualitative
+palette_reverse,Reverse color order
+palette_filters_label,Only show:
+palette_filter_colorblind,Colorblind
+palette_filter_print,Print
+palette_filter_photocopy,Photocopy
+palette_scheme_label,Scheme:
+param_label,Parameter:
+no_params_curves,No parameters: only curves can be plotted.
+media_label,Media:
+exclude_reps_global,Exclude replicate(s) in all groups
+reps_prefix,Replicates -
+norm_medium_label,Normalizing medium:
+groups_label,Groups:
+select_groups_prompt,Select groups to show first.
+reps_by_group,Replicates by group
+posthoc_label,Post-hoc:
+plot_label,Plot
+default_title_combined,%s combined of %s
+default_title_strain,%s of %s for %s
+default_title_corr,%s %s vs %s
+normalized_suffix,(normalized)
+combo_added,Plot added to panel
+combo_empty,No plots added yet.
+combo_select_plots,Select the plots you want to combine:
+combo_order_label,Change order:
+combo_move_up,Move up
+combo_move_down,Move down
+combo_show_legend,Show legend
+combo_rows,Rows
+combo_cols,Columns
+combo_width,Width px
+combo_height,Height px
+combo_base_size,Base size (pts)
+combo_title_size,Title size (pts)
+combo_axis_titles,Axis titles
+combo_axis_ticks,Axis ticks
+combo_legend_text,Legend text
+combo_palette_label,Color palette:
+combo_preview,Update / Preview
+combo_download_png,Download PNG
+combo_download_pptx,Download PPTX
+combo_download_pdf,Download PDF
+combo_download_meta,Download metadata
+combo_upload_meta,Upload composition metadata (.xlsx)
+override_apply_to,Apply to:
+override_all,All
+override_title,Title (override)
+override_title_size,Title size (pts)
+override_axis_size,Axis size (pts)
+override_legend_size,Legend size (pts)
+override_axis_line_size,Axis line thickness
+override_curves_linewidth,Curve line width
+override_curves_point_size,Curve point size
+override_box_section,Boxplot / Bars / Violin settings
+override_box_width,Box width
+override_errbar_size,Error bar thickness
+override_point_size,Point size
+override_point_jitter,Point jitter
+override_sig_linewidth,Significance bar thickness
+override_sig_textsize,Significance text size
+override_apply_all,Apply changes to ALL
+no_data_plot,No data to plot
+norm_failed_generic,Normalization could not be applied; showing raw values.
+norm_fallback_ctrl,"Normalization could not use control ""%s""; showing raw values."

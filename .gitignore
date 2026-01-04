@@ -1,0 +1,41 @@
+# R / RStudio
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+
+# R CMD build/check
+*.tar.gz
+*.tgz
+*.zip
+*.Rcheck/
+Rplots.pdf
+
+# Local libraries
+R_libs/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.template
+.Renviron
+.Renviron.*
+*.key
+*.pem
+*.p12
+*.pfx
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+*.tmp
+*.bak
+*.log
+
+# Shiny deploy artifacts
+rsconnect/

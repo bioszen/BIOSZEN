@@ -7,12 +7,13 @@ Authors@R: person("Pinkus", "Szenfeld",
                   role  = c("aut", "cre"))
 Description: Aplicación para análisis de resultados experimentales
     y obtención de parámetros de curvas.
-License: MIT + file LICENSE
+License: GPL-3
 Encoding: UTF-8
 ByteCompile: true
 Depends: R (>= 4.1.0)
 Imports:
     shiny,
+    shiny.i18n,
     ggplot2,
     plotly,
     dplyr,

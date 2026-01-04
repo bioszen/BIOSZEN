@@ -4,5 +4,5 @@
 source("stats/stats_correlation.R")
 
 plot_correlacion <- function(scope, strain = NULL) {
-  build_plot(scope, strain, "Correlación")
+  build_plot(scope, strain, "Correlacion")
 }

@@ -1,0 +1,293 @@
+key,es
+lang_label,Idioma
+lang_es,Español
+lang_en,Inglés
+theme_light,Tema Claro
+theme_dark,Tema Oscuro
+app_title,Centro de Gráficos y Análisis
+tab_plots,Gráficos y Estadísticas
+tab_growth,Obtención de Parámetros de Crecimiento
+tab_composition,Panel de Composición
+file_data,Cargar Datos (.xlsx):
+file_curves,Cargar Curvas (.xlsx)
+file_meta,Cargar metadata diseño (.xlsx)
+file_meta_help,Los archivos deben llamarse metadata_Tipo.xlsx por ejemplo metadata_Boxplot.xlsx
+manual_download,Instrucciones (descargar)
+download_refs,Archivos de entrada de referencia (descargar)
+scope_label,Ámbito:
+scope_by_strain,Por Cepa
+scope_combined,Combinado
+strain_label,Cepa:
+plot_type_label,Gráfico:
+plot_boxplot,Boxplot
+plot_bars,Barras
+plot_violin,Violín
+plot_curves,Curvas
+plot_stacked,Apiladas
+plot_correlation,Correlación
+stack_settings,Ajustes Apiladas
+stack_params,Parámetros incluidos:
+stack_order,Orden de parámetros (CSV de abajo a arriba):
+stack_show_errbars,Mostrar barras de desviación
+stack_outline_only,Contorno negro solo barra total
+stack_errbar_param_color,Color de barras según parámetro
+errbar_size,Grosor de barras de error:
+violin_linewidth,Grosor contorno violín:
+violin_width,Ancho violín:
+plot_width,Ancho px:
+plot_height,Alto px:
+download_plot,Descargar gráfico
+download_data,Descargar Datos
+download_metadata,Descargar Metadata
+download_stats,Descargar Resultados Estadísticos
+download_bundle,Descargar paquete (ZIP)
+copy_plot,Copiar gráfico
+save_version,Guardar versión
+notify_copy_success,Gráfico copiado al portapapeles.
+notify_copy_error_prefix,No se pudo copiar el gráfico:
+notify_version_saved,Versión guardada en el paquete.
+norm_ctrl_required,Selecciona primero el medio control.
+sig_reorder_single,Selecciona solo una barra para reordenar.
+norm_min_groups,Se necesitan ≥2 grupos con datos para normalidad.
+norm_low_obs,Grupos con menos de dos observaciones: %s
+norm_groups_insufficient,No hay grupos suficientes para realizar el test.
+sig_insufficient_obs,Grupos con observaciones insuficientes: %s
+sig_test_error_prefix,Error en test:
+corr_min_points,Se necesitan ≥3 puntos para calcular la correlación.
+plot_pdf_failed,No se pudo generar el PDF del gráfico.
+metadata_capture_failed,No se pudo capturar la metadata.
+metadata_invalid_sheet,Estructura inválida en %s: no se pudo leer la hoja 'Metadata'.
+metadata_invalid_columns,Estructura inválida en %s: la hoja 'Metadata' debe contener las columnas 'Campo' y 'Valor'.
+need_curves_params,Necesitas generar primero un archivo de curvas y uno de parámetros.
+global_error_template,Error en %s: %s
+control_group_insufficient,El grupo control %s no tiene suficientes observaciones.
+plot_capture_failed,No se pudo capturar el gráfico actual.
+metadata_type_unknown,No se pudo identificar el tipo de gráfico en %s. Incluye un campo 'tipo' en la hoja Metadata con uno de: %s
+metadata_type_mismatch,Aviso: %s indica tipo %s por nombre pero en Metadata figura %s - se usará %s.
+sig_remove_select,Selecciona al menos una barra para eliminar.
+curve_file_invalid,Archivo de curvas inválido: %s
+data_file_invalid,Archivo de datos inválido: %s
+add_to_panel,Añadir al panel
+comments_label,Comentarios y sugerencias a 
+missing_params_warning,Estos parámetros no existen en los datos y fueron omitidos: %s
+corr_select_two_params,Selecciona dos parámetros.
+no_data_normality,No hay datos para normalidad.
+no_sig_results,No hay resultados de significancia.
+no_valid_comparisons,No hay comparaciones válidas.
+param_not_available,Parámetro no disponible en los datos.
+no_data_selection,No hay datos para mostrar con la selección actual.
+no_params_to_show,No hay parámetros para mostrar.
+select_param_at_least_one,Selecciona al menos un parámetro en %s.
+yes_label,Sí
+no_label,No
+import_metadata_first,Primero carga el archivo de metadata-parámetros en la pestaña Gráficos y Estadísticas.
+composition_meta_invalid,❌ Metadata de composición inválida
+param_no_data_selection,Parámetro sin datos en la selección actual.
+select_params_prompt,Selecciona al menos un parámetro.
+missing_params_list,No se encontró el/los parámetro(s): %s
+growth_files,Cargar curvas de crecimiento (.xlsx)
+growth_max_time,Tiempo máximo
+growth_interval,Intervalo (by)
+growth_run,Calcular parámetros
+growth_download,Descargar resultados
+growth_import,Importar a Gráficos y Estadísticas
+size_section,Tamaño y Fuente
+base_size,Tamaño base (pts)
+title_size,Tamaño título:
+axis_size,Tamaño ejes:
+legend_size,Tamaño leyenda:
+axis_line_size,Grosor líneas de eje:
+y_label,Etiqueta eje Y:
+plot_title,Título del gráfico:
+point_size,Tamaño de puntos:
+box_width,Ancho de caja:
+bundle_label_placeholder,Nombre del paquete (opcional)
+comp_all,Todos vs Todos
+comp_control,Control vs Todos
+comp_pair,Pareo
+control_label,Control:
+corr_label_size,Tamaño etiquetas (pts):
+corr_method_label,Método de correlación:
+corr_method_pearson,Pearson
+corr_method_spearman,Spearman
+corr_norm_target,Normalizar en correlacion:
+corr_norm_both,Ambos parametros
+corr_norm_x,Eje X
+corr_norm_y,Eje Y
+corr_show_r,Mostrar coeficiente r
+corr_show_p,Mostrar p-value
+corr_show_r2,Mostrar R^2
+corr_show_eq,Mostrar ecuación de la recta
+corr_show_labels,Mostrar etiquetas
+corr_show_line,Mostrar recta de regresión
+corr_xbreak,Int X:
+corr_xlab,Etiqueta eje X:
+corr_xmax,X max:
+corr_xmin,X min:
+corr_ybreak,Int Y:
+corr_ylab,Etiqueta eje Y:
+corr_ymax,Y max:
+corr_ymin,Y min:
+curves_linewidth,Grosor curvas:
+curves_settings,Ajustes Curvas
+curves_xbreak,Int X:
+curves_xlab,Etiqueta eje X:
+curves_xmax,X max:
+curves_ybreak,Int Y:
+curves_ylab,Etiqueta eje Y:
+curves_ymax,Y max:
+filter_groups,Filtrar Grupos
+filter_media,Filtrar Medios
+group1_label,Grupo 1:
+group2_label,Grupo 2:
+label_mode,Mostrar solo la cepa en las etiquetas
+norm_ad,Anderson-Darling
+norm_by_control,Normalizar por un control
+norm_ks,Kolmogorov-Smirnov
+norm_shapiro,Shapiro-Wilk
+order_csv,Orden (csv):
+point_jitter,Dispersión puntos:
+reps_by_media,Réplicas por medio
+run_normality,Ejecutar Normalidad
+run_significance,Ejecutar Significancia
+sig_add_bar,Añadir barra
+sig_bars_title,Barras de significancia
+sig_clear,Borrar todas
+sig_current_label,Barras actuales
+sig_current_placeholder,Selecciona barras para reordenar/eliminar
+sig_hide_caps,Ocultar remates
+sig_label,"Etiqueta (*, **, n.s.):"
+sig_label_param_color,Usar color del parámetro en etiqueta
+sig_linewidth,Grosor línea:
+sig_mode_bars,Barras
+sig_mode_labels,Etiquetas
+sig_move_down,Bajar
+sig_move_up,Subir
+sig_offset,Desplazamiento:
+sig_param_label,Parámetro:
+sig_remove,Quitar
+sig_sep,Separación entre barras:
+sig_textpad,Separación texto:
+sig_textsize,Tamaño texto (pts):
+sigtest_anova,ANOVA
+sigtest_kruskal,Kruskal-Wallis
+sigtest_ttest,t-test independiente
+sigtest_wilcox,Wilcoxon independiente
+stats_tab_normality,Normalidad
+stats_tab_significance,Significancia
+stats_title,Análisis estadísticos
+toggle_all,Seleccionar / Deseleccionar todos
+x_angle,Ángulo etiquetas X:
+x_wrap,Ajustar etiquetas X
+x_wrap_lines,Máx. líneas:
+y_axis_settings,Ajustes Eje Y
+y_interval,Int Y
+y_max,Y max
+corr_settings,Ajustes Correlación
+corr_param_x,Parámetro eje X:
+corr_param_y,Parámetro eje Y:
+palette_label,Paleta de color:
+palette_original,Original
+palette_default,Default
+palette_default_soft,Default Suave
+palette_bw,Blanco y Negro
+palette_bw_soft,Blanco y Negro Suave
+palette_viridis,Viridis
+palette_viridis_soft,Viridis Suave
+palette_plasma,Plasma
+palette_plasma_soft,Plasma Suave
+palette_magma,Magma
+palette_magma_soft,Magma Suave
+palette_cividis,Cividis
+palette_cividis_soft,Cividis Suave
+palette_set1,Set1
+palette_set1_soft,Set1 Suave
+palette_set2,Set2
+palette_set2_soft,Set2 Suave
+palette_set3,Set3
+palette_set3_soft,Set3 Suave
+palette_dark2,Dark2
+palette_dark2_soft,Dark2 Suave
+palette_accent,Accent
+palette_accent_soft,Accent Suave
+palette_paired,Paired
+palette_paired_soft,Paired Suave
+palette_pastel1,Pastel1
+palette_pastel1_soft,Pastel1 Suave
+palette_pastel2,Pastel2
+palette_pastel2_soft,Pastel2 Suave
+palette_okabeito,OkabeIto
+palette_okabeito_soft,OkabeIto Suave
+palette_tableau,Tableau
+palette_tableau_soft,Tableau Suave
+repeat_colors_combined,Repetir colores por cepa (Combinado)
+palette_advanced,Control avanzado de paletas
+palette_advanced_enable,Usar paleta avanzada
+palette_type_label,Tipo de paleta:
+palette_type_seq,Secuencial
+palette_type_div,Divergente
+palette_type_qual,Cualitativa
+palette_reverse,Invertir orden de colores
+palette_filters_label,Solo mostrar:
+palette_filter_colorblind,Daltónicos
+palette_filter_print,Impresión
+palette_filter_photocopy,Fotocopia
+palette_scheme_label,Esquema:
+param_label,Parámetro:
+no_params_curves,Sin parámetros: solo se pueden graficar Curvas
+media_label,Medios:
+exclude_reps_global,Excluir réplica(s) en todos los grupos
+reps_prefix,Réplicas -
+norm_medium_label,Medio normalizador:
+groups_label,Grupos:
+select_groups_prompt,Selecciona primero los grupos a mostrar.
+reps_by_group,Réplicas por grupo
+posthoc_label,Post-hoc:
+plot_label,Gráfico
+default_title_combined,%s combinado de %s
+default_title_strain,%s de %s para %s
+default_title_corr,%s %s vs %s
+normalized_suffix,(normalizado)
+combo_added,Gráfico añadido al panel
+combo_empty,Aún no has añadido gráficos.
+combo_select_plots,Selecciona los gráficos que quieres unir:
+combo_order_label,Modificar orden:
+combo_move_up,Subir
+combo_move_down,Bajar
+combo_show_legend,Mostrar leyenda
+combo_rows,Filas
+combo_cols,Columnas
+combo_width,Ancho px
+combo_height,Alto px
+combo_base_size,Tamaño base (pts)
+combo_title_size,Tamaño título (pts)
+combo_axis_titles,Títulos de ejes
+combo_axis_ticks,Ticks de ejes
+combo_legend_text,Texto de leyenda
+combo_palette_label,Paleta de color:
+combo_preview,Actualiza / Previsualiza
+combo_download_png,Descargar PNG
+combo_download_pptx,Descargar PPTX
+combo_download_pdf,Descargar PDF
+combo_download_meta,Descargar metadata
+combo_upload_meta,Cargar metadata composición (.xlsx)
+override_apply_to,Aplicar a:
+override_all,Todos
+override_title,Título (override)
+override_title_size,Tamaño título (pts)
+override_axis_size,Tamaño ejes (pts)
+override_legend_size,Tamaño leyenda (pts)
+override_axis_line_size,Grosor líneas de eje
+override_curves_linewidth,Grosor curvas
+override_curves_point_size,Tamaño puntos (curvas)
+override_box_section,Ajustes Boxplot / Barras / Violin
+override_box_width,Ancho de caja
+override_errbar_size,Grosor barras de error
+override_point_size,Tamaño puntos
+override_point_jitter,Dispersión puntos
+override_sig_linewidth,Grosor barras signif.
+override_sig_textsize,Tamaño texto signif.
+override_apply_all,Aplicar cambios a TODOS
+no_data_plot,No hay datos para graficar
+norm_failed_generic,No fue posible normalizar; se muestran valores sin normalizar.
+norm_fallback_ctrl,"No se pudo usar el control ""%s""; se muestran valores sin normalizar."

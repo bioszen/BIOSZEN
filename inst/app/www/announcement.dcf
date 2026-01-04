@@ -1,0 +1,9 @@
+enabled: FALSE
+id: 2025-01-01
+type: info
+title: Aviso de la app
+body: Actualiza este archivo para mostrar un mensaje a los usuarios.
+link_text:
+link_url:
+start:
+end:

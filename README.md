@@ -1,7 +1,6 @@
 # BIOSZEN Package
 
-[![Build binary](https://github.com/user/repo/actions/workflows/build-binary.yaml/badge.svg)](https://github.com/user/repo/actions/workflows/build-binary.yaml)
-[![R tests](https://github.com/user/repo/actions/workflows/r-tests.yml/badge.svg)](https://github.com/user/repo/actions/workflows/r-tests.yml)
+[![Build binary](https://github.com/bioszen/BIOSZEN/actions/workflows/build-binary.yaml/badge.svg)](https://github.com/bioszen/BIOSZEN/actions/workflows/build-binary.yaml)
 
 
 BIOSZEN is a modular Shiny application for biochemical data analysis. The main

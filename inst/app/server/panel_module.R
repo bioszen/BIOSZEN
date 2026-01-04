@@ -2,33 +2,47 @@
 setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
                               ov_trigger, snapshot_fun, meta_fun, curve_settings) {
   output$plotOverrideUI <- renderUI({
+    input$app_lang
     tagList(
-      selectInput('ov_tipo', 'Aplicar a:',
-                  choices = c('Todos', 'Boxplot', 'Barras', 'Violin', 'Apiladas',
-                              'Correlación', 'Curvas'),
-                  selected = 'Todos'),
-      textInput   ('ov_title',     'Título (override)',      ''),
-      numericInput('ov_fs_title',  'Tamaño título (pts)',    NA, min = 6),
-      numericInput('ov_fs_axis',   'Tamaño ejes (pts)',      NA, min = 6),
-      numericInput('ov_fs_legend', 'Tamaño leyenda (pts)',   NA, min = 6),
-      numericInput('ov_axis_size', 'Grosor líneas de eje',   NA, min = 0.1, step = 0.1),
-      numericInput('ov_cur_lwd',  'Grosor curvas', NA, min = 0.5, step = 0.1),
-      numericInput('ov_cur_pt',   'Tamaño puntos (curvas)', NA, min = 0.5, step = 0.5),
-      hr(), h4('Ajustes Boxplot / Barras / Violin'),
-      numericInput('ov_box_w',  'Ancho de caja',     NA, min = 0.1, max = 1.5, step = 0.05),
-      numericInput('ov_errbar_size','Grosor barras de error', NA, min = 0.1, step = 0.1),
-      numericInput('ov_pt_size','Tamaño puntos',     NA, min = 0.5, max = 20,  step = 0.5),
-      numericInput('ov_pt_jit', 'Dispersión puntos', NA, min = 0,   max = 0.5, step = 0.01),
-      numericInput('ov_sig_lwd',  'Grosor barras signif.', NA, min = 0.2, step = 0.2),
-      numericInput('ov_sig_txt',  'Tamaño texto signif.',   NA, min = 1,   step = 0.5),
-      actionButton('apply_ov', 'Aplicar cambios a TODOS', class = 'btn btn-success')
+      selectInput(
+        "ov_tipo",
+        tr("override_apply_to"),
+        choices = named_choices(
+          c("Todos", "Boxplot", "Barras", "Violin", "Apiladas", "Correlacion", "Curvas"),
+          c(
+            tr("override_all"),
+            tr("plot_boxplot"),
+            tr("plot_bars"),
+            tr("plot_violin"),
+            tr("plot_stacked"),
+            tr("plot_correlation"),
+            tr("plot_curves")
+          )
+        ),
+        selected = "Todos"
+      ),
+      textInput("ov_title", tr("override_title"), ""),
+      numericInput("ov_fs_title", tr("override_title_size"), NA, min = 6),
+      numericInput("ov_fs_axis", tr("override_axis_size"), NA, min = 6),
+      numericInput("ov_fs_legend", tr("override_legend_size"), NA, min = 6),
+      numericInput("ov_axis_size", tr("override_axis_line_size"), NA, min = 0.1, step = 0.1),
+      numericInput("ov_cur_lwd", tr("override_curves_linewidth"), NA, min = 0.5, step = 0.1),
+      numericInput("ov_cur_pt", tr("override_curves_point_size"), NA, min = 0.5, step = 0.5),
+      hr(), h4(tr("override_box_section")),
+      numericInput("ov_box_w", tr("override_box_width"), NA, min = 0.1, max = 1.5, step = 0.05),
+      numericInput("ov_errbar_size", tr("override_errbar_size"), NA, min = 0.1, step = 0.1),
+      numericInput("ov_pt_size", tr("override_point_size"), NA, min = 0.5, max = 20, step = 0.5),
+      numericInput("ov_pt_jit", tr("override_point_jitter"), NA, min = 0, max = 0.5, step = 0.01),
+      numericInput("ov_sig_lwd", tr("override_sig_linewidth"), NA, min = 0.2, step = 0.2),
+      numericInput("ov_sig_txt", tr("override_sig_textsize"), NA, min = 1, step = 0.5),
+      actionButton("apply_ov", tr("override_apply_all"), class = "btn btn-success")
     )
   })
 
   observe({
     ids <- names(plot_bank$all)
     if (is.null(ids)) ids <- character(0)
-    choices <- if (length(ids)) setNames(ids, paste('Plot', seq_along(ids))) else character(0)
+    choices <- if (length(ids)) named_choices(ids, paste(tr("plot_label"), seq_along(ids))) else character(0)
     updateSelectInput(session, 'plot_edit', choices = choices)
   })
 
@@ -71,12 +85,12 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       meta      = meta,
       curve_cfg = cfg
     )
-    showNotification('Gráfico añadido al panel', type = 'message', duration = 2)
+    showNotification(tr("combo_added"), type = 'message', duration = 2)
     if (!panel_inserto()) {
       insertTab(
         inputId  = 'mainTabs',
         tab      = tab_compos,
-        target   = 'Obtención de Parámetros de Crecimiento',
+        target   = "tab_growth",
         position = 'after',
         select   = FALSE
       )
@@ -85,16 +99,17 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
   })
 
   output$plotPicker <- renderUI({
+    input$app_lang
     if (length(plot_bank$all) == 0)
-      return(helpText('Aún no has añadido gráficos.'))
+      return(helpText(tr("combo_empty")))
     ids <- names(plot_bank$all)
-    choices <- setNames(ids, paste('Plot', seq_along(ids)))
+    choices <- named_choices(ids, paste(tr("plot_label"), seq_along(ids)))
     tagList(
-      checkboxGroupInput('plots_chosen', 'Selecciona los gráficos que quieres unir:',
+      checkboxGroupInput('plots_chosen', tr("combo_select_plots"),
                          choices = choices, selected = choices),
-      selectInput('plot_order', 'Modificar orden:', choices = ids),
-      actionButton('move_up',   'Subir', class = 'btn btn-secondary btn-sm'),
-      actionButton('move_down', 'Bajar', class = 'btn btn-secondary btn-sm')
+      selectInput('plot_order', tr("combo_order_label"), choices = ids),
+      actionButton('move_up',   tr("combo_move_up"), class = 'btn btn-secondary btn-sm'),
+      actionButton('move_down', tr("combo_move_down"), class = 'btn btn-secondary btn-sm')
     )
   })
 
@@ -289,7 +304,7 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       meta <- tryCatch(read_excel_tmp(path, sheet = 'Metadata'),
                        error = function(e) NULL)
       if (is.null(meta)) {
-        showNotification('❌ Metadata de composición inválida', type = 'error', duration = 6)
+        showNotification(tr("composition_meta_invalid"), type = 'error', duration = 6)
         return()
       }
       meta$Valor <- as.character(meta$Valor)
@@ -377,7 +392,7 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       }
 
       ids <- names(plot_bank$all)
-      choices <- setNames(ids, paste('Plot', seq_along(ids)))
+      choices <- named_choices(ids, paste(tr("plot_label"), seq_along(ids)))
       sel_valid <- intersect(sel_prev, ids)
       updateCheckboxGroupInput(session, 'plots_chosen', choices = choices,
                                selected = sel_valid)

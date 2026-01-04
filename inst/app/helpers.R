@@ -27,7 +27,7 @@ split_comparison <- function(x) {
 dunnett_to_tibble <- function(obj) {
   mat <- obj[[1]][ , 4, drop = FALSE]
   cmp <- split_comparison(rownames(mat))
-  tibble(
+  tibble::tibble(
     grupo1 = cmp[, 1],
     grupo2 = cmp[, 2],
     p.adj  = mat[, 1]
@@ -106,6 +106,52 @@ safe_sheet <- function(x) {
 
 sanitize <- function(x) {
   gsub("[/\\\\:*?\"<>|]", "_", x)
+}
+
+# Normaliza columnas de parámetros contra un medio control y tolera faltantes.
+normalize_params <- function(df, params = character(0), do_norm = FALSE, ctrl_medium = NULL) {
+  if (!isTRUE(do_norm)) return(df)
+  if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return(df)
+  if (is.null(params)) params <- character(0)
+  params <- params[!is.na(params) & nzchar(params)]
+
+  available <- intersect(params, names(df))
+  if (!length(available) || !"Media" %in% names(df)) return(df)
+
+  has_ctrl <- !is.null(ctrl_medium) && !is.na(ctrl_medium) &&
+    nzchar(ctrl_medium) && ctrl_medium %in% df$Media
+  fallback_flag <- !has_ctrl
+
+  if (!has_ctrl) {
+    out <- df %>%
+      dplyr::mutate(dplyr::across(
+        dplyr::all_of(available),
+        ~ .x,
+        .names = "{.col}_Norm"
+      ))
+    attr(out, "norm_fallback") <- TRUE
+    return(out)
+  }
+
+  out <- df %>%
+    dplyr::group_by(dplyr::across(dplyr::any_of(c("Strain", "BiologicalReplicate")))) %>%
+    dplyr::mutate(dplyr::across(
+      dplyr::all_of(available),
+      ~ {
+        base <- .x[Media == ctrl_medium][1]
+        if (is.na(base) || base == 0) {
+          fallback_flag <<- TRUE
+          .x
+        } else {
+          .x / base
+        }
+      },
+      .names = "{.col}_Norm"
+    )) %>%
+    dplyr::ungroup()
+
+  attr(out, "norm_fallback") <- isTRUE(fallback_flag)
+  out
 }
 
 # Paleta segura -------------------------------------------------------

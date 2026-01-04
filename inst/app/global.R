@@ -2,6 +2,7 @@
 # descarga de PNG y Excel (.xlsx)  
 
 library(shiny)  
+library(shiny.i18n)
 library(plotly)  
 library(ggplot2)  
 library(readxl)  
@@ -38,6 +39,162 @@ library(future)
 library(future.apply)
 library(parallelly)
 
+find_i18n_dir <- function(pkg = "BIOSZEN") {
+  if (dir.exists("i18n")) return(normalizePath("i18n", winslash = "/", mustWork = TRUE))
+  dev_dir <- file.path("inst", "app", "i18n")
+  if (dir.exists(dev_dir)) return(normalizePath(dev_dir, winslash = "/", mustWork = TRUE))
+  dir <- system.file("app/i18n", package = pkg)
+  if (nzchar(dir) && dir.exists(dir)) return(dir)
+  ""
+}
+
+i18n_dir <- find_i18n_dir()
+if (!nzchar(i18n_dir)) {
+  stop("No se encontro la carpeta de traducciones 'i18n'.")
+}
+
+i18n_lang <- "en"
+i18n_config <- file.path(i18n_dir, "config.yml")
+if (!file.exists(i18n_config)) {
+  i18n_config <- NULL
+}
+i18n <- shiny.i18n::Translator$new(
+  translation_csvs_path = i18n_dir,
+  translation_csv_config = i18n_config
+)
+i18n$set_translation_language(i18n_lang)
+i18n$use_js()
+
+i18n_valid_lang <- function(lang) {
+  if (is.null(lang) || !nzchar(lang)) return(FALSE)
+  langs <- setdiff(i18n$get_languages(), i18n$get_key_translation())
+  lang %in% langs
+}
+
+load_translation_tables <- function(dir) {
+  files <- list.files(dir, pattern = "^translation_.*\\.csv$", full.names = TRUE)
+  out <- list()
+  for (file in files) {
+    dat <- tryCatch(
+      read.csv(file, stringsAsFactors = FALSE, fileEncoding = "UTF-8"),
+      error = function(e) NULL
+    )
+    if (is.null(dat) || ncol(dat) < 2) next
+    key_col <- names(dat)[1]
+    lang_col <- names(dat)[2]
+    keys <- as.character(dat[[key_col]])
+    vals <- as.character(dat[[lang_col]])
+    ok <- !is.na(keys) & nzchar(keys)
+    out[[lang_col]] <- stats::setNames(vals[ok], keys[ok])
+  }
+  out
+}
+
+i18n_translations <- load_translation_tables(i18n_dir)
+
+tr_text <- function(key, lang = NULL) {
+  if (is.null(key)) return("")
+  key <- as.character(key)
+  if (!length(key)) return(character(0))
+  if (is.null(lang) || !nzchar(lang)) lang <- i18n_lang
+  lookup <- i18n_translations[[lang]]
+  fallback <- i18n_translations[["en"]]
+  translate_one <- function(k) {
+    if (!nzchar(k)) return(k)
+    if (!is.null(lookup)) {
+      val <- lookup[[k]]
+      if (!is.null(val) && !is.na(val) && nzchar(val)) return(enc2utf8(val))
+    }
+    if (!is.null(fallback)) {
+      val <- fallback[[k]]
+      if (!is.null(val) && !is.na(val) && nzchar(val)) return(enc2utf8(val))
+    }
+    k
+  }
+  vapply(key, translate_one, character(1))
+}
+
+extract_i18n_key <- function(x) {
+  if (inherits(x, "shiny.tag")) {
+    key <- x$attribs[["data-key"]]
+    if (is.null(key) || !nzchar(key)) {
+      key <- x$attribs[["data-i18n"]]
+    }
+    if (!is.null(key) && nzchar(key)) return(key)
+  }
+  if (inherits(x, "shiny.tag.list")) {
+    for (item in x) {
+      key <- extract_i18n_key(item)
+      if (!is.null(key)) return(key)
+    }
+  }
+  NULL
+}
+
+label_to_text <- function(label) {
+  if (is.null(label)) return("")
+  if (is.character(label)) return(label[1])
+  key <- extract_i18n_key(label)
+  if (!is.null(key)) return(tr_text(key))
+  out <- tryCatch(as.character(label), error = function(e) character(0))
+  if (length(out) && nzchar(out[1])) {
+    out[1] <- gsub("<[^>]+>", "", out[1])
+    return(out[1])
+  }
+  ""
+}
+
+tr <- function(key) {
+  out <- i18n$t(key)
+  if (is.null(out)) return(key)
+  if (is.character(out)) {
+    if (!length(out)) return(key)
+    missing <- is.na(out) | !nzchar(out)
+    if (any(missing)) out[missing] <- key[missing]
+    out <- enc2utf8(out)
+  } else if (!length(out)) {
+    return(key)
+  }
+  out
+}
+
+named_choices <- function(values, labels) {
+  values <- as.character(values)
+  if (missing(labels) || is.null(labels)) labels <- values
+  label_list <- if (inherits(labels, "shiny.tag")) {
+    list(labels)
+  } else if (inherits(labels, "shiny.tag.list") || is.list(labels)) {
+    labels
+  } else {
+    as.list(labels)
+  }
+  if (length(label_list) != length(values)) {
+    label_list <- rep_len(label_list, length(values))
+  }
+  labels_txt <- vapply(label_list, label_to_text, character(1))
+  labels_txt <- enc2utf8(labels_txt)
+  stats::setNames(values, labels_txt)
+}
+
+accordion_panel_safe <- function(title, ..., value = NULL) {
+  value_chr <- NULL
+  if (!is.null(value)) {
+    val <- tryCatch(as.character(value), error = function(e) character(0))
+    if (length(val) && !is.na(val[1]) && nzchar(val[1])) value_chr <- val[1]
+  }
+  if (is.null(value_chr)) {
+    key <- extract_i18n_key(title)
+    if (!is.null(key)) {
+      value_chr <- key
+    } else if (is.character(title) && length(title) && !is.na(title[1]) && nzchar(title[1])) {
+      value_chr <- title[1]
+    } else {
+      value_chr <- "panel"
+    }
+  }
+  bslib::accordion_panel(title = title, ..., value = value_chr)
+}
+
 
 # Reporta errores indicando el archivo de origen (soporta handlers sin argumento)
 options(shiny.error = function(e = NULL) {
@@ -46,14 +203,17 @@ options(shiny.error = function(e = NULL) {
   for (i in rev(seq_along(calls))) {
     sr <- attr(calls[[i]], 'srcref')
     if (!is.null(sr)) {
-      src <- basename(sr$srcfile$filename)
-      break
+      srcfile <- attr(sr, "srcfile")
+      if (!is.null(srcfile) && !is.null(srcfile$filename)) {
+        src <- basename(srcfile$filename)
+        break
+      }
     }
   }
   if (is.null(src)) src <- 'fuente_desconocida'
   msg <- if (!is.null(e)) conditionMessage(e) else geterrmessage()
   shiny::showNotification(
-    paste('Error en', src, ':', msg),
+    sprintf(tr_text("global_error_template", i18n_lang), src, msg),
     type = 'error', duration = NULL
   )
 })
@@ -157,38 +317,62 @@ theme_light <- bs_theme(version = 5)
 theme_dark  <- bs_theme(version = 5, bootswatch = "cyborg")
 
 tab_compos <- tabPanel(
-  "Panel de Composición",
+  title = tr("tab_composition"),
+  value = "tab_composition",
   sidebarLayout(
     sidebarPanel(style="overflow-y:auto;max-height:95vh;position:sticky;top:0;",
       uiOutput("plotPicker"),
-      checkboxInput("show_legend_combo", "Mostrar leyenda", value = FALSE),
+      checkboxInput("show_legend_combo", tr("combo_show_legend"), value = FALSE),
       hr(),
-      numericInput("nrow_combo", "Filas", 1, min = 1, max = 4),
-      numericInput("ncol_combo", "Columnas", 1, min = 1, max = 4),
-      numericInput("combo_width",  "Ancho px", 1920, min = 400),
-      numericInput("combo_height", "Alto  px", 1080, min = 400),
-      numericInput("base_size_combo", "Tamaño base (pts)", 18, min = 8),
-      numericInput("fs_title_all",      "Tamaño título (pts)",     20, min = 6),
-      numericInput("fs_axis_title_all", "Títulos de ejes",         16, min = 6),
-      numericInput("fs_axis_text_all",  "Ticks de ejes",           14, min = 6),
-      numericInput("fs_legend_all",     "Texto de leyenda",        16, min = 6),
-      selectInput("combo_pal", "Paleta de color:",
-                  choices = c('Original', 'Default', 'Blanco y Negro', 'Viridis',
-                              'Plasma', 'Magma', 'Cividis', 'Set1', 'Set2',
-                              'Set3', 'Dark2', 'Accent', 'Paired', 'Pastel1',
-                              'Pastel2'),
-                  selected = 'Original'),
-
-  uiOutput("plotOverrideUI"),
-      actionButton("makeCombo", "Actualiza / Previsualiza",
+      numericInput("nrow_combo", tr("combo_rows"), 1, min = 1, max = 4),
+      numericInput("ncol_combo", tr("combo_cols"), 1, min = 1, max = 4),
+      numericInput("combo_width",  tr("combo_width"), 1920, min = 400),
+      numericInput("combo_height", tr("combo_height"), 1080, min = 400),
+      numericInput("base_size_combo", tr("combo_base_size"), 18, min = 8),
+      numericInput("fs_title_all",      tr("combo_title_size"), 20, min = 6),
+      numericInput("fs_axis_title_all", tr("combo_axis_titles"), 16, min = 6),
+      numericInput("fs_axis_text_all",  tr("combo_axis_ticks"),  14, min = 6),
+      numericInput("fs_legend_all",     tr("combo_legend_text"), 16, min = 6),
+      selectInput(
+        "combo_pal",
+        tr("combo_palette_label"),
+        choices = named_choices(
+          c(
+            "Original", "Default", "Blanco y Negro", "Viridis",
+            "Plasma", "Magma", "Cividis", "Set1", "Set2",
+            "Set3", "Dark2", "Accent", "Paired", "Pastel1",
+            "Pastel2"
+          ),
+          c(
+            tr("palette_original"),
+            tr("palette_default"),
+            tr("palette_bw"),
+            tr("palette_viridis"),
+            tr("palette_plasma"),
+            tr("palette_magma"),
+            tr("palette_cividis"),
+            tr("palette_set1"),
+            tr("palette_set2"),
+            tr("palette_set3"),
+            tr("palette_dark2"),
+            tr("palette_accent"),
+            tr("palette_paired"),
+            tr("palette_pastel1"),
+            tr("palette_pastel2")
+          )
+        ),
+        selected = "Original"
+      ),
+      uiOutput("plotOverrideUI"),
+      actionButton("makeCombo", tr("combo_preview"),
                    class = "btn btn-primary"),
       br(), br(),
-      downloadButton("dl_combo_png",  "Descargar PNG"),
-      downloadButton("dl_combo_pptx", "Descargar PPTX"),
-      downloadButton("dl_combo_pdf",  "Descargar PDF"),
+      downloadButton("dl_combo_png",  tr("combo_download_png")),
+      downloadButton("dl_combo_pptx", tr("combo_download_pptx")),
+      downloadButton("dl_combo_pdf",  tr("combo_download_pdf")),
       br(), br(),
-      downloadButton("dl_combo_meta", "Descargar metadata"),
-      fileInput("combo_meta", "Cargar metadata composición (.xlsx)",
+      downloadButton("dl_combo_meta", tr("combo_download_meta")),
+      fileInput("combo_meta", tr("combo_upload_meta"),
                 accept = ".xlsx")
     ),
     mainPanel(
@@ -196,7 +380,6 @@ tab_compos <- tabPanel(
     )
   )
 )
-
 
 
 
@@ -738,7 +921,50 @@ is_empty_value <- function(x) {
 # Helper: asegura que existan PlotSettings y columnas de parámetros
 #───────────────────────────────────────────────────────────────────────────────
 prepare_platemap <- function(df_datos, cfg) {
-  
+  normalize_text <- function(x) {
+    if (is.null(x)) return(x)
+    out <- as.character(x)
+    out <- gsub("\u00A0", " ", out, fixed = TRUE)
+    out <- trimws(out)
+    out[out == ""] <- NA_character_
+    out
+  }
+  safe_num <- function(x) {
+    if (is.numeric(x)) return(x)
+    num <- to_numeric(x)
+    if (all(is.na(num))) return(x)
+    num
+  }
+
+  if (!is.null(df_datos) && !is.null(names(df_datos))) {
+    names(df_datos) <- normalize_text(names(df_datos))
+    for (col in c("Strain", "Media", "Well", "TechnicalReplicate", "Replicate")) {
+      if (col %in% names(df_datos)) {
+        df_datos[[col]] <- normalize_text(df_datos[[col]])
+      }
+    }
+    for (col in c("Orden", "BiologicalReplicate")) {
+      if (col %in% names(df_datos)) {
+        df_datos[[col]] <- safe_num(df_datos[[col]])
+      }
+    }
+  }
+  if (!is.null(cfg) && !is.null(names(cfg))) {
+    names(cfg) <- normalize_text(names(cfg))
+    if ("Parameter" %in% names(cfg)) {
+      cfg$Parameter <- normalize_text(cfg$Parameter)
+    }
+    if ("Y_Max" %in% names(cfg)) {
+      cfg$Y_Max <- to_numeric(cfg$Y_Max)
+    }
+    if ("Interval" %in% names(cfg)) {
+      cfg$Interval <- to_numeric(cfg$Interval)
+    }
+    if ("Y_Title" %in% names(cfg)) {
+      cfg$Y_Title <- normalize_text(cfg$Y_Title)
+    }
+  }
+
   # ─ 1. PlotSettings inexistente o vacío ────────────────────────────────────
   if (is.null(cfg) || nrow(cfg) == 0 || !"Parameter" %in% names(cfg)) {
     message("⚠️  PlotSettings no encontrado: se genera configuración mínima")
@@ -758,10 +984,36 @@ prepare_platemap <- function(df_datos, cfg) {
     )
   }
   
-  # ─ 2. Asegurar que todas las columnas de cfg$Parameter existan en df_datos ─
-  faltantes <- setdiff(cfg$Parameter, names(df_datos))
-  if (length(faltantes)) {
-    df_datos[ faltantes ] <- NA_real_
+  # ─ 2. Limpiar parametros vacios y quedarnos solo con los que tienen datos ─
+  if ("Parameter" %in% names(cfg)) {
+    cfg$Parameter <- trimws(as.character(cfg$Parameter))
+    cfg <- cfg[!is.na(cfg$Parameter) & nzchar(cfg$Parameter), , drop = FALSE]
+  }
+  
+  if (nrow(cfg) > 0) {
+    faltantes <- setdiff(cfg$Parameter, names(df_datos))
+    if (length(faltantes)) {
+      df_datos[ faltantes ] <- NA_real_
+    }
+    
+    present <- intersect(cfg$Parameter, names(df_datos))
+    if (length(present)) {
+      df_datos[present] <- lapply(df_datos[present], to_numeric)
+      has_data <- vapply(present, function(p) {
+        col <- df_datos[[p]]
+        if (is.numeric(col)) {
+          any(is.finite(col))
+        } else if (is.character(col) || is.factor(col)) {
+          vals <- trimws(as.character(col))
+          any(nzchar(vals))
+        } else {
+          any(!is.na(col))
+        }
+      }, logical(1))
+      cfg <- cfg[cfg$Parameter %in% present[has_data], , drop = FALSE]
+    } else {
+      cfg <- cfg[0, , drop = FALSE]
+    }
   }
   
   list(datos = df_datos, cfg = cfg)

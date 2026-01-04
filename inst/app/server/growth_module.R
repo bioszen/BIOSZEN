@@ -47,10 +47,9 @@ setup_growth_module <- function(input, output, session) {
             perm <- calculate_growth_rates_permissive(df_w)
             step <- step + 1
             incProgress(1/total_steps, detail = sprintf('P %d/%d: %s', step, total_steps, w))
-            idx <- which(is_empty_value(rob$µMax))
-            if (length(idx)) rob[idx, ] <- perm[idx, ]
-            rob$Well <- w
-            all_results[[k]] <- rob
+            combined <- combine_growth_results(rob, perm)
+            combined$Well <- w
+            all_results[[k]] <- combined
           }
         })
         final_df <- bind_rows(all_results) %>%

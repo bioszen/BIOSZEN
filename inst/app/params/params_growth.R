@@ -24,17 +24,30 @@
 }
 
 .bioszen_map_wells <- function(keys, fn) {
-  # Si hay future.apply, paralelizamos; si no, lapply normal.
+  # Paralelizar solo si se solicita explicitamente; fallback a secuencial ante errores.
+  enable_parallel <- tolower(Sys.getenv("BIOSZEN_PARALLEL", "false")) %in% c("1", "true", "yes")
+  if (!enable_parallel || length(keys) < 2) {
+    return(lapply(keys, fn))
+  }
   if (requireNamespace("future.apply", quietly = TRUE) &&
       requireNamespace("future", quietly = TRUE)) {
     workers <- .bioszen_init_parallel()
+    if (is.na(workers) || workers < 2) {
+      return(lapply(keys, fn))
+    }
     old_plan <- future::plan()
     on.exit(try(future::plan(old_plan), silent = TRUE), add = TRUE)
     future::plan(future::multisession, workers = workers)
-    future.apply::future_lapply(keys, fn, future.seed = TRUE)
-  } else {
-    lapply(keys, fn)
+    res <- tryCatch(
+      future.apply::future_lapply(keys, fn, future.seed = TRUE),
+      error = function(e) {
+        message("No se pudo paralelizar; usando modo secuencial. Detalle: ", conditionMessage(e))
+        NULL
+      }
+    )
+    if (!is.null(res)) return(res)
   }
+  lapply(keys, fn)
 }
 
 # ============================================================
@@ -257,7 +270,36 @@ calculate_growth_rates_permissive <- function(df) {
 }
 
 # ============================================================
-# 5) Detectar valores vacíos (sin cambios)
+# 5) Combinar resultados robustos y permisivos rellenando huecos
+# ============================================================
+combine_growth_results <- function(robust_df, permissive_df) {
+  if (is.null(robust_df) || !nrow(robust_df)) return(permissive_df)
+  if (is.null(permissive_df) || !nrow(permissive_df)) return(robust_df)
+
+  out <- robust_df
+  common <- intersect(names(permissive_df), names(robust_df))
+
+  for (col in setdiff(common, "Well")) {
+    missing <- is_empty_value(out[[col]])
+    out[[col]][missing] <- permissive_df[[col]][missing]
+  }
+  out[setdiff(common, "Well")] <- lapply(out[setdiff(common, "Well")], unname)
+
+  if ("Well" %in% common) {
+    lvl <- levels(out$Well)
+    if (is.null(lvl) || !length(lvl)) lvl <- levels(permissive_df$Well)
+    if (is.null(lvl) || !length(lvl)) lvl <- unique(as.character(permissive_df$Well))
+    if (!is.null(lvl) && length(lvl)) {
+      out$Well <- factor(out$Well, levels = lvl)
+      out <- dplyr::arrange(out, Well)
+    }
+  }
+
+  out
+}
+
+# ============================================================
+# 6) Detectar valores vacíos (sin cambios)
 # ============================================================
 is_empty_value <- function(x) {
   is.na(x) | x == "" | is.nan(x)
