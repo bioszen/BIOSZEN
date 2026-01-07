@@ -85,6 +85,7 @@ composition_meta_invalid,❌ Invalid composition metadata
 param_no_data_selection,Parameter has no data for the current selection.
 select_params_prompt,Select at least one parameter.
 missing_params_list,Could not find parameter(s): %s
+table_not_available,Table not available for this plot type
 growth_files,Load growth curves (.xlsx)
 growth_max_time,Max time
 growth_interval,Interval (by)

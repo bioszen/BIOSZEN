@@ -4468,6 +4468,33 @@
         "Built": "R 4.5.2; ; 2025-12-13 00:52:24 UTC; windows"
       }
     },
+    "shiny.i18n": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com",
+      "description": {
+        "Package": "shiny.i18n",
+        "Title": "Shiny Applications Internationalization",
+        "Version": "0.3.0",
+        "Authors@R": "\n  c(\n    person(\"Jakub\", \"Nowicki\", email = \"opensource+kuba@appsilon.com\", role = c(\"cre\", \"aut\")),\n    person(\"Dominik\", \"Krzemiński\", email = \"raymon92@gmail.com\", role = c(\"aut\")),\n    person(\"Krystian\", \"Igras\", email = \"krystian8207@gmail.com\", role = c(\"aut\")),\n    person(\"Jakub\", \"Sobolewski\", email = \"jakub.sobolewski@appsilon.com\", role = c(\"aut\")),\n    person(\"Appsilon Sp. z o.o.\", role = \"cph\", email = \"opensource@appsilon.com\")\n  )",
+        "Description": "It provides easy internationalization of Shiny\n    applications. It can be used as standalone translation package\n    to translate reports, interactive visualizations or\n    graphical elements as well.",
+        "Depends": "R (>= 3.3.0)",
+        "Imports": "yaml, jsonlite, methods, stringr, R6, glue, shiny, rstudioapi,\nutils",
+        "License": "MIT + file LICENSE",
+        "Encoding": "UTF-8",
+        "URL": "https://appsilon.github.io/shiny.i18n/,\nhttps://github.com/Appsilon/shiny.i18n",
+        "BugReports": "https://github.com/Appsilon/shiny.i18n/issues",
+        "RoxygenNote": "7.2.1",
+        "Suggests": "covr, googleLanguageR, knitr, lintr, rcmdcheck, rmarkdown,\nspelling, testthat, withr, quarto",
+        "Language": "en-US",
+        "NeedsCompilation": "no",
+        "Packaged": "2023-01-13 14:30:28 UTC; kuba",
+        "Author": "Jakub Nowicki [cre, aut],\n  Dominik Krzemiński [aut],\n  Krystian Igras [aut],\n  Jakub Sobolewski [aut],\n  Appsilon Sp. z o.o. [cph]",
+        "Maintainer": "Jakub Nowicki <opensource+kuba@appsilon.com>",
+        "Repository": "CRAN",
+        "Date/Publication": "2023-01-16 10:40:02 UTC",
+        "Built": "R 4.5.2; ; 2025-12-03 04:58:43 UTC; windows"
+      }
+    },
     "shinyBS": {
       "Source": "CRAN",
       "Repository": "https://cran.rstudio.com",
@@ -5474,19 +5501,19 @@
       "checksum": "8297f00a41633280e8b069bca2b0f147"
     },
     "global.R": {
-      "checksum": "bb21a21251981cb3fff68be3c5ca4e50"
+      "checksum": "c687bde3389f6c5d39ff8efad7ecbd9d"
     },
     "graficos/graficos_apilados.R": {
       "checksum": "b37ed5d25be6a00f0d38302f0c8b9939"
     },
     "graficos/graficos_barras.R": {
-      "checksum": "470c9c837e75ad8bfe4d58a6991ff79e"
+      "checksum": "6a2a1dc3f73fb1b92339ac8a130fafae"
     },
     "graficos/graficos_boxplot.R": {
       "checksum": "b14cf0f749f03ef1c86a947bb66e19d7"
     },
     "graficos/graficos_correlacion.R": {
-      "checksum": "225c6e597ca3c151f1df2cd57d769077"
+      "checksum": "2be0afba78cf4756364a7c6f8c03b696"
     },
     "graficos/graficos_curvas.R": {
       "checksum": "753bb6111f23896aa7c46392c9537e4d"
@@ -5495,25 +5522,34 @@
       "checksum": "69e9efebf8ce41b1c3cbcac479738d90"
     },
     "helpers.R": {
-      "checksum": "e48db0eab0f1112ad73dfd0a958f633f"
+      "checksum": "6ac6c532755f1c08aff2dd871f2ba99a"
+    },
+    "i18n/config.yml": {
+      "checksum": "913211ba0dfaec9515191eb67ba9a179"
+    },
+    "i18n/translation_en.csv": {
+      "checksum": "79f1b8a4adbeb43460b775d9b33a294c"
+    },
+    "i18n/translation_es.csv": {
+      "checksum": "56fb99bf7e5d6eecc00ec825f14b56b2"
     },
     "params/params_growth.R": {
-      "checksum": "db39ce18024be494aa2844101bd52efb"
+      "checksum": "5be81d9a8b6664b0a6947c26dff9de0b"
     },
     "reports/report.Rmd": {
       "checksum": "6ffecb0b500236a6516757e1bc2c2de0"
     },
     "Rplots.pdf": {
-      "checksum": "636c7e4d804f3d0cf0868e4ec518d00a"
+      "checksum": "81f0089772ba00febb133ecaa3e00958"
     },
     "server/growth_module.R": {
-      "checksum": "d7c817754fa5b30e20e92d549a8ecd52"
+      "checksum": "536522f438605b5b42fac2893de9d9f7"
     },
     "server/panel_module.R": {
-      "checksum": "65f29356d8c6308b45d415a1b0162549"
+      "checksum": "14e7d1c29a242a58899f6aeec0b45ff5"
     },
     "server/server_main.R": {
-      "checksum": "3083c30670e9ec1d57b9673ec1afe7f4"
+      "checksum": "1f791734c9d2862a85929bad564a0163"
     },
     "stats/stats_correlation.R": {
       "checksum": "033c6d792fa666f7860a2efed87e85fc"
@@ -5522,7 +5558,7 @@
       "checksum": "dd8e69fdd15aa6be1ead5a74c5f75040"
     },
     "ui/ui_main.R": {
-      "checksum": "ce8415a975f3d4f3cf25a58fccd6f946"
+      "checksum": "0128b1e47ea13997b5dd0a20d2784377"
     },
     "www/announcement.dcf": {
       "checksum": "60bcfda3b4f9463e61b367477212cbd1"
@@ -5543,10 +5579,10 @@
       "checksum": "6f471f02cc3d5bdce85a0e8e9c4f62d9"
     },
     "www/MANUAL_EN.docx": {
-      "checksum": "a6e32d5a5aaabb9e0e41c654f4119b9f"
+      "checksum": "e237ea8f6ced3ec1c00e2db0e7c310c2"
     },
     "www/MANUAL_ES.docx": {
-      "checksum": "46c6bf2ce872cae560dd30d1399ba3a8"
+      "checksum": "fade8ea160f6ff98f2e4ca78a8bba3c3"
     }
   },
   "users": null

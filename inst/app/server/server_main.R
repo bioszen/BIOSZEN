@@ -1785,7 +1785,7 @@ server <- function(input, output, session) {
       "rm_reps_all",
       tr("exclude_reps_global"),
       choices  = reps,
-      selected = NULL
+      selected = isolate(intersect(as.character(input$rm_reps_all %||% character(0)), reps))
     )
   })
   
@@ -1880,7 +1880,7 @@ server <- function(input, output, session) {
     # construye un "sub-checkbox" por cada medio de esa cepa  
     tagList(lapply(unique(df$Media), function(m){  
       reps <- sort(unique(df$BiologicalReplicate[df$Media == m]))  
-     drop_all <- as.character(input$rm_reps_all %||% character(0))
+      drop_all <- isolate(as.character(input$rm_reps_all %||% character(0)))
       checkboxGroupInput(  
         paste0("reps_", make.names(m)),       # id = reps_<medio>  
         paste(tr("reps_prefix"), m),  
@@ -1964,7 +1964,7 @@ server <- function(input, output, session) {
                 paste(df$Strain, df$Media, sep = "-") == g
               ]
             )
-            drop_all <- as.character(input$rm_reps_all %||% character(0))
+            drop_all <- isolate(as.character(input$rm_reps_all %||% character(0)))
             checkboxGroupInput(
               paste0("reps_grp_", make.names(g)),
               paste(tr("reps_prefix"), g),
@@ -1977,6 +1977,56 @@ server <- function(input, output, session) {
       )
     )
   })
+
+  rm_reps_all_debounced <- debounce(
+    reactive(as.character(input$rm_reps_all %||% character(0))),
+    150
+  )
+
+  observeEvent(rm_reps_all_debounced(), {
+    drop_all <- rm_reps_all_debounced()
+    use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
+    df <- if (use_param) {
+      param_rep_df()
+    } else {
+      if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+    }
+    if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return()
+
+    scope_sel <- input$scope %||% "Por Cepa"
+    if (scope_sel == "Por Cepa") {
+      if (is.null(input$strain)) return()
+      df <- df %>% filter(Strain == input$strain)
+      if (!is.null(input$showMedios)) {
+        df <- df %>% filter(Media %in% input$showMedios)
+      }
+      for (m in unique(df$Media)) {
+        reps <- sort(unique(df$BiologicalReplicate[df$Media == m]))
+        updateCheckboxGroupInput(
+          session,
+          inputId  = paste0("reps_", make.names(m)),
+          choices  = reps,
+          selected = setdiff(as.character(reps), drop_all)
+        )
+      }
+    } else if (scope_sel == "Combinado" && !is.null(input$showGroups)) {
+      grps <- input$showGroups
+      df <- df %>% filter(paste(Strain, Media, sep = "-") %in% grps)
+      for (g in grps) {
+        reps <- unique(
+          df$BiologicalReplicate[
+            paste(df$Strain, df$Media, sep = "-") == g
+          ]
+        )
+        updateCheckboxGroupInput(
+          session,
+          inputId  = paste0("reps_grp_", make.names(g)),
+          choices  = reps,
+          selected = setdiff(as.character(reps), drop_all)
+        )
+      }
+    }
+  }, ignoreInit = TRUE)
   
   # -------------------------------------------------------------------------
   # Ã¢â€“Âº ACTUALIZA las listas de grupos disponibles para las barras de
@@ -2684,7 +2734,7 @@ server <- function(input, output, session) {
     df2 <- df %>%  
       mutate(  
         P_valor       = .data[[pcol]],  
-        Significativo = if_else(P_valor < 0.05, "SÃƒÂ­", "No"),  
+        Significativo = if_else(P_valor < 0.05, tr_text("yes_label", lang), tr_text("no_label", lang)),  
         Estrellas     = case_when(  
           P_valor < 0.001 ~ "***",  
           P_valor < 0.01  ~ "**",  
@@ -2839,7 +2889,10 @@ server <- function(input, output, session) {
       return(datatable(tabla, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE))
     }
     
-    datatable(tibble::tibble(Mensaje = "Tabla no disponible para este tipo de grÃƒÂ¡fico"), options = list(dom = 't'))  
+    datatable(
+      tibble::tibble(Mensaje = tr_text("table_not_available", input$app_lang %||% i18n_lang)),
+      options = list(dom = 't')
+    )  
   })  
   # Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
   
@@ -6037,7 +6090,11 @@ server <- function(input, output, session) {
           dplyr::summarise(
             Shapiro.stat = stats::shapiro.test(Valor)$statistic,
             Shapiro.p    = stats::shapiro.test(Valor)$p.value,
-            Normal       = dplyr::if_else(Shapiro.p > 0.05, "SÃƒÂ­", "No"),
+            Normal       = dplyr::if_else(
+              Shapiro.p > 0.05,
+              tr_text("yes_label", lang),
+              tr_text("no_label",  lang)
+            ),
             .groups      = "drop"
           )
         
@@ -6146,7 +6203,11 @@ server <- function(input, output, session) {
         sig_tbl <- sig_raw |>
           dplyr::mutate(
             P_valor       = .data[[pcol]],
-            Significativo = dplyr::if_else(P_valor < 0.05, "SÃƒÂ­", "No"),
+            Significativo = dplyr::if_else(
+              P_valor < 0.05,
+              tr_text("yes_label", input$app_lang %||% i18n_lang),
+              tr_text("no_label",  input$app_lang %||% i18n_lang)
+            ),
             Estrellas     = dplyr::case_when(
               P_valor < 0.001 ~ "***",
               P_valor < 0.01  ~ "**",

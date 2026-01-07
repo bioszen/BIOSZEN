@@ -85,6 +85,7 @@ composition_meta_invalid,❌ Metadata de composición inválida
 param_no_data_selection,Parámetro sin datos en la selección actual.
 select_params_prompt,Selecciona al menos un parámetro.
 missing_params_list,No se encontró el/los parámetro(s): %s
+table_not_available,Tabla no disponible para este tipo de gráfico
 growth_files,Cargar curvas de crecimiento (.xlsx)
 growth_max_time,Tiempo máximo
 growth_interval,Intervalo (by)
