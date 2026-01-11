@@ -7,5 +7,5 @@ Semantic Versioning.
 ## [Unreleased]
 - No changes recorded.
 
-## [1.3.0]
+## [1.0.0]
 - Baseline release for public archive.

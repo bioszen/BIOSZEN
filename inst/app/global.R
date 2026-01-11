@@ -111,7 +111,8 @@ tr_text <- function(key, lang = NULL) {
     }
     k
   }
-  vapply(key, translate_one, character(1))
+  out <- vapply(key, translate_one, character(1))
+  unname(out)
 }
 
 extract_i18n_key <- function(x) {
@@ -173,7 +174,9 @@ named_choices <- function(values, labels) {
   }
   labels_txt <- vapply(label_list, label_to_text, character(1))
   labels_txt <- enc2utf8(labels_txt)
-  stats::setNames(values, labels_txt)
+  out <- as.list(values)
+  names(out) <- labels_txt
+  out
 }
 
 accordion_panel_safe <- function(title, ..., value = NULL) {
@@ -592,14 +595,61 @@ gen_wells <- function(n) {
   if (n <= 96) base[seq_len(n)] else c(base, paste0("H", 13:(12 + (n - 96))))
 }
 
+normalize_header_key <- function(x) {
+  if (is.null(x)) return(character(0))
+  out <- as.character(x)
+  out <- gsub("\u00A0", " ", out, fixed = TRUE)
+  out <- trimws(out)
+  out[is.na(out)] <- ""
+  out <- iconv(out, from = "", to = "ASCII//TRANSLIT")
+  out[is.na(out)] <- ""
+  out <- toupper(out)
+  gsub("[^A-Z0-9]", "", out)
+}
+
+column_aliases <- list(
+  Strain = c("Strain", "Cepa", "Muestra", "Sample"),
+  Media  = c("Media", "Condicion", "Condition", "Tratamiento", "Treatment")
+)
+
+match_alias_column <- function(headers, aliases) {
+  if (is.null(headers) || !length(headers)) return(NA_integer_)
+  hdr_norm <- normalize_header_key(headers)
+  alias_norm <- normalize_header_key(aliases)
+  idx <- match(alias_norm, hdr_norm)
+  idx <- idx[!is.na(idx)]
+  if (length(idx)) idx[1] else NA_integer_
+}
+
+apply_column_aliases <- function(df, allow_media_alias = TRUE) {
+  labels <- list(Strain = NULL, Media = NULL)
+  if (is.null(df) || !is.data.frame(df) || is.null(names(df))) {
+    return(list(datos = df, labels = labels))
+  }
+  headers <- names(df)
+  strain_idx <- match_alias_column(headers, column_aliases$Strain)
+  if (!is.na(strain_idx)) {
+    labels$Strain <- sub(":$", "", trimws(headers[[strain_idx]]))
+    names(df)[strain_idx] <- "Strain"
+  }
+  if (isTRUE(allow_media_alias)) {
+    media_idx <- match_alias_column(headers, column_aliases$Media)
+    if (!is.na(media_idx)) {
+      labels$Media <- sub(":$", "", trimws(headers[[media_idx]]))
+      names(df)[media_idx] <- "Media"
+    }
+  }
+  list(datos = df, labels = labels)
+}
+
 platemap_from_summary_wb <- function(file) {
   sheets <- readxl::excel_sheets(file)
   res <- lapply(sheets, function(sh) {
     full <- readxl::read_excel(file, sheet = sh, col_names = FALSE)
 
     idx <- which(
-      toupper(trimws(full[[1]])) == "STRAIN" &
-        toupper(trimws(full[[2]])) == "REPBIOL"
+      normalize_header_key(full[[1]]) %in% normalize_header_key(column_aliases$Strain) &
+        normalize_header_key(full[[2]]) == normalize_header_key("RepBiol")
     )
     if (length(idx) == 0) return(NULL)
     idx <- idx[1]
@@ -609,8 +659,9 @@ platemap_from_summary_wb <- function(file) {
     is_blank <- is.na(raw_hdr) | raw_hdr == ""
     raw_hdr[is_blank] <- paste0("V", seq_len(sum(is_blank)))
     hdr <- make.unique(raw_hdr, sep = "_")
-    hdr[toupper(hdr) == "STRAIN"]  <- "Strain"
-    hdr[toupper(hdr) == "REPBIOL"] <- "RepBiol"
+    hdr_norm <- normalize_header_key(hdr)
+    hdr[hdr_norm %in% normalize_header_key(column_aliases$Strain)] <- "Strain"
+    hdr[hdr_norm == normalize_header_key("RepBiol")] <- "RepBiol"
 
     if (nrow(full) <= idx) return(NULL)
     ncols <- length(hdr)
@@ -621,12 +672,15 @@ platemap_from_summary_wb <- function(file) {
     dat <- tibble::as_tibble(dat)
 
     if (!all(c("Strain", "RepBiol") %in% names(dat))) return(NULL)
+    strain_label <- raw_hdr[match(TRUE, hdr_norm %in% normalize_header_key(column_aliases$Strain))]
+    strain_label <- sub(":$", "", trimws(as.character(strain_label)))
+    if (is.na(strain_label) || !nzchar(strain_label)) strain_label <- NULL
     dat <- dplyr::filter(dat, !is.na(.data$Strain), !is.na(.data$RepBiol))
     if (!nrow(dat)) return(NULL)
 
     media_cols <- setdiff(names(dat), c("Strain", "RepBiol"))
 
-    dat |>
+    out <- dat |>
       tidyr::pivot_longer(
         cols = dplyr::all_of(media_cols),
         names_to = "Media",
@@ -641,16 +695,22 @@ platemap_from_summary_wb <- function(file) {
         .data$Strain, .data$Media, .data$BiologicalReplicate,
         .data$TechnicalReplicate, .data$Parameter, .data$Valor
       )
+    attr(out, "col_labels") <- list(Strain = strain_label, Media = NULL)
+    out
   })
 
   res <- Filter(Negate(is.null), res)
   if (!length(res)) return(NULL)
-  dplyr::bind_rows(res)
+  labels <- attr(res[[1]], "col_labels")
+  out <- dplyr::bind_rows(res)
+  attr(out, "col_labels") <- labels
+  out
 }
 
 build_platemap_from_summary <- function(file) {
   long_df <- platemap_from_summary_wb(file)
   if (is.null(long_df) || !nrow(long_df)) return(NULL)
+  col_labels <- attr(long_df, "col_labels")
 
   order_map <- long_df |>
     dplyr::distinct(Strain, Media) |>
@@ -700,7 +760,7 @@ build_platemap_from_summary <- function(file) {
     Y_Title   = param_cols
   )
 
-  list(Datos = wide_df, PlotSettings = plot_settings)
+  list(Datos = wide_df, PlotSettings = plot_settings, Labels = col_labels)
 }
 
 # ────────────────────────────────────────────────────────────────

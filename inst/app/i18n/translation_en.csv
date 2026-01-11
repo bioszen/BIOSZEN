@@ -97,6 +97,7 @@ base_size,Base size (pts)
 title_size,Title size:
 axis_size,Axis size:
 legend_size,Legend size:
+legend_right,Legend on right
 axis_line_size,Axis line thickness:
 y_label,Y axis label:
 plot_title,Plot title:
@@ -234,6 +235,12 @@ palette_filter_colorblind,Colorblind
 palette_filter_print,Print
 palette_filter_photocopy,Photocopy
 palette_scheme_label,Scheme:
+palette_group_enable,Customize group colors
+palette_group_select,Groups to color:
+palette_group_color,Color:
+palette_group_apply,Apply color
+palette_group_empty,No groups available for this plot.
+palette_group_placeholder,Select groups...
 param_label,Parameter:
 no_params_curves,No parameters: only curves can be plotted.
 media_label,Media:

@@ -1,3 +1,11 @@
 ^inst/app/www/.*\.(docx)$
 ^app\.R$
 ^tests/testthat$ # include tests but not the results
+^\.github$
+^utils$
+^R_libs$
+^\.env.*$
+^\.zenodo\.json$
+^inst/app/rsconnect$
+^inst/app/manifest\.json$
+^inst/app/Rplots\.pdf$

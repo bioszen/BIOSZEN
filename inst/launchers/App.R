@@ -162,7 +162,7 @@ parse_pkg_version <- function(x) {
 
 extract_version_from_filename <- function(path, pkg_name = "BIOSZEN") {
   base <- basename(path)
-  pattern <- paste0("^", pkg_name, "_([0-9A-Za-z\\.\\-]+)\\.(tar\\.gz|zip)$")
+  pattern <- paste0("^", pkg_name, "[-_]v?([0-9A-Za-z\\.\\-]+)\\.(tar\\.gz|zip)$")
   match <- regexec(pattern, base, ignore.case = TRUE)
   parts <- regmatches(base, match)[[1]]
   if (length(parts) >= 2) return(parse_pkg_version(parts[2]))
@@ -548,8 +548,8 @@ if (!is.null(embedded)) {
 archive_dir <- script_dir
 archives <- c(
   embedded_path,
-  list.files(archive_dir, pattern = "^BIOSZEN_.*\\.tar\\.gz$", full.names = TRUE, ignore.case = TRUE),
-  list.files(archive_dir, pattern = "^BIOSZEN_.*\\.zip$", full.names = TRUE, ignore.case = TRUE)
+  list.files(archive_dir, pattern = "^BIOSZEN[-_].*\\.tar\\.gz$", full.names = TRUE, ignore.case = TRUE),
+  list.files(archive_dir, pattern = "^BIOSZEN[-_].*\\.zip$", full.names = TRUE, ignore.case = TRUE)
 )
 archives <- unique(archives[!is.na(archives) & nzchar(archives)])
 
@@ -569,7 +569,7 @@ archive_path <- if (!is.null(archive_choice)) archive_choice$path else NULL
 archive_version <- if (!is.null(archive_choice)) archive_choice$version else NULL
 
 if (is.null(archive_path) && is.null(local_version)) {
-  stop("No BIOSZEN_*.tar.gz or BIOSZEN_*.zip found in: ", archive_dir)
+  stop("No BIOSZEN-*.tar.gz or BIOSZEN-*.zip found in: ", archive_dir)
 }
 
 if (!is.null(archive_path)) {

@@ -5,7 +5,15 @@ type: software
 abstract: "With a single Excel file you will have flexible visualizations and analyses; filter, normalize, and remove data without creating additional files. In addition, you can plot multiple parameters at once and relate them: the app handles it for you."
 authors:
   - family-names: "Szenfeld"
-    given-names: "Benjamin"
+    given-names: "Benjamín"
     orcid: "https://orcid.org/0009-0003-4702-4149"
+keywords:
+  - "shiny"
+  - "bioquimica"
+  - "analisis de datos"
+  - "visualizacion"
+  - "excel"
 license: "GPL-3"
-version: "1.3.0"
+repository-code: "https://github.com/bioszen/BIOSZEN"
+url: "https://github.com/bioszen/BIOSZEN"
+version: "1.0.0"

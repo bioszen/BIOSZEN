@@ -402,6 +402,73 @@ server <- function(input, output, session) {
   current_dataset_key <- reactiveVal(NULL)
 
   ylims <- reactiveValues()
+  strain_label_ui <- reactiveVal(NULL)
+  media_label_ui  <- reactiveVal(NULL)
+  strain_label_source <- reactiveVal("default")
+  media_label_source  <- reactiveVal("default")
+
+  default_label_text <- function(lang, key) {
+    base <- tr_text(key, lang)
+    sub(":$", "", base)
+  }
+
+  set_default_labels <- function(lang, force = FALSE) {
+    if (force || identical(strain_label_source(), "default")) {
+      strain_label_ui(default_label_text(lang, "strain_label"))
+      strain_label_source("default")
+    }
+    if (force || identical(media_label_source(), "default")) {
+      media_label_ui(default_label_text(lang, "media_label"))
+      media_label_source("default")
+    }
+  }
+
+  apply_data_labels <- function(labels, lang) {
+    if (!is.null(labels$Strain) && nzchar(labels$Strain)) {
+      strain_label_ui(labels$Strain)
+      strain_label_source("data")
+    } else {
+      strain_label_ui(default_label_text(lang, "strain_label"))
+      strain_label_source("default")
+    }
+    if (!is.null(labels$Media) && nzchar(labels$Media)) {
+      media_label_ui(labels$Media)
+      media_label_source("data")
+    } else {
+      media_label_ui(default_label_text(lang, "media_label"))
+      media_label_source("default")
+    }
+  }
+
+  scope_by_label <- function(lang) {
+    prefix <- if (identical(lang, "en")) "By" else "Por"
+    strain_text <- strain_label_ui() %||% default_label_text(lang, "strain_label")
+    paste(prefix, strain_text)
+  }
+
+  filter_media_label <- function(lang) {
+    prefix <- if (identical(lang, "en")) "Filter" else "Filtro de"
+    media_text <- media_label_ui() %||% default_label_text(lang, "media_label")
+    paste(prefix, media_text)
+  }
+
+  reps_by_media_label <- function(lang) {
+    prefix <- if (identical(lang, "en")) "Replicates by" else "Replicas por"
+    media_text <- media_label_ui() %||% default_label_text(lang, "media_label")
+    paste(prefix, media_text)
+  }
+
+  norm_medium_label <- function(lang) {
+    base <- tr_text("norm_medium_label", lang)
+    base <- sub(":$", "", base)
+    media_text <- media_label_ui() %||% default_label_text(lang, "media_label")
+    show_media <- identical(media_label_source(), "data") && nzchar(media_text)
+    if (show_media) {
+      paste0(base, " (", media_text, "):")
+    } else {
+      paste0(base, ":")
+    }
+  }
 
   clear_reactive_values <- function(rv) {
     current <- shiny::reactiveValuesToList(rv)
@@ -424,6 +491,7 @@ server <- function(input, output, session) {
     reset_curve_state()
     clear_reactive_values(ylims)
     clear_reactive_values(meta_store)
+    set_default_labels(input$app_lang %||% i18n_lang, force = TRUE)
   }
 
   curve_data     <- reactive(cur_data_box())
@@ -458,6 +526,13 @@ server <- function(input, output, session) {
           as.character(input$x_wrap),
           as.character(input$x_wrap_lines)
         )
+      )
+    }
+    if (input$tipo %in% c("Boxplot", "Barras", "Violin")) {
+      meta <- add_row(
+        meta,
+        Campo = "legend_right",
+        Valor = as.character(input$legend_right)
       )
     }
     if (input$tipo == "Boxplot") {
@@ -590,6 +665,15 @@ server <- function(input, output, session) {
     )
   })
 
+  observeEvent(input$mode, {
+    mode <- input$mode %||% "light"
+    if (identical(mode, "dark")) {
+      session$setCurrentTheme(theme_dark)
+    } else {
+      session$setCurrentTheme(theme_light)
+    }
+  })
+
   write_metadata_xlsx <- function(file){
     wb <- createWorkbook()
     addWorksheet(wb, "Metadata")
@@ -606,17 +690,20 @@ server <- function(input, output, session) {
   write_current_plot_png <- function(file, width = NULL, height = NULL){
     width  <- width  %||% input$plot_w
     height <- height %||% input$plot_h
+    eff_width <- effective_plot_width(width)
+    eff_height <- effective_plot_height(height)
     scope_sel  <- if (input$scope == "Combinado") "Combinado" else "Por Cepa"
     strain_sel <- if (scope_sel == "Por Cepa") input$strain else NULL
 
     if (input$tipo == "Apiladas") {
       plt <- build_plotly_stack(scope_sel, strain_sel,
-                                width = width, height = height)
+                                width = eff_width, height = eff_height)
+      plt <- apply_margin_inputs_to_plotly(plt)
       export_plotly_image(
         p      = plt,
         file   = file,
-        width  = width,
-        height = height
+        width  = eff_width,
+        height = eff_height
       )
     } else {
       p <- plot_base()
@@ -624,8 +711,8 @@ server <- function(input, output, session) {
         ggplot2::ggsave(
           filename = file,
           plot     = p,
-          width    = width  / 100,
-          height   = height / 100,
+          width    = eff_width / 100,
+          height   = eff_height / 100,
           dpi      = 300,
           bg       = "transparent"
         )
@@ -638,8 +725,8 @@ server <- function(input, output, session) {
         export_plotly_image(
           p      = p,
           file   = file,
-          width  = width,
-          height = height
+          width  = eff_width,
+          height = eff_height
         )
       }
     }
@@ -648,17 +735,20 @@ server <- function(input, output, session) {
   write_current_plot_pdf <- function(file, width = NULL, height = NULL){
     width  <- width  %||% input$plot_w
     height <- height %||% input$plot_h
+    eff_width <- effective_plot_width(width)
+    eff_height <- effective_plot_height(height)
     scope_sel  <- if (input$scope == "Combinado") "Combinado" else "Por Cepa"
     strain_sel <- if (scope_sel == "Por Cepa") input$strain else NULL
     
     if (input$tipo == "Apiladas") {
       plt <- build_plotly_stack(scope_sel, strain_sel,
-                                width = width, height = height)
+                                width = eff_width, height = eff_height)
+      plt <- apply_margin_inputs_to_plotly(plt)
       export_plotly_image(
         p      = plt,
         file   = file,
-        width  = width,
-        height = height
+        width  = eff_width,
+        height = eff_height
       )
     } else {
       p <- plot_base()
@@ -666,8 +756,8 @@ server <- function(input, output, session) {
         ggplot2::ggsave(
           filename = file,
           plot     = p,
-          width    = width  / 100,
-          height   = height / 100,
+          width    = eff_width / 100,
+          height   = eff_height / 100,
           device   = cairo_pdf,
           bg       = "transparent"
         )
@@ -680,8 +770,8 @@ server <- function(input, output, session) {
         export_plotly_image(
           p      = p,
           file   = file,
-          width  = width,
-          height = height
+          width  = eff_width,
+          height = eff_height
         )
       }
     }
@@ -708,7 +798,7 @@ server <- function(input, output, session) {
     lang <- input$app_lang %||% i18n_lang
     updateRadioButtons(
       session, "corr_norm_target",
-      choices = setNames(
+      choices = named_choices(
         c("both", "x_only", "y_only"),
         tr_text(c("corr_norm_both", "corr_norm_x", "corr_norm_y"), lang)
       ),
@@ -717,12 +807,13 @@ server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
     refresh_static_choices <- function() {
+    lang <- input$app_lang %||% i18n_lang
     updateRadioButtons(
       session,
       "scope",
       choices  = named_choices(
         c("Por Cepa", "Combinado"),
-        c(tr("scope_by_strain"), tr("scope_combined"))
+        c(scope_by_label(lang), tr_text("scope_combined", lang))
       ),
       selected = input$scope %||% "Por Cepa"
     )
@@ -945,6 +1036,7 @@ server <- function(input, output, session) {
       i18n$set_translation_language(lang)
     }
     shiny.i18n::update_lang(lang, session)
+    set_default_labels(lang, force = FALSE)
     refresh_static_choices()
   }, ignoreInit = TRUE)
   
@@ -987,6 +1079,33 @@ server <- function(input, output, session) {
   }
 
   # Convierte "A-B" en "A B" y luego introduce saltos de lÃƒÂ­nea
+  legend_right_enabled <- function(color_mode) {
+    isTRUE(input$legend_right) && !identical(color_mode, "Blanco y Negro")
+  }
+
+  apply_square_legend_right <- function(p) {
+    p +
+      guides(
+        fill = guide_legend(
+          title = NULL,
+          override.aes = list(
+            shape = 15,
+            size = 5,
+            colour = "black",
+            stroke = 0,
+            alpha = 1
+          )
+        )
+      ) +
+      theme(
+        legend.position = "right",
+        legend.text = element_text(size = input$fs_legend, colour = "black"),
+        legend.title = element_blank(),
+        legend.key = element_blank(),
+        legend.key.size = unit(1.2, "lines")
+      )
+  }
+
   wrap_label <- function(x, lines = 2) {
     make_lbl <- function(s) {
       s <- gsub("-", " ", s, fixed = TRUE)
@@ -1091,7 +1210,9 @@ server <- function(input, output, session) {
       if (nzchar(param_lbl)) base <- paste(base, param_lbl)
       if (nzchar(lab)) paste0(base, " [", lab, "]") else base
     }, character(1))
-    stats::setNames(as.character(seq_along(sl)), labels)
+    out <- as.list(as.character(seq_along(sl)))
+    names(out) <- labels
+    out
   }
 
   observeEvent(list(sig_list(), input$app_lang), {
@@ -1099,8 +1220,10 @@ server <- function(input, output, session) {
     current  <- isolate(input$sig_current)
     pre_sel  <- sig_preselect()
     sig_preselect(NULL)
-    selected <- intersect(if (length(pre_sel)) pre_sel else current,
-                          unname(choices))
+    selected <- intersect(
+      if (length(pre_sel)) pre_sel else current,
+      unlist(choices, use.names = FALSE)
+    )
     updateSelectizeInput(
       session, "sig_current",
       choices  = choices,
@@ -1334,12 +1457,20 @@ server <- function(input, output, session) {
       )
       cfg_raw <- NULL
       is_group <- FALSE
+      col_labels <- list(Strain = NULL, Media = NULL)
+
+      if (!is.null(df_raw) && !is.null(names(df_raw))) {
+        mapped <- apply_column_aliases(df_raw, allow_media_alias = TRUE)
+        df_raw <- mapped$datos
+        col_labels <- mapped$labels
+      }
 
       if (is.null(df_raw) || !all(c("Strain", "Media") %in% names(df_raw))) {
         conv <- build_platemap_from_summary(input$dataFile$datapath)
         if (is.null(conv)) stop("Formato de archivo no reconocido.")
         df_raw  <- conv$Datos
         cfg_raw <- conv$PlotSettings
+        if (!is.null(conv$Labels)) col_labels <- conv$Labels
         is_group <- TRUE
       } else {
         cfg_raw <- tryCatch(
@@ -1351,6 +1482,8 @@ server <- function(input, output, session) {
       prep <- prepare_platemap(df_raw, cfg_raw)
       df   <- prep$datos
       cfg  <- prep$cfg
+      apply_data_labels(col_labels, input$app_lang %||% i18n_lang)
+      refresh_static_choices()
 
       for (p in cfg$Parameter) {
         row <- cfg[cfg$Parameter == p, ]
@@ -1731,17 +1864,22 @@ server <- function(input, output, session) {
   
   # --- Inputs dinÃƒÂ¡micos: Por Cepa ---  
   
-  observeEvent(datos_agrupados(), {  
+  observeEvent(list(datos_agrupados(), input$app_lang, strain_label_ui(), media_label_ui()), {  
     
     
     # 1) poblar selector de cepas  
-    updateSelectInput(session, "strain",  
-                      choices = sort(unique(datos_agrupados()$Strain)))  
+    updateSelectInput(
+      session,
+      "strain",
+      label = paste0(strain_label_ui() %||% default_label_text(input$app_lang %||% i18n_lang, "strain_label"), ":"),
+      choices = sort(unique(datos_agrupados()$Strain))
+    )  
     # 2) poblar filtro de medios  
     medias <- sort(unique(datos_agrupados()$Media))  
     output$showMediosUI <- renderUI({  
       input$app_lang
-      checkboxGroupInput("showMedios", tr("media_label"),  
+      media_label <- media_label_ui() %||% default_label_text(input$app_lang %||% i18n_lang, "media_label")
+      checkboxGroupInput("showMedios", paste0(media_label, ":"),
                          choices = medias, selected = medias)  
     })  
     # 3) inicializar orden de medios  
@@ -1787,6 +1925,16 @@ server <- function(input, output, session) {
       choices  = reps,
       selected = isolate(intersect(as.character(input$rm_reps_all %||% character(0)), reps))
     )
+  })
+
+  output$filterMediaHeader <- renderUI({
+    lang <- input$app_lang %||% i18n_lang
+    h4(filter_media_label(lang))
+  })
+
+  output$repsByMediaTitle <- renderUI({
+    lang <- input$app_lang %||% i18n_lang
+    reps_by_media_label(lang)
   })
   
   
@@ -1891,7 +2039,7 @@ server <- function(input, output, session) {
   })
   
   output$ctrlSelUI <- renderUI({  
-    input$app_lang
+    lang <- input$app_lang %||% i18n_lang
     req(input$doNorm)                          # sÃƒÂ³lo cuando se active el check  
     
     # Ã¢â‚¬â€˜Ã¢â‚¬â€˜Ã‚Â si la cepa aÃƒÂºn no estÃƒÂ¡ elegida, muestra TODOS los medios  
@@ -1903,7 +2051,7 @@ server <- function(input, output, session) {
       opts <- sort(unique(datos_agrupados()$Media))  
     }  
     
-    selectInput("ctrlMedium", tr("norm_medium_label"),    # Ã¢â€ Â etiqueta genÃƒÂ©rica  
+    selectInput("ctrlMedium", norm_medium_label(lang),    # Ã¢â€ Â etiqueta genÃƒÂ©rica  
                 choices = opts,  
                 selected = if (length(opts)) opts[1] else character(0))  
   })  
@@ -2413,24 +2561,18 @@ server <- function(input, output, session) {
     req(input$sigTest)  
     if (input$sigTest == "ANOVA") {  
       selectInput("postHoc", tr("posthoc_label"),  
-                  choices = c(  
-                    "Tukey"         = "Tukey",  
-                    "Bonferroni"    = "Bonferroni",  
-                    "Sidak"         = "Sidak",  
-                    "Dunnett"       = "Dunnett",  
-                    "Scheffe"       = "Scheffe",  
-                    "Games-Howell"  = "GamesHowell"  
-                  ),  
+                  choices = named_choices(  
+                    c("Tukey", "Bonferroni", "Sidak", "Dunnett", "Scheffe", "GamesHowell"),
+                    c("Tukey", "Bonferroni", "Sidak", "Dunnett", "Scheffe", "Games-Howell")
+                  ),
                   selected = "Tukey"  
       )  
     } else if (input$sigTest == "Kruskal-Wallis") {  
       selectInput("postHoc", tr("posthoc_label"),  
-                  choices = c(  
-                    "Dunn (Bonf.)" = "Dunn",  
-                    "Conover"      = "Conover",  
-                    "Nemenyi"      = "Nemenyi",  
-                    "DSCF"         = "DSCF"  
-                  ),  
+                  choices = named_choices(
+                    c("Dunn", "Conover", "Nemenyi", "DSCF"),
+                    c("Dunn (Bonf.)", "Conover", "Nemenyi", "DSCF")
+                  ),
                   selected = "Dunn"  
       )  
     } else {  
@@ -2950,6 +3092,136 @@ server <- function(input, output, session) {
     length(unique(as.character(labels)))
   })
 
+  adv_pal_group_overrides <- reactiveVal(setNames(character(0), character(0)))
+
+  palette_group_levels <- reactive({
+    tipo  <- input$tipo %||% ""
+    scope <- input$scope %||% "Por Cepa"
+    if (!tipo %in% c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas")) return(character(0))
+
+    if (identical(tipo, "Apiladas")) {
+      params <- input$stackParams %||% character(0)
+      if (!length(params)) return(character(0))
+      order_input <- trimws(strsplit(input$orderStack %||% "", ",")[[1]])
+      order_levels <- intersect(order_input[nzchar(order_input)], params)
+      stack_levels <- if (length(order_levels)) order_levels else params
+      return(as.character(stack_levels))
+    }
+
+
+    if (identical(tipo, "Curvas")) {
+      if (is.null(curve_data()) || is.null(datos_combinados())) return(character(0))
+      df_cur <- curve_long_df()
+      if (is.null(df_cur) || !nrow(df_cur)) return(character(0))
+      if (scope == "Por Cepa") {
+        if (is.null(input$strain)) return(character(0))
+        df_cur <- df_cur %>%
+          filter(Strain == input$strain) %>%
+          order_filter_strain() %>%
+          filter_reps_strain()
+        if (!nrow(df_cur)) return(character(0))
+        labels <- df_cur %>%
+          distinct(Media, Orden) %>%
+          arrange(Orden) %>%
+          pull(Media)
+      } else {
+        df_cur <- df_cur %>%
+          order_filter_group() %>%
+          filter_reps_group()
+        if (!nrow(df_cur)) return(character(0))
+        if (isTRUE(input$labelMode)) {
+          df_base <- datos_agrupados()
+          if (is.null(df_base) || !nrow(df_base)) return(character(0))
+          available <- unique(as.character(df_cur$Strain))
+          strain_order <- df_base %>%
+            group_by(Strain) %>%
+            summarise(minO = min(Orden), .groups = "drop") %>%
+            arrange(minO) %>%
+            pull(Strain)
+          return(as.character(intersect(strain_order, available)))
+        }
+        labels <- df_cur$Label
+      }
+      if (is.factor(labels)) {
+        return(levels(labels))
+      }
+      return(unique(as.character(labels)))
+    }
+
+    if (scope == "Por Cepa" && is.null(input$strain)) return(character(0))
+    df <- scoped_plot_df()
+    if (is.null(df) || !nrow(df)) return(character(0))
+    labels <- if (scope == "Por Cepa") df$Media else df$Label
+    if (isTRUE(input$x_wrap)) {
+      labels <- wrap_label(labels, lines = input$x_wrap_lines)
+    }
+    if (is.factor(labels)) {
+      return(levels(labels))
+    }
+    unique(as.character(labels))
+  })
+
+  output$adv_pal_group_ui <- renderUI({
+    input$app_lang
+    groups <- palette_group_levels()
+    if (!length(groups)) {
+      return(helpText(tr("palette_group_empty")))
+    }
+    selected <- intersect(input$adv_pal_group_sel %||% character(0), groups)
+    tagList(
+      selectizeInput(
+        "adv_pal_group_sel",
+        tr("palette_group_select"),
+        choices = groups,
+        selected = selected,
+        multiple = TRUE,
+        options = list(
+          placeholder = tr("palette_group_placeholder"),
+          plugins = list("remove_button")
+        )
+      ),
+      fluidRow(
+        column(
+          6,
+          div(
+            class = "form-group shiny-input-container",
+            tags$label(`for` = "adv_pal_group_color", tr("palette_group_color")),
+            tags$input(
+              id = "adv_pal_group_color",
+              type = "color",
+              value = input$adv_pal_group_color %||% "#E15759",
+              class = "form-control form-control-color",
+              style = "width: 100%; height: 38px;",
+              oninput = "Shiny.setInputValue('adv_pal_group_color', this.value, {priority: 'event'});"
+            )
+          )
+        ),
+        column(
+          6,
+          div(
+            style = "padding-top: 25px;",
+            actionButton(
+              "adv_pal_group_apply",
+              tr("palette_group_apply"),
+              class = "btn btn-primary btn-sm"
+            )
+          )
+        )
+      )
+    )
+  })
+
+  observeEvent(input$adv_pal_group_apply, {
+    if (!isTRUE(input$adv_pal_group_enable)) return()
+    groups <- input$adv_pal_group_sel %||% character(0)
+    if (!length(groups)) return()
+    color <- input$adv_pal_group_color %||% "#E15759"
+    if (!nzchar(color)) return()
+    current <- adv_pal_group_overrides()
+    current[groups] <- color
+    adv_pal_group_overrides(current)
+  })
+
   adv_extra_info <- data.frame(
     name = c(
       "Viridis", "Plasma", "Magma", "Inferno", "Cividis",
@@ -3194,6 +3466,30 @@ server <- function(input, output, session) {
     )  
   }  
   
+  apply_palette_overrides <- function(pal, levels_vec = NULL) {
+    if (!isTRUE(input$adv_pal_group_enable)) return(pal)
+    overrides <- adv_pal_group_overrides()
+    if (is.null(overrides) || !length(overrides)) return(pal)
+    if (!length(pal)) return(pal)
+    if (is.null(names(pal)) && !is.null(levels_vec)) {
+      names(pal) <- levels_vec
+    }
+    if (is.null(names(pal)) || !length(names(pal))) return(pal)
+    hits <- intersect(names(pal), names(overrides))
+    if (length(hits)) {
+      pal[hits] <- overrides[hits]
+    }
+    pal
+  }
+
+  palette_for_levels <- function(levels_vec) {
+    levels_vec <- as.character(levels_vec)
+    if (!length(levels_vec)) return(character(0))
+    pal <- get_palette(length(levels_vec))
+    names(pal) <- levels_vec
+    apply_palette_overrides(pal, levels_vec)
+  }
+  
   # Paleta por cepa para Combinado (repite los mismos colores que en Por Cepa)
   palette_by_strain <- function(df_lab){  
     if (!all(c("Label","Strain","Media") %in% names(df_lab))) return(NULL)  
@@ -3214,17 +3510,18 @@ server <- function(input, output, session) {
   
   palette_for_labels <- function(df_lab, levels_vec){  
     levels_vec <- as.character(levels_vec)  
+    if (!length(levels_vec)) return(character(0))
     if (isTRUE(input$repeat_colors_combined)) {  
       col_map <- palette_by_strain(df_lab)  
       if (!is.null(col_map) && length(col_map)) {  
         pal <- col_map[match(levels_vec, names(col_map))]  
         names(pal) <- levels_vec  
-        return(pal)  
+        return(apply_palette_overrides(pal, levels_vec))  
       }  
     }  
     pal <- get_palette(length(levels_vec))  
     names(pal) <- levels_vec  
-    pal  
+    apply_palette_overrides(pal, levels_vec)  
   }  
   # Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
   
@@ -3340,7 +3637,117 @@ server <- function(input, output, session) {
     el
   }
 
-  ###############################################################################
+  get_extra_margin_inputs <- function() {
+    extra_right  <- as.numeric(input$margin_right_adj  %||% 0)
+    extra_bottom <- as.numeric(input$margin_bottom_adj %||% 0)
+    if (!is.finite(extra_right) || extra_right < 0) extra_right <- 0
+    if (!is.finite(extra_bottom) || extra_bottom < 0) extra_bottom <- 0
+    list(right = extra_right, bottom = extra_bottom)
+  }
+
+  effective_plot_width <- function(width = input$plot_w) {
+    base <- as.numeric(width %||% input$plot_w %||% 1000)
+    if (!is.finite(base) || base <= 0) base <- 1000
+    extra <- get_extra_margin_inputs()$right
+    base + extra
+  }
+
+  effective_plot_height <- function(height = input$plot_h) {
+    base <- as.numeric(height %||% input$plot_h %||% 700)
+    if (!is.finite(base) || base <= 0) base <- 700
+    extra <- get_extra_margin_inputs()$bottom
+    base + extra
+  }
+
+  apply_plotly_autofit <- function(plt,
+                                   min_right = 0,
+                                   min_bottom = 0,
+                                   min_left = 0,
+                                   min_top = 0,
+                                   force_legend_right = FALSE) {
+    plotly_autofit_widget(
+      plt,
+      min_right = min_right,
+      min_bottom = min_bottom,
+      min_left = min_left,
+      min_top = min_top,
+      force_legend_right = force_legend_right
+    )
+  }
+
+  apply_margin_inputs_to_plotly <- function(plt, legend_in_margin = FALSE, expand_canvas = TRUE) {
+    if (is.null(plt)) return(NULL)
+    extra <- get_extra_margin_inputs()
+    if (extra$right == 0 && extra$bottom == 0) {
+      layout_obj <- plt$x$layout %||% list()
+      cur_margin <- layout_obj$margin %||% list(t = 0, r = 0, b = 0, l = 0)
+      if (isTRUE(legend_in_margin)) {
+        cur_legend <- layout_obj$legend %||% list()
+        cur_legend$xref <- "paper"
+        cur_legend$xanchor <- "left"
+        cur_legend$x <- 1
+        layout_obj$legend <- cur_legend
+        plt$x$layout <- layout_obj
+      }
+      return(apply_plotly_autofit(
+        plt,
+        min_right = cur_margin$r %||% 0,
+        min_bottom = cur_margin$b %||% 0,
+        min_left = cur_margin$l %||% 0,
+        min_top = cur_margin$t %||% 0,
+        force_legend_right = isTRUE(legend_in_margin)
+      ))
+    }
+    base_w <- as.numeric(input$plot_w %||% 1000)
+    base_h <- as.numeric(input$plot_h %||% 700)
+    if (!is.finite(base_w) || base_w <= 0) base_w <- 1000
+    if (!is.finite(base_h) || base_h <= 0) base_h <- 700
+    layout_obj <- plt$x$layout %||% list()
+    cur_margin <- layout_obj$margin %||% list(t = 0, r = 0, b = 0, l = 0)
+    cur_width <- as.numeric(layout_obj$width %||% base_w)
+    cur_height <- as.numeric(layout_obj$height %||% base_h)
+    if (!is.finite(cur_width) || cur_width <= 0) cur_width <- base_w
+    if (!is.finite(cur_height) || cur_height <= 0) cur_height <- base_h
+    if (isTRUE(expand_canvas)) {
+      new_w <- cur_width + extra$right
+      new_h <- cur_height + extra$bottom
+    } else {
+      new_w <- cur_width
+      new_h <- cur_height
+    }
+    cur_margin$r <- (cur_margin$r %||% 0) + extra$right
+    cur_margin$b <- (cur_margin$b %||% 0) + extra$bottom
+    layout_obj$margin <- cur_margin
+    layout_obj$width <- new_w
+    layout_obj$height <- new_h
+    layout_obj$autosize <- FALSE
+
+    if (extra$right > 0) {
+      cur_legend <- layout_obj$legend %||% list()
+      if (isTRUE(legend_in_margin)) {
+        cur_legend$xref <- "paper"
+        cur_legend$xanchor <- "left"
+        cur_legend$x <- 1
+      } else {
+        cur_legend$xref <- "paper"
+        cur_legend$xanchor <- "right"
+        cur_legend$x <- 1
+      }
+      layout_obj$legend <- cur_legend
+    }
+
+    plt$x$layout <- layout_obj
+    apply_plotly_autofit(
+      plt,
+      min_right = cur_margin$r %||% 0,
+      min_bottom = cur_margin$b %||% 0,
+      min_left = cur_margin$l %||% 0,
+      min_top = cur_margin$t %||% 0,
+      force_legend_right = isTRUE(legend_in_margin)
+    )
+  }
+
+  ###############################################################################  
   # 1-B  Coloca MUCHAS barras sin que se choquen entre sÃƒÂ­
   ###############################################################################
   stack_siglines <- function(p, sigs,
@@ -3799,8 +4206,7 @@ server <- function(input, output, session) {
     
     
     ## 3 Ã‚Â· Paleta --------------------------------------------------------------  
-    pal <- get_palette(length(params_apilar))  
-    names(pal) <- params_apilar  
+    pal <- palette_for_levels(stack_levels)
     
     ## 4 Ã‚Â· Trazas de barras -----------------------------------------------------  
     outline_only <- isTRUE(input$stack_outline_only)
@@ -3921,7 +4327,8 @@ server <- function(input, output, session) {
           ticks     = "outside",
           ticklen   = 5,
           tickcolor = "black",
-          showgrid  = FALSE
+          showgrid  = FALSE,
+          automargin = TRUE
         ),
         xaxis = list(
           title         = "",
@@ -4231,8 +4638,7 @@ server <- function(input, output, session) {
       
       
       # 4) GrÃƒÂ¡fico base  
-      pal <- get_palette(length(params_apilar))  
-      names(pal) <- params_apilar  
+      pal <- palette_for_levels(stack_levels)  
       legend_breaks <- stack_levels
       tone_down_cols <- function(cols, amount = 0.25) {
         amt <- pmin(pmax(amount, 0), 1)
@@ -4658,7 +5064,7 @@ server <- function(input, output, session) {
               levels(df_sum$Label)
             )
           } else {
-            get_palette(nlevels(df_sum$Label))
+            palette_for_levels(levels(df_sum$Label))
           },
           breaks = levels(df_sum$Label)
         ) +
@@ -4760,6 +5166,7 @@ server <- function(input, output, session) {
         )
         b_mar <- get_bottom_margin(x_ang, input$x_wrap, input$x_wrap_lines)
         p <- ggplot(df_plot, aes(Label, Valor))
+        show_legend <- legend_right_enabled(input$colorMode)
         
         if (input$colorMode == "Blanco y Negro") {  
           p <- p +
@@ -4767,7 +5174,9 @@ server <- function(input, output, session) {
                          linewidth = input$errbar_size,
                          coef = box_coef,
                          outlier.shape = NA,
-                         na.rm         = TRUE) +
+                         na.rm         = TRUE,
+                         show.legend   = show_legend,
+                         key_glyph     = "rect") +
             geom_jitter(
               shape  = 21,
               fill   = "black",
@@ -4775,7 +5184,8 @@ server <- function(input, output, session) {
               stroke = 0.4,
               width  = input$pt_jit,
               size   = input$pt_size,
-              na.rm  = TRUE
+              na.rm  = TRUE,
+              show.legend = FALSE
             )
         } else {
           p <- p +
@@ -4784,7 +5194,9 @@ server <- function(input, output, session) {
                          coef = box_coef,
                          alpha    = 0.5,
                          outlier.shape = NA,
-                         na.rm         = TRUE) +
+                         na.rm         = TRUE,
+                         show.legend   = show_legend,
+                         key_glyph     = "rect") +
             geom_jitter(
               aes(fill = Label),
               width  = input$pt_jit,
@@ -4793,7 +5205,8 @@ server <- function(input, output, session) {
               stroke = 0.5,
               size   = input$pt_size,
               alpha  = 1,
-              na.rm  = TRUE
+              na.rm  = TRUE,
+              show.legend = FALSE
             ) +
             scale_fill_manual(values = pal)
         }  
@@ -4838,6 +5251,9 @@ server <- function(input, output, session) {
                               group_tops = sig_tops,
                               margin_base = base_margin,
                               plot_height = input$plot_h)
+        if (show_legend) {
+          p <- apply_square_legend_right(p)
+        }
         if (!is.null(box_stats)) {
           attr(p, "box_stats") <- box_stats
         }
@@ -4895,12 +5311,16 @@ server <- function(input, output, session) {
         violin_data <- df_split %>% filter(n_unique >= 2)
         jitter_width <- min(input$pt_jit, v_width * 0.6)
 
+        show_legend <- legend_right_enabled(input$colorMode)
+
         if (input$colorMode == "Blanco y Negro") {
           p <- ggplot(df_plot, aes(Label, Valor)) +
             {
               if (nrow(violin_data) > 0)
                 do.call(geom_violin, c(list(data = violin_data, fill = "white",
-                                            colour = "black"), violin_args))
+                                            colour = "black",
+                                            show.legend = show_legend,
+                                            key_glyph = "rect"), violin_args))
             } +
             geom_point(
               position = position_jitter(width = jitter_width, height = 0),
@@ -4909,13 +5329,16 @@ server <- function(input, output, session) {
               colour   = "black",
               stroke   = v_lwd / 2,
               size     = input$pt_size,
-              na.rm    = TRUE
+              na.rm    = TRUE,
+              show.legend = FALSE
             )
         } else {
           p <- ggplot(df_plot, aes(Label, Valor, fill = Label)) +
             {
               if (nrow(violin_data) > 0)
-                do.call(geom_violin, c(list(data = violin_data, colour = "black"), violin_args))
+                do.call(geom_violin, c(list(data = violin_data, colour = "black",
+                                            show.legend = show_legend,
+                                            key_glyph = "rect"), violin_args))
             } +
             geom_point(
               aes(fill = Label),
@@ -4925,7 +5348,8 @@ server <- function(input, output, session) {
               stroke   = v_lwd / 2,
               size     = input$pt_size,
               alpha    = 0.95,
-              na.rm    = TRUE
+              na.rm    = TRUE,
+              show.legend = FALSE
             ) +
             scale_fill_manual(values = pal)
         }
@@ -4973,6 +5397,9 @@ server <- function(input, output, session) {
                               group_tops = sig_tops,
                               margin_base = base_margin,
                               plot_height = input$plot_h)
+        if (show_legend) {
+          p <- apply_square_legend_right(p)
+        }
 
         return(p)
       }
@@ -5012,7 +5439,9 @@ server <- function(input, output, session) {
         resumen$Label <- droplevels(resumen$Label)
         df_labels$Label <- factor(df_labels$Label, levels = levels(resumen$Label))
         pal  <- palette_for_labels(df_labels, levels(resumen$Label))
-        
+
+        show_legend <- legend_right_enabled(input$colorMode)
+
         if (input$colorMode == "Blanco y Negro") {
           p <- ggplot(resumen, aes(Label, Mean)) +
             geom_col(
@@ -5020,7 +5449,8 @@ server <- function(input, output, session) {
               colour  = "black",
               width   = 0.65,
               linewidth = 0.6,
-              alpha   = 0.95
+              alpha   = 0.95,
+              show.legend = show_legend
             ) +
             geom_errorbar(
               aes(ymin = Mean - SD, ymax = Mean + SD),
@@ -5037,7 +5467,8 @@ server <- function(input, output, session) {
               fill        = "black",
               colour      = "black",
               stroke      = 0.4,
-              size        = input$pt_size
+              size        = input$pt_size,
+              show.legend = FALSE
             )
           
         } else {  
@@ -5046,7 +5477,8 @@ server <- function(input, output, session) {
               width    = 0.65,
               colour   = "black",
               linewidth = 0.6,
-              alpha    = 0.7
+              alpha    = 0.7,
+              show.legend = show_legend
             ) +
             geom_errorbar(
               aes(ymin = Mean - SD, ymax = Mean + SD),
@@ -5062,7 +5494,8 @@ server <- function(input, output, session) {
               shape       = 21,
               colour      = "black",
               stroke      = 0.5,
-              size        = input$pt_size
+              size        = input$pt_size,
+              show.legend = FALSE
             ) +
             scale_fill_manual(values = pal)
         }  
@@ -5108,6 +5541,9 @@ server <- function(input, output, session) {
                               group_tops = sig_tops,
                               margin_base = base_margin,
                               plot_height = input$plot_h)
+        if (show_legend) {
+          p <- apply_square_legend_right(p)
+        }
         
         
         return(p)  
@@ -5160,13 +5596,16 @@ server <- function(input, output, session) {
           angle_input  = input$x_angle
         )
         b_mar <- get_bottom_margin(x_ang, input$x_wrap, input$x_wrap_lines)
-        p <- if (colourMode == "Blanco y Negro") {
-          ggplot(df, aes(Media, .data[[param_sel]])) +
+        show_legend <- legend_right_enabled(colourMode)
+        if (colourMode == "Blanco y Negro") {
+          p <- ggplot(df, aes(Media, .data[[param_sel]])) +
             geom_boxplot(fill = "white", colour = "black", width = input$box_w,
                          linewidth = input$errbar_size,
                          coef = box_coef,
                          outlier.shape = NA,
-                         na.rm         = TRUE) +
+                         na.rm         = TRUE,
+                         show.legend   = show_legend,
+                         key_glyph     = "rect") +
             geom_jitter(
               shape = 21,
               fill  = "black",
@@ -5174,17 +5613,21 @@ server <- function(input, output, session) {
               stroke = 0.4,
               width  = input$pt_jit,
               size   = input$pt_size,
-              na.rm  = TRUE
+              na.rm  = TRUE,
+              show.legend = FALSE
             )
         } else {  
-          pal <- get_palette(nlevels(factor(df$Media)))
-          ggplot(df, aes(Media, .data[[param_sel]], fill = Media)) +
+          media_levels <- if (is.factor(df$Media)) levels(df$Media) else unique(as.character(df$Media))
+          pal <- palette_for_levels(media_levels)
+          p <- ggplot(df, aes(Media, .data[[param_sel]], fill = Media)) +
             geom_boxplot(width = input$box_w, colour = "black",
                          linewidth = input$errbar_size,
                          coef = box_coef,
                          alpha    = 0.5,
                          outlier.shape = NA,
-                         na.rm         = TRUE) +
+                         na.rm         = TRUE,
+                         show.legend   = show_legend,
+                         key_glyph     = "rect") +
             geom_jitter(
               aes(fill = Media),
               width  = input$pt_jit,
@@ -5193,7 +5636,8 @@ server <- function(input, output, session) {
               stroke = 0.5,
               size   = input$pt_size,
               alpha  = 0.95,
-              na.rm  = TRUE
+              na.rm  = TRUE,
+              show.legend = FALSE
             ) +
             scale_fill_manual(values = pal)
         }  
@@ -5234,6 +5678,9 @@ server <- function(input, output, session) {
                               group_tops = sig_tops,
                               margin_base = base_margin,
                               plot_height = input$plot_h)
+        if (show_legend) {
+          p <- apply_square_legend_right(p)
+        }
         
         
         return(p)  
@@ -5255,7 +5702,8 @@ server <- function(input, output, session) {
           df_raw$Media <- wrap_label(df_raw$Media, lines = input$x_wrap_lines)
         }
 
-        pal   <- get_palette(nlevels(factor(df_raw$Media)))
+        media_levels <- if (is.factor(df_raw$Media)) levels(df_raw$Media) else unique(as.character(df_raw$Media))
+        pal   <- palette_for_levels(media_levels)
         x_ang <- get_x_angle(
           n           = nlevels(factor(df_raw$Media)),
           angle_input = input$x_angle
@@ -5282,12 +5730,15 @@ server <- function(input, output, session) {
         violin_data <- df_split %>% filter(n_unique >= 2)
         jitter_width <- min(input$pt_jit, v_width * 0.6)
 
+        show_legend <- legend_right_enabled(colourMode)
+
         if (colourMode == "Blanco y Negro") {
           p <- ggplot(df_raw, aes(Media, .data[[param_sel]])) +
             {
               if (nrow(violin_data) > 0)
                 do.call(geom_violin,
-                        c(list(data = violin_data, fill = "white", colour = "black"), violin_args))
+                        c(list(data = violin_data, fill = "white", colour = "black",
+                               show.legend = show_legend, key_glyph = "rect"), violin_args))
             } +
             geom_point(
               data     = df_raw,
@@ -5297,14 +5748,16 @@ server <- function(input, output, session) {
               colour   = "black",
               stroke   = v_lwd / 2,
               size     = input$pt_size,
-              na.rm    = TRUE
+              na.rm    = TRUE,
+              show.legend = FALSE
             )
         } else {
           p <- ggplot(df_raw, aes(Media, .data[[param_sel]], fill = Media)) +
             {
               if (nrow(violin_data) > 0)
                 do.call(geom_violin,
-                        c(list(data = violin_data, colour = "black"), violin_args))
+                        c(list(data = violin_data, colour = "black",
+                               show.legend = show_legend, key_glyph = "rect"), violin_args))
             } +
             geom_point(
               aes(fill = Media),
@@ -5315,7 +5768,8 @@ server <- function(input, output, session) {
               stroke   = v_lwd / 2,
               size     = input$pt_size,
               alpha    = 0.95,
-              na.rm    = TRUE
+              na.rm    = TRUE,
+              show.legend = FALSE
             ) +
             scale_fill_manual(values = pal)
         }
@@ -5359,6 +5813,9 @@ server <- function(input, output, session) {
                               group_tops = sig_tops,
                               margin_base = base_margin,
                               plot_height = input$plot_h)
+        if (show_legend) {
+          p <- apply_square_legend_right(p)
+        }
         if (!is.null(box_stats)) {
           attr(p, "box_stats") <- box_stats
         }
@@ -5390,7 +5847,9 @@ server <- function(input, output, session) {
             SD   = sd  (.data[[param_sel]], na.rm = TRUE),  
             .groups = "drop"  
           )  
-        pal  <- get_palette(nlevels(resumen$Media))
+        media_levels <- if (is.factor(resumen$Media)) levels(resumen$Media) else unique(as.character(resumen$Media))
+        pal  <- palette_for_levels(media_levels)
+        show_legend <- legend_right_enabled(colourMode)
         if (colourMode == "Blanco y Negro") {
           p <- ggplot(resumen, aes(Media, Mean)) +
             geom_col(
@@ -5398,7 +5857,8 @@ server <- function(input, output, session) {
               colour   = "black",
               width    = 0.65,
               linewidth = 0.6,
-              alpha    = 0.95
+              alpha    = 0.95,
+              show.legend = show_legend
             ) +
             geom_errorbar(
               aes(ymin = Mean - SD, ymax = Mean + SD),
@@ -5415,7 +5875,8 @@ server <- function(input, output, session) {
               fill        = "black",
               colour      = "black",
               stroke      = 0.4,
-              size        = input$pt_size
+              size        = input$pt_size,
+              show.legend = FALSE
             )
         } else {  
           p <- ggplot(resumen, aes(Media, Mean, fill = Media)) +  
@@ -5423,7 +5884,8 @@ server <- function(input, output, session) {
               width    = 0.65,
               colour   = "black",
               linewidth = 0.6,
-              alpha    = 0.7
+              alpha    = 0.7,
+              show.legend = show_legend
             ) +  
             geom_errorbar(
               aes(ymin = Mean - SD, ymax = Mean + SD),
@@ -5439,7 +5901,8 @@ server <- function(input, output, session) {
               shape       = 21,
               colour      = "black",
               stroke      = 0.5,
-              size        = input$pt_size
+              size        = input$pt_size,
+              show.legend = FALSE
             ) +
             scale_fill_manual(values = pal)  
         }  
@@ -5480,6 +5943,9 @@ server <- function(input, output, session) {
                               group_tops = sig_tops,
                               margin_base = base_margin,
                               plot_height = input$plot_h)
+        if (show_legend) {
+          p <- apply_square_legend_right(p)
+        }
         
         return(p)  
       }  
@@ -5685,7 +6151,9 @@ server <- function(input, output, session) {
     # Ajustes globales de fuente/colores
     plt <- plt %>% layout(
       font      = list(family = "Helvetica", color = "black"),
-      hovermode = "closest"
+      hovermode = "closest",
+      xaxis     = list(automargin = TRUE),
+      yaxis     = list(automargin = TRUE)
     )
     if (!is.null(sig_margin_pt) && is.numeric(sig_margin_pt)) {
       pt_to_px <- 96 / 72
@@ -5754,7 +6222,12 @@ server <- function(input, output, session) {
     
     if (input$tipo == "Apiladas") {  
       # Devuelve un objeto *plotly* listo  
-      build_plotly_stack(scope_sel, strain_sel)  
+      build_plotly_stack(
+        scope_sel,
+        strain_sel,
+        width  = input$plot_w,
+        height = input$plot_h
+      )  
     } else {  
       # Todo lo demÃƒÂ¡s sigue con tu funciÃƒÂ³n ggplot2  
       build_plot(scope_sel, strain_sel, input$tipo)  
@@ -5762,6 +6235,27 @@ server <- function(input, output, session) {
   })  
   
   # --- Salidas ---  
+  output$plotInteractivoUI <- renderUI({
+    base_w <- as.numeric(input$plot_w %||% 1000)
+    base_h <- as.numeric(input$plot_h %||% 700)
+    if (!is.finite(base_w) || base_w <= 0) base_w <- 1000
+    if (!is.finite(base_h) || base_h <= 0) base_h <- 700
+    use_effective <- identical(input$tipo, "Apiladas")
+    plot_w <- if (use_effective) effective_plot_width(base_w) else base_w
+    plot_h <- if (use_effective) effective_plot_height(base_h) else base_h
+    div(
+      style = "overflow-x:auto; overflow-y:visible;",
+      div(
+        style = sprintf("width:%spx; max-width:none;", plot_w),
+        plotlyOutput(
+          "plotInteractivo",
+          width  = "100%",
+          height = paste0(plot_h, "px")
+        )
+      )
+    )
+  })
+
   output$plotInteractivo <- renderPlotly({
     req(input$dataFile)
     if (input$tipo == "Curvas") {
@@ -5778,23 +6272,29 @@ server <- function(input, output, session) {
         TRUE
       }, error = function(e) FALSE)
       validate(need(ok_build, msg_no_data))
+      plotly_width <- input$plot_w
+      plotly_height <- input$plot_h
       plt <- tryCatch(
         suppressWarnings(
           safe_ggplotly(
             p,
             tooltip      = "all",
-            width        = input$plot_w,
-            height       = input$plot_h,
+            width        = plotly_width,
+            height       = plotly_height,
             originalData = FALSE
           )
         ),
         error = function(e) NULL
       )
       validate(need(!is.null(plt), msg_no_data))
-      plt %>% config(responsive = TRUE)
+      plt <- plt %>% config(responsive = FALSE)
+      plt <- apply_margin_inputs_to_plotly(plt, legend_in_margin = TRUE, expand_canvas = FALSE)
+      plt
     } else {
       # Ya p es un plotly puro generado por build_plotly_stack()
-      p %>% config(responsive = TRUE)
+      p <- apply_margin_inputs_to_plotly(p)
+      p <- p %>% config(responsive = FALSE)
+      p
     }
   })
   
@@ -5821,45 +6321,7 @@ server <- function(input, output, session) {
       )
     },
     content = function(file){
-      scope_sel  <- if (input$scope=="Combinado") "Combinado" else "Por Cepa"
-      strain_sel <- if (scope_sel=="Por Cepa") input$strain else NULL
-
-      if (input$tipo == "Apiladas") {
-        plt <- build_plotly_stack(scope_sel, strain_sel,
-                                  width  = width %||% input$plot_w,
-                                  height = height %||% input$plot_h)
-        export_plotly_image(
-          p      = plt,
-          file   = file,
-          width  = input$plot_w,
-          height = height %||% input$plot_h
-        )
-      }
-      else {
-        p <- plot_base()
-        if (inherits(p, "ggplot")) {
-          ggplot2::ggsave(
-            filename = file,
-            plot     = p,
-            width    = input$plot_w  / 100,
-            height   = input$plot_h  / 100,
-            device   = cairo_pdf,
-            bg       = "transparent"
-          )
-        } else {
-          p <- p %>%
-            layout(
-              paper_bgcolor = "rgba(0,0,0,0)",
-              plot_bgcolor  = "rgba(0,0,0,0)"
-            )
-          export_plotly_image(
-            p      = p,
-            file   = file,
-            width  = input$plot_w,
-            height = height %||% input$plot_h
-          )
-        }
-      }
+      write_current_plot_pdf(file)
     }
   )
 
@@ -5897,8 +6359,8 @@ server <- function(input, output, session) {
     )
     session$sendCustomMessage("downloadPlotlyImage", list(
       filename = fname,
-      width    = input$plot_w,
-      height   = input$plot_h,
+      width    = effective_plot_width(),
+      height   = effective_plot_height(),
       format   = "png"
     ))
   })
@@ -5911,8 +6373,8 @@ server <- function(input, output, session) {
     )
     session$sendCustomMessage("downloadPlotlyImage", list(
       filename = fname,
-      width    = input$plot_w,
-      height   = input$plot_h,
+      width    = effective_plot_width(),
+      height   = effective_plot_height(),
       format   = "pdf"
     ))
   })
@@ -6493,6 +6955,7 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("x_angle")))     updateNumericInput(session, "x_angle",     value = as.numeric(v))
     if (!is.null(v <- get_val("x_wrap")))      updateCheckboxInput(session, "x_wrap", value = tolower(v) == "true")
     if (!is.null(v <- get_val("x_wrap_lines")))updateNumericInput(session, "x_wrap_lines", value = as.numeric(v))
+    if (!is.null(v <- get_val("legend_right"))) updateCheckboxInput(session, "legend_right", value = tolower(v) == "true")
     if (!is.null(v <- get_val("pt_jit")))      updateNumericInput(session, "pt_jit",      value = as.numeric(v))
     if (!is.null(v <- get_val("box_w")))      updateNumericInput(session, "box_w",      value = as.numeric(v))
     if (!is.null(v <- get_val("violin_width")))     updateNumericInput(session, "violin_width",     value = as.numeric(v))

@@ -6,6 +6,11 @@ ui <- fluidPage(
   usei18n(i18n),
 
   tags$head(
+    tags$title("BIOSZEN"),
+    tags$link(rel = "icon", type = "image/x-icon", href = "bioszen.ico")
+  ),
+
+  tags$head(
     tags$style(HTML("
       /* Chrome / Edge / Opera — zoom nativo */
       @media (min-width: 1280px) {
@@ -56,6 +61,65 @@ ui <- fluidPage(
       });
     })();
   ")),
+  tags$head(
+    tags$style(HTML("
+      #startup-loader {
+        position: fixed;
+        inset: 0;
+        background: #0b0b0b;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 12px;
+        z-index: 9999;
+      }
+      #startup-loader img {
+        width: 260px;
+        max-width: 70vw;
+        height: auto;
+        filter: drop-shadow(0 6px 20px rgba(0,0,0,0.45));
+      }
+      #startup-loader .startup-text {
+        color: #f3f3f3;
+        font-family: Helvetica, Arial, sans-serif;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-size: 14px;
+      }
+      #startup-loader.startup-hidden {
+        opacity: 0;
+        transition: opacity 0.35s ease;
+        pointer-events: none;
+      }
+    "))
+  ),
+  tags$script(HTML("
+    (function () {
+      function hideLoader() {
+        var el = document.getElementById('startup-loader');
+        if (!el || el.classList.contains('startup-hidden')) return;
+        el.classList.add('startup-hidden');
+        setTimeout(function () {
+          if (el) el.style.display = 'none';
+        }, 400);
+      }
+      document.addEventListener('shiny:connected', hideLoader);
+      window.addEventListener('load', function () {
+        if (window.Shiny && Shiny.shinyapp && Shiny.shinyapp.isConnected &&
+            typeof Shiny.shinyapp.isConnected === 'function' &&
+            Shiny.shinyapp.isConnected()) {
+          hideLoader();
+        }
+      });
+    })();
+  ")),
+  tags$div(
+    id = "startup-loader",
+    tags$img(src = "logo_light.png", alt = "BIOSZEN"),
+    tags$div(class = "startup-text", "Loading...")
+  ),
+
   tags$script(HTML("
     (function () {
       var annJsonDefault = 'https://raw.githubusercontent.com/bioszen/BIOSZEN-Announcements/main/announcements/latest.json';
@@ -493,11 +557,11 @@ ui <- fluidPage(
                 # ---------- Controles comunes -----------------------------------------
                 checkboxInput('doNorm', tr("norm_by_control"), FALSE),
                 uiOutput('ctrlSelUI'),
-                conditionalPanel(
+                  conditionalPanel(
                   condition = "input.tipo == 'Correlacion' && input.doNorm",
                   radioButtons(
                     "corr_norm_target", tr("corr_norm_target"),
-                    choices = setNames(
+                    choices = named_choices(
                       c("both", "x_only", "y_only"),
                       tr_text(c("corr_norm_both", "corr_norm_x", "corr_norm_y"), i18n_lang)
                     ),
@@ -653,6 +717,16 @@ ui <- fluidPage(
                         selected = "BuGn"
                       )
                     ),
+                    hr(),
+                    checkboxInput(
+                      "adv_pal_group_enable",
+                      tr("palette_group_enable"),
+                      FALSE
+                    ),
+                    conditionalPanel(
+                      condition = "input.adv_pal_group_enable == true",
+                      uiOutput("adv_pal_group_ui")
+                    ),
                     style = "default"
                   )
                 ),
@@ -703,6 +777,10 @@ ui <- fluidPage(
                 numericInput("fs_title",  tr("title_size"),   20, min = 6),
                 numericInput("fs_axis",   tr("axis_size"),     15, min = 6),
                 numericInput("fs_legend", tr("legend_size"),  17, min = 6),
+                conditionalPanel(
+                  condition = "['Boxplot','Barras','Violin'].indexOf(input.tipo) >= 0",
+                  checkboxInput("legend_right", tr("legend_right"), FALSE)
+                ),
                 numericInput("axis_line_size", tr("axis_line_size"),
                              value = 1.2, min = .1, step = .1),
                 
@@ -722,7 +800,7 @@ ui <- fluidPage(
                 # ---------- Filtro de medios (Por Cepa) -------------------------------
                 conditionalPanel(
                   condition = "input.scope=='Por Cepa'",
-                  h4(tr("filter_media")),
+                  uiOutput("filterMediaHeader"),
                    checkboxInput('toggleMedios', tr("toggle_all"), TRUE),
                    uiOutput('showMediosUI'),
                    
@@ -731,8 +809,9 @@ ui <- fluidPage(
                      open     = FALSE,
                      multiple = TRUE,
                     accordion_panel_safe(
-                      tr("reps_by_media"),
+                      uiOutput("repsByMediaTitle"),
                       uiOutput('repsStrainUI'),
+                      value = "reps_by_media",
                       style = 'default'
                     )
                     )
@@ -958,7 +1037,7 @@ ui <- fluidPage(
                #  MAIN PANEL -------------------------------------------------------------
                ###########################################################################
                mainPanel(
-                 plotlyOutput('plotInteractivo', width = '100%', height = 'auto'),
+                 uiOutput('plotInteractivoUI'),
                  br(),
                  tags$div(
                    class = "bundle-action-bar",

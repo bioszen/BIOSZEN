@@ -97,6 +97,7 @@ base_size,Tamaño base (pts)
 title_size,Tamaño título:
 axis_size,Tamaño ejes:
 legend_size,Tamaño leyenda:
+legend_right,Leyenda derecha
 axis_line_size,Grosor líneas de eje:
 y_label,Etiqueta eje Y:
 plot_title,Título del gráfico:
@@ -234,6 +235,12 @@ palette_filter_colorblind,Daltónicos
 palette_filter_print,Impresión
 palette_filter_photocopy,Fotocopia
 palette_scheme_label,Esquema:
+palette_group_enable,Personalizar colores por grupo
+palette_group_select,Grupos a colorear:
+palette_group_color,Color:
+palette_group_apply,Aplicar color
+palette_group_empty,No hay grupos disponibles para este grafico.
+palette_group_placeholder,Selecciona grupos...
 param_label,Parámetro:
 no_params_curves,Sin parámetros: solo se pueden graficar Curvas
 media_label,Medios:
