@@ -1,15 +1,17 @@
-# Contribuir a BIOSZEN
+# Contributing to BIOSZEN
 
-Gracias por tu interes en mejorar BIOSZEN. Por favor:
+Thank you for your interest in improving BIOSZEN. Please:
 
-1. Abre un issue para discutir cambios grandes o nuevas funciones.
-2. Crea un branch desde `main` con un nombre descriptivo.
-3. Ejecuta los tests antes de abrir un PR:
+1. Open an issue to discuss major changes or new features.
+
+2. Create a branch from `main` with a descriptive name.
+
+3. Run the tests before opening a PR:
 
    ```bash
    Rscript -e "testthat::test_dir('tests/testthat')"
    ```
 
-4. Describe claramente el problema, el cambio propuesto y cualquier impacto.
+4. Clearly describe the problem, the proposed change, and any impact.
 
-Si necesitas ayuda, abre un issue y explica tu caso de uso.
+If you need help, open an issue and explain your use case.
