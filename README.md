@@ -51,6 +51,28 @@ After this initial setup, BIOSZEN can run **offline**, as long as the `R_libs` f
 - `BIOSZEN-vX.Y.Z-win-App.R`: self-contained launcher for Windows.
 - `inst/app/www`: user guides in English and Spanish.
 
+## Gallery (quick view)
+
+Key app screens (full set in `Gallery/screenshots/app`):
+
+- Home:  
+  ![Home](Gallery/screenshots/app/01_home.png)
+- Plot editing panel:  
+  ![Plot editing](Gallery/screenshots/app/02_plot_editing_section.png)
+- Correlation settings:  
+  ![Correlation settings](Gallery/screenshots/app/07_correlation_settings.png)
+- Downloads:  
+  ![Download options](Gallery/screenshots/app/11_download_section.png)
+
+Plot examples (full set in `Gallery/screenshots/plots`):
+
+- Boxplot:  
+  ![Boxplot](Gallery/screenshots/plots/01_Boxplot.png)
+- Growth curves:  
+  ![Growth curves](Gallery/screenshots/plots/04_plot_curves.png)
+- Correlation heatmap:  
+  ![Correlation heatmap](Gallery/screenshots/plots/06_plot_correlation.png)
+
 ## Troubleshooting
 - `Rscript` not found: use the full path to `Rscript` or add R to PATH.
 - Missing packages: check Internet access and review `bioszen_r.log` in the folder.

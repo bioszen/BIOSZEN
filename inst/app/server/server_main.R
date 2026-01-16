@@ -4508,6 +4508,7 @@ server <- function(input, output, session) {
       showNotification(tr_text("norm_failed_generic", lang), type = "warning", duration = 5)
       list(col = param_sel, values = numeric(0), fallback = TRUE)
     }
+    add_whisker_caps <- draw_whisker_caps
     # -------------------------------------------------------------------
     # -------------------------------------------------------------------
     
@@ -5179,7 +5180,7 @@ server <- function(input, output, session) {
                          key_glyph     = "rect") +
             geom_jitter(
               shape  = 21,
-              fill   = "black",
+              fill   = "white",
               colour = "black",
               stroke = 0.4,
               width  = input$pt_jit,
@@ -5197,6 +5198,14 @@ server <- function(input, output, session) {
                          na.rm         = TRUE,
                          show.legend   = show_legend,
                          key_glyph     = "rect") +
+            stat_boxplot(
+              geom        = "errorbar",
+              width       = input$box_w * 0.45,
+              linewidth   = input$errbar_size,
+              colour      = "black",
+              na.rm       = TRUE,
+              show.legend = FALSE
+            ) +
             geom_jitter(
               aes(fill = Label),
               width  = input$pt_jit,
@@ -5254,6 +5263,13 @@ server <- function(input, output, session) {
         if (show_legend) {
           p <- apply_square_legend_right(p)
         }
+        p <- add_whisker_caps(
+          p,
+          box_stats,
+          levels(df_plot$Label),
+          input$box_w,
+          input$errbar_size
+        )
         if (!is.null(box_stats)) {
           attr(p, "box_stats") <- box_stats
         }
@@ -5464,7 +5480,7 @@ server <- function(input, output, session) {
               aes(x = Label, y = .data[[param_sel]]),
               position    = position_jitter(width = input$pt_jit, height = 0),
               shape       = 21,
-              fill        = "black",
+              fill        = "white",
               colour      = "black",
               stroke      = 0.4,
               size        = input$pt_size,
@@ -5544,6 +5560,13 @@ server <- function(input, output, session) {
         if (show_legend) {
           p <- apply_square_legend_right(p)
         }
+        p <- add_whisker_caps(
+          p,
+          box_stats,
+          levels(df$Media),
+          input$box_w,
+          input$errbar_size
+        )
         
         
         return(p)  
@@ -5606,9 +5629,17 @@ server <- function(input, output, session) {
                          na.rm         = TRUE,
                          show.legend   = show_legend,
                          key_glyph     = "rect") +
+            stat_boxplot(
+              geom        = "errorbar",
+              width       = input$box_w * 0.45,
+              linewidth   = input$errbar_size,
+              colour      = "black",
+                         na.rm       = TRUE,
+                         show.legend = FALSE
+            ) +
             geom_jitter(
               shape = 21,
-              fill  = "black",
+              fill  = "white",
               colour = "black",
               stroke = 0.4,
               width  = input$pt_jit,
@@ -5628,6 +5659,14 @@ server <- function(input, output, session) {
                          na.rm         = TRUE,
                          show.legend   = show_legend,
                          key_glyph     = "rect") +
+            stat_boxplot(
+              geom        = "errorbar",
+              width       = input$box_w * 0.45,
+              linewidth   = input$errbar_size,
+              colour      = "black",
+              na.rm       = TRUE,
+              show.legend = FALSE
+            ) +
             geom_jitter(
               aes(fill = Media),
               width  = input$pt_jit,
@@ -5872,7 +5911,7 @@ server <- function(input, output, session) {
               aes(x = Media, y = .data[[param_sel]]),
               position    = position_jitter(width = input$pt_jit, height = 0),
               shape       = 21,
-              fill        = "black",
+              fill        = "white",
               colour      = "black",
               stroke      = 0.4,
               size        = input$pt_size,
