@@ -20,25 +20,17 @@ BIOSZEN is an application for data analysis and visualization based on Excel inp
 
 ## Quickstart
 
-1. **Recommended (simplest): run with RStudio**
-   1. Make sure **R** and **RStudio** are installed on your system.
-   2. Download `BIOSZEN-vX.Y.Z-bundle.zip`.
-   3. Unzip it and open the `BIOSZEN-vX.Y.Z` folder.
-   4. Open the corresponding `.R` launcher in **RStudio**:
-      - macOS (self-contained): `BIOSZEN-vX.Y.Z-mac-App.R`
-      - Windows (self-contained): `BIOSZEN-vX.Y.Z-win-App.R`
-      - Cross-platform (requires `BIOSZEN-vX.Y.Z.tar.gz` in the same directory): `App.R`
-   5. Click **Source** (top-right button in the script editor) to launch the app.
-   6. The app opens at `http://127.0.0.1:4321`.
-
-2. **Alternative: run from the terminal**
-   1. Open Terminal (macOS) or PowerShell (Windows) in the `BIOSZEN-vX.Y.Z` folder.
-   2. Run one of these launchers:
-      - `Rscript App.R` (macOS and Windows, requires `BIOSZEN-vX.Y.Z.tar.gz`
-        in the same directory).
-      - macOS: `Rscript BIOSZEN-vX.Y.Z-mac-App.R` (self-contained).
-      - Windows: `Rscript BIOSZEN-vX.Y.Z-win-App.R` (self-contained).
-   3. The app opens at `http://127.0.0.1:4321`.
+1. Make sure **R** and **RStudio** are installed on your system (see links below if needed).
+2. Download `BIOSZEN-vX.Y.Z-bundle.zip` from the Releases page and unzip it.
+3. Inside the unzipped folder you will find two files:
+   - `BIOSZEN-vX.Y.Z.tar.gz` (do **not** unpack this file).
+   - `App.R` (launcher).
+   Keep them together in the same folder.
+4. To run with RStudio (recommended):
+   - Open `App.R` in RStudio and click **Source**.
+5. To run from the terminal:
+   - Open Terminal/PowerShell in that folder and run `Rscript App.R`.
+6. The app opens at `http://127.0.0.1:4321`.
 
 ## First run (one-time setup)
 
@@ -48,11 +40,8 @@ After this initial setup, BIOSZEN can run **offline**, as long as the `R_libs` f
 
 
 ## Files used by the user
-- `BIOSZEN-vX.Y.Z.tar.gz`: package used by `App.R`.
-- `App.R`: launcher for macOS and Windows; it requires the tarball in the same
-  directory.
-- `BIOSZEN-vX.Y.Z-mac-App.R`: self-contained launcher for macOS.
-- `BIOSZEN-vX.Y.Z-win-App.R`: self-contained launcher for Windows.
+- `BIOSZEN-vX.Y.Z.tar.gz`: BIOSZEN package used by the launcher (keep it next to `App.R`; do not unpack).
+- `App.R`: cross-platform launcher for macOS and Windows.
 - `inst/app/www`: user guides in English and Spanish.
 
 ## Gallery (quick view)

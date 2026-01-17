@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest]
 
     steps:
       - name: Checkout
@@ -44,8 +44,6 @@ jobs:
           echo "PKG_VERSION=$PKG_VERSION" >> $GITHUB_ENV
           echo "PKG_TARBALL=${PKG_NAME}_${PKG_VERSION}.tar.gz" >> $GITHUB_ENV
           echo "PKG_TARBALL_RELEASE=${PKG_NAME}-v${PKG_VERSION}.tar.gz" >> $GITHUB_ENV
-          echo "MAC_APP=BIOSZEN-v${PKG_VERSION}-mac-App.R" >> $GITHUB_ENV
-          echo "WIN_APP=BIOSZEN-v${PKG_VERSION}-win-App.R" >> $GITHUB_ENV
 
       - name: Install system libraries (macOS)
         if: matrix.os == 'macos-latest'
@@ -62,14 +60,6 @@ jobs:
           Rscript -e "remotes::install_deps(dependencies = TRUE, type = 'source')"
           Rscript -e "if (requireNamespace('pak', quietly = TRUE)) try(pak::lockfile_create('pkg.lock'), silent = TRUE)"
 
-      - name: Install R package dependencies (Windows, binaries)
-        if: matrix.os == 'windows-latest'
-        run: |
-          Rscript -e "cat('DESCRIPTION deps:\n'); print(desc::desc_get_deps('.'))"
-          Rscript -e "cat('Remotes entries:\n'); print(desc::desc_get_remotes())"
-          Rscript -e "remotes::install_deps(dependencies = TRUE, type = 'binary')"
-          Rscript -e "if (requireNamespace('pak', quietly = TRUE)) try(pak::lockfile_create('pkg.lock'), silent = TRUE)"
-
       - name: Build macOS source tarball
         if: matrix.os == 'macos-latest'
         run: |
@@ -77,61 +67,19 @@ jobs:
           mv "$PKG_TARBALL" "$PKG_TARBALL_RELEASE"
           ls -1 "$PKG_TARBALL_RELEASE"
 
-      - name: Build macOS single-file launcher
-        if: matrix.os == 'macos-latest'
+      - name: Prepare release files
         run: |
-          archive="$PKG_TARBALL_RELEASE"
-          Rscript utils/make_embedded_launcher.R inst/launchers/App.R "$archive" "$MAC_APP"
+          mkdir -p dist/release
+          cp "$PKG_TARBALL_RELEASE" dist/release/
+          cp inst/launchers/App.R dist/release/App.R
+          cp Download_R_and_RStudio.html dist/release/Download_R_and_RStudio.html
+          cp README.md dist/release/README.md
 
-      - name: Build macOS bundle zip
-        if: matrix.os == 'macos-latest'
-        run: |
-          bundle_dir=$(pwd)/bundle-mac
-          mkdir -p "$bundle_dir"
-          cp inst/launchers/App.R "$bundle_dir"/App.R
-          cp "$PKG_TARBALL_RELEASE" "$bundle_dir"/
-          cp "$MAC_APP" "$bundle_dir"/
-          (cd "$bundle_dir" && zip -r "$GITHUB_WORKSPACE/BIOSZEN-macos-tarball.zip" .)
-
-      - name: Build Windows source tarball
-        if: matrix.os == 'windows-latest'
-        run: |
-          R CMD build .
-          mv "$PKG_TARBALL" "$PKG_TARBALL_RELEASE"
-          ls -1 "$PKG_TARBALL_RELEASE"
-
-      - name: Build Windows single-file launcher
-        if: matrix.os == 'windows-latest'
-        run: |
-          archive="$PKG_TARBALL_RELEASE"
-          Rscript utils/make_embedded_launcher.R inst/launchers/App.R "$archive" "$WIN_APP"
-
-      - name: Build Windows bundle zip
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path bundle-win | Out-Null
-          Copy-Item -Path $env:PKG_TARBALL_RELEASE -Destination bundle-win
-          Copy-Item -Path inst\launchers\App.R -Destination bundle-win\App.R
-          Copy-Item -Path $env:WIN_APP -Destination bundle-win
-          Compress-Archive -Path bundle-win\* -DestinationPath BIOSZEN-windows-binary.zip -Force
-
-      - name: Upload macOS artifact
-        if: matrix.os == 'macos-latest'
+      - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BIOSZEN-macos-tarball
-          path: |
-            BIOSZEN-macos-tarball.zip
-            README.md
-
-      - name: Upload Windows artifact
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: BIOSZEN-windows-binary
-          path: |
-            BIOSZEN-windows-binary.zip
+          name: BIOSZEN-release
+          path: dist/release
 
   release:
     name: Publish Release
@@ -157,32 +105,20 @@ jobs:
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "bundle=BIOSZEN-v${VERSION}-bundle.zip" >> "$GITHUB_OUTPUT"
 
-      - name: Download macOS artifact
+      - name: Download release artifact
         uses: actions/download-artifact@v4
         with:
-          name: BIOSZEN-macos-tarball
-          path: dist/macos
-
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: BIOSZEN-windows-binary
-          path: dist/windows
+          name: BIOSZEN-release
+          path: dist/release
 
       - name: Build release bundle
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          mkdir -p dist/macos/unpacked dist/windows/unpacked
-          unzip -q dist/macos/BIOSZEN-macos-tarball.zip -d dist/macos/unpacked
-          unzip -q dist/windows/BIOSZEN-windows-binary.zip -d dist/windows/unpacked
-
           bundle_dir="bundle/BIOSZEN-v${VERSION}"
           mkdir -p "$bundle_dir"
-          cp "dist/macos/unpacked/BIOSZEN-v${VERSION}.tar.gz" "$bundle_dir/"
-          cp "dist/macos/unpacked/App.R" "$bundle_dir/"
-          cp "dist/macos/unpacked/BIOSZEN-v${VERSION}-mac-App.R" "$bundle_dir/"
-          cp "dist/windows/unpacked/BIOSZEN-v${VERSION}-win-App.R" "$bundle_dir/"
-          cp "Download_R_and_RStudio.html" "$bundle_dir/"
+          cp "dist/release/BIOSZEN-v${VERSION}.tar.gz" "$bundle_dir/"
+          cp "dist/release/App.R" "$bundle_dir/"
+          cp "dist/release/Download_R_and_RStudio.html" "$bundle_dir/"
 
           (cd bundle && zip -r "../BIOSZEN-v${VERSION}-bundle.zip" "BIOSZEN-v${VERSION}")
 
@@ -194,4 +130,4 @@ jobs:
           target_commitish: ${{ github.sha }}
           files: |
             BIOSZEN-v${{ steps.version.outputs.version }}-bundle.zip
-            dist/macos/README.md
+            README.md
