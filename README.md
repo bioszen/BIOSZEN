@@ -14,6 +14,10 @@ BIOSZEN is an application for data analysis and visualization based on Excel inp
 - R >= 4.1 (required; RStudio recommended for opening and reviewing scripts).
 - Internet connection to install dependencies the first time.
 
+## Get R and RStudio
+- For new/basic users who do not already have the required software, open the bundled `Download_R_and_RStudio.html` to get the latest R (Windows/macOS/Linux) and RStudio Desktop links before running BIOSZEN.
+- If you already downloaded R from the OS-specific buttons on that page (or directly from CRAN), jump straight to step 2 on the page to download RStudio.
+
 ## Quickstart
 
 1. **Recommended (simplest): run with RStudio**

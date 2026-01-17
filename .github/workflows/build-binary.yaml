@@ -182,6 +182,7 @@ jobs:
           cp "dist/macos/unpacked/App.R" "$bundle_dir/"
           cp "dist/macos/unpacked/BIOSZEN-v${VERSION}-mac-App.R" "$bundle_dir/"
           cp "dist/windows/unpacked/BIOSZEN-v${VERSION}-win-App.R" "$bundle_dir/"
+          cp "Download_R_and_RStudio.html" "$bundle_dir/"
 
           (cd bundle && zip -r "../BIOSZEN-v${VERSION}-bundle.zip" "BIOSZEN-v${VERSION}")
 
