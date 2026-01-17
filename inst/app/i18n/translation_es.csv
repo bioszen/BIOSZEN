@@ -92,6 +92,9 @@ growth_interval,Intervalo (by)
 growth_run,Calcular parámetros
 growth_download,Descargar resultados
 growth_import,Importar a Gráficos y Estadísticas
+growth_progress_files,Procesando archivos...
+growth_progress_curves,Procesando curvas de %s
+growth_progress_file_done,Archivo %s completado
 size_section,Tamaño y Fuente
 base_size,Tamaño base (pts)
 title_size,Tamaño título:

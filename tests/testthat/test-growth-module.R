@@ -49,8 +49,8 @@ test_that("growth module generates curve and parameter workbooks", {
     on.exit(unlink(growth_dir, recursive = TRUE), add = TRUE)
     expect_true(dir.exists(growth_dir))
 
-    curvas <- list.files(growth_dir, pattern = "^Curvas_.*\\.xlsx$", full.names = TRUE)
-    params <- list.files(growth_dir, pattern = "^Parametros_.*\\.xlsx$", full.names = TRUE)
+    curvas <- list.files(growth_dir, pattern = "^(Curvas|Curves)_.*\\.xlsx$", full.names = TRUE)
+    params <- list.files(growth_dir, pattern = "^(Parametros|Parameters)_.*\\.xlsx$", full.names = TRUE)
     expect_length(curvas, 1)
     expect_length(params, 1)
 

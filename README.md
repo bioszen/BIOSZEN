@@ -55,14 +55,16 @@ After this initial setup, BIOSZEN can run **offline**, as long as the `R_libs` f
 
 Key app screens (full set in `Gallery/screenshots/app`):
 
-- Home:  
-  ![Home](Gallery/screenshots/app/01_home.png)
-- Plot editing panel:  
-  ![Plot editing](Gallery/screenshots/app/02_plot_editing_section.png)
-- Correlation settings:  
-  ![Correlation settings](Gallery/screenshots/app/07_correlation_settings.png)
-- Downloads:  
-  ![Download options](Gallery/screenshots/app/11_download_section.png)
+- Home overview:  
+  ![Home](Gallery/screenshots/app/01_app_home_overview.png)
+- Plot setup and layers:  
+  ![Plot setup](Gallery/screenshots/app/02_plot_setup_layers.png)
+- Correlation and statistics setup:  
+  ![Correlation settings](Gallery/screenshots/app/07_correlation_setup.png)
+- Normality and significance options:  
+  ![Tests](Gallery/screenshots/app/09_significance_tests_setup.png)
+- Growth parameter extraction:  
+  ![Growth parameters](Gallery/screenshots/app/12_growth_parameters_results.png)
 
 Plot examples (full set in `Gallery/screenshots/plots`):
 

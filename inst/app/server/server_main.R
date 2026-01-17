@@ -7189,8 +7189,8 @@ server <- function(input, output, session) {
       return()
     }
     # 1) Localiza los dos archivos que generÃƒÂ³ runGrowth
-    curvas_f <- list.files(growth_out_dir, pattern = "^Curvas_.*\\.xlsx$", full.names = TRUE)
-    params_f <- list.files(growth_out_dir, pattern = "^Parametros_.*\\.xlsx$", full.names = TRUE)
+    curvas_f <- list.files(growth_out_dir, pattern = "^(Curvas|Curves)_.*\\.xlsx$", full.names = TRUE)
+    params_f <- list.files(growth_out_dir, pattern = "^(Parametros|Parameters)_.*\\.xlsx$", full.names = TRUE)
     
     # ValidaciÃƒÂ³n
     if (length(curvas_f) != 1 || length(params_f) != 1) {
