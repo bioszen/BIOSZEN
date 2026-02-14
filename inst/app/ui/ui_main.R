@@ -506,6 +506,7 @@ ui <- fluidPage(
                                       choices = NULL, selected = NULL),
                    textInput("orderStack", tr("stack_order"), ""),
                    checkboxInput("showErrBars", tr("stack_show_errbars"), TRUE),
+                   checkboxInput("errbar_param_color", tr("stack_errbar_param_color"), FALSE),
                    checkboxInput("stack_outline_only", tr("stack_outline_only"), FALSE),
                    numericInput("errbar_size", tr("errbar_size"),
                                 value = 0.6, min = 0.1, step = 0.1)
