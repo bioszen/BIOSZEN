@@ -3,7 +3,7 @@
 do_anova <- function(df, post_hoc = "Tukey", control_group = NULL) {
   aovm <- aov(Valor ~ Label, data = df)
   switch(post_hoc,
-         "Tukey"      = broom::tidy(TukeyHSD(aovm)) |> dplyr::rename(p.adj = adj.p.value),
+         "Tukey"      = rstatix::tukey_hsd(df, Valor ~ Label),
          "Bonferroni" = rstatix::pairwise_t_test(df, Valor ~ Label, p.adjust.method = "bonferroni"),
          "Sidak"      = rstatix::pairwise_t_test(df, Valor ~ Label, p.adjust.method = "sidak"),
          "Dunnett"    = dunnett_to_tibble(

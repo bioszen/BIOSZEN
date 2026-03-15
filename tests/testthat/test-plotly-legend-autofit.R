@@ -50,7 +50,13 @@ testthat::test_that("plotly legend autofit avoids clipping", {
   testthat::skip_if(is.na(chrome_path) || !nzchar(chrome_path), "Chrome/Edge not found")
   Sys.setenv(CHROMOTE_CHROME = chrome_path)
 
-  session <- chromote::ChromoteSession$new()
+  session <- tryCatch(
+    chromote::ChromoteSession$new(),
+    error = function(e) e
+  )
+  if (inherits(session, "error")) {
+    testthat::skip(paste("Chromote session unavailable:", conditionMessage(session)))
+  }
   on.exit(session$close(), add = TRUE)
   page_url <- paste0("file:///", normalizePath(tmp_html, winslash = "/", mustWork = TRUE))
   session$default_timeout <- 60000
@@ -88,7 +94,13 @@ testthat::test_that("plotly legend autofit avoids clipping", {
     "})()",
     sep = "\\n"
   )
-  res <- session$Runtime$evaluate(js, returnByValue = TRUE, awaitPromise = TRUE)
+  res <- tryCatch(
+    session$Runtime$evaluate(js, returnByValue = TRUE, awaitPromise = TRUE),
+    error = function(e) e
+  )
+  if (inherits(res, "error")) {
+    testthat::skip(paste("Chromote runtime unavailable:", conditionMessage(res)))
+  }
   vals <- res$result$value
   testthat::skip_if(is.null(vals), "Legend DOM unavailable")
   testthat::expect_true(is.finite(vals$clipCount))

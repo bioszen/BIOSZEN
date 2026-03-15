@@ -63,18 +63,24 @@ identify_exponential_phase_robust <- function(df, time_col, measure_col,
   best_r2    <- -Inf
   best_start <- best_end <- NULL
   
-  df <- df[!is.na(df[[time_col]]) & !is.na(df[[measure_col]]), ]
-  df <- dplyr::filter(
-    df,
-    dplyr::between(
-      df[[measure_col]],
-      stats::quantile(df[[measure_col]], 0.05),
-      stats::quantile(df[[measure_col]], 0.95)
-    )
-  )
-  
   min_pts      <- 10
   r2_threshold <- initial_r_squared_threshold
+  df <- df[!is.na(df[[time_col]]) & !is.na(df[[measure_col]]), ]
+  if (nrow(df) < (min_pts + 1)) {
+    return(list(start = best_start, end = best_end, model = best_model))
+  }
+  q05 <- suppressWarnings(stats::quantile(df[[measure_col]], 0.05, na.rm = TRUE))
+  q95 <- suppressWarnings(stats::quantile(df[[measure_col]], 0.95, na.rm = TRUE))
+  if (!is.finite(q05) || !is.finite(q95)) {
+    return(list(start = best_start, end = best_end, model = best_model))
+  }
+  df <- dplyr::filter(
+    df,
+    dplyr::between(df[[measure_col]], q05, q95)
+  )
+  if (nrow(df) < (min_pts + 1)) {
+    return(list(start = best_start, end = best_end, model = best_model))
+  }
   
   for (i in seq_len(max_iterations)) {
     for (start in seq_len(nrow(df) - min_pts)) {
@@ -133,17 +139,23 @@ identify_exponential_phase_permissive <- function(df, time_col, measure_col,
   best_r2    <- -Inf
   best_start <- best_end <- NULL
   
+  min_pts <- 10
   df <- df[!is.na(df[[time_col]]) & !is.na(df[[measure_col]]), ]
+  if (nrow(df) < (min_pts + 1)) {
+    return(list(start = best_start, end = best_end, model = best_model))
+  }
+  q05 <- suppressWarnings(stats::quantile(df[[measure_col]], 0.05, na.rm = TRUE))
+  q95 <- suppressWarnings(stats::quantile(df[[measure_col]], 0.95, na.rm = TRUE))
+  if (!is.finite(q05) || !is.finite(q95)) {
+    return(list(start = best_start, end = best_end, model = best_model))
+  }
   df <- dplyr::filter(
     df,
-    dplyr::between(
-      df[[measure_col]],
-      stats::quantile(df[[measure_col]], 0.05),
-      stats::quantile(df[[measure_col]], 0.95)
-    )
+    dplyr::between(df[[measure_col]], q05, q95)
   )
-  
-  min_pts <- 10
+  if (nrow(df) < (min_pts + 1)) {
+    return(list(start = best_start, end = best_end, model = best_model))
+  }
   for (i in seq_len(max_iterations)) {
     for (start in seq_len(nrow(df) - min_pts)) {
       for (end in seq(start + min_pts, nrow(df))) {

@@ -255,7 +255,7 @@ set_control <- function(df, control_lbl) {
 
 # Si ya existían matrix_to_tibble() y pmcmr_to_tibble() NO los dupliques.  
 #──────────────────────────────────────────────────────────────────────────  
-safe_pairwise_t <- function(df, method = "sidak") {
+safe_pairwise_t <- function(df, method = "none") {
   df <- filter_min_obs(df) |> droplevels()
   grupos <- levels(df$Label)
   if (length(grupos) < 2) return(tibble())
@@ -274,7 +274,7 @@ safe_pairwise_t <- function(df, method = "sidak") {
     rstatix::add_significance("p.adj")
 }
 
-safe_pairwise_wilcox <- function(df, method = "holm") {
+safe_pairwise_wilcox <- function(df, method = "none") {
   df <- filter_min_obs(df) |> droplevels()
   grupos <- levels(df$Label)
   if (length(grupos) < 2) return(tibble())
@@ -403,11 +403,50 @@ read_excel_tmp <- function(path, sheet = NULL) {
 }  
 # ──────────────────────────────────────────────────────────────────────────────  
 
+# Natural sort for replicate-like IDs (1,2,3,...,10) while keeping non-numeric IDs stable.
+order_export_replicates <- function(
+  df,
+  strain_col = NULL,
+  rep_col = "BiologicalReplicate",
+  tech_col = NULL,
+  time_col = NULL
+) {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(df)
+
+  key_chr_num <- function(x) {
+    chr <- as.character(x)
+    num <- suppressWarnings(as.numeric(chr))
+    non_num <- !is.finite(num)
+    num[non_num] <- Inf
+    list(non_num = non_num, num = num, chr = chr)
+  }
+
+  n <- nrow(df)
+  strain_chr <- if (!is.null(strain_col) && strain_col %in% names(df)) as.character(df[[strain_col]]) else rep("", n)
+
+  rep_key <- if (rep_col %in% names(df)) key_chr_num(df[[rep_col]]) else list(non_num = rep(FALSE, n), num = rep(Inf, n), chr = rep("", n))
+  tech_key <- if (!is.null(tech_col) && tech_col %in% names(df)) key_chr_num(df[[tech_col]]) else list(non_num = rep(FALSE, n), num = rep(Inf, n), chr = rep("", n))
+  time_key <- if (!is.null(time_col) && time_col %in% names(df)) key_chr_num(df[[time_col]]) else list(non_num = rep(FALSE, n), num = rep(Inf, n), chr = rep("", n))
+
+  ord <- order(
+    strain_chr,
+    rep_key$non_num, rep_key$num, rep_key$chr,
+    tech_key$non_num, tech_key$num, tech_key$chr,
+    time_key$non_num, time_key$num, time_key$chr,
+    na.last = TRUE
+  )
+  df[ord, , drop = FALSE]
+}
+
 # ── Función para generar el Excel de resumen por parámetro ────────────  
-generate_summary_wb <- function(datos, params) {  
-  wb <- createWorkbook()
+generate_summary_wb <- function(datos, params, wb = NULL, sheet_suffix = "") {  
+  if (is.null(wb)) wb <- createWorkbook()
+  suffix <- as.character(sheet_suffix %||% "")
   for (param in params) {
-    sheet <- safe_sheet(param)
+    sheet <- safe_sheet(paste0(param, suffix))
+    if (sheet %in% openxlsx::sheets(wb)) {
+      removeWorksheet(wb, sheet = sheet)
+    }
     addWorksheet(wb, sheet)
 
     # 1) Detalle técnico
@@ -421,8 +460,13 @@ generate_summary_wb <- function(datos, params) {
       dplyr::group_by(Strain, Media, Orden,
                        BiologicalReplicate, TechnicalReplicate) %>%
       dplyr::summarise(Valor = mean(Valor, na.rm = TRUE),
-                       .groups = "drop") %>%
-      dplyr::arrange(Strain, BiologicalReplicate, TechnicalReplicate)
+                       .groups = "drop")
+    det <- order_export_replicates(
+      det,
+      strain_col = "Strain",
+      rep_col = "BiologicalReplicate",
+      tech_col = "TechnicalReplicate"
+    )
     
     # 2) Orden de medios según 'Orden'  
     medias_order <- det %>%  
@@ -446,7 +490,12 @@ generate_summary_wb <- function(datos, params) {
           values_from = Valor,
           values_fill = NA,
           values_fn  = list(Valor = ~ mean(.x, na.rm = TRUE))
-        ) %>%
+        )
+      tab_cepa <- order_export_replicates(
+        tab_cepa,
+        rep_col = "BiologicalReplicate",
+        tech_col = "TechnicalReplicate"
+      ) %>%
         dplyr::select(BiologicalReplicate,
                       dplyr::any_of(medias_order)) %>%
         dplyr::rename(RepBiol = BiologicalReplicate)
@@ -475,8 +524,12 @@ generate_summary_wb <- function(datos, params) {
         values_from = Promedio,
         values_fill = NA,
         values_fn  = list(Promedio = ~ mean(.x, na.rm = TRUE))
-      ) %>%
-      dplyr::arrange(Strain, BiologicalReplicate) %>%
+      )
+    resumen <- order_export_replicates(
+      resumen,
+      strain_col = "Strain",
+      rep_col = "BiologicalReplicate"
+    ) %>%
       dplyr::rename(RepBiol = BiologicalReplicate)
     
     writeData(wb, sheet, resumen,  
@@ -487,7 +540,7 @@ generate_summary_wb <- function(datos, params) {
   wb
 }
 
-add_curves_by_group_sheet <- function(wb, curve_wide, meta_df) {  
+add_curves_by_group_sheet <- function(wb, curve_wide, meta_df, sheet_name = "Curvas por grupo") {  
   if (is.null(wb) || is.null(curve_wide) || is.null(meta_df)) return(wb)  
   
   required_cols <- c("Well", "Strain", "Media", "Orden", "BiologicalReplicate")  
@@ -520,7 +573,14 @@ add_curves_by_group_sheet <- function(wb, curve_wide, meta_df) {
     dplyr::summarise(Valor = mean(Valor, na.rm = TRUE), .groups = "drop")  
   if (!nrow(resumen_curvas)) return(wb)  
   
-  sheet_name <- "Curvas por grupo"  
+  sheet_name <- as.character(sheet_name %||% "Curvas por grupo")
+  if (!length(sheet_name) || is.na(sheet_name[[1]]) || !nzchar(sheet_name[[1]])) {
+    sheet_name <- "Curvas por grupo"
+  } else {
+    sheet_name <- sheet_name[[1]]
+  }
+  sheet_name <- gsub("[\\[\\]:*?/\\\\]", "_", sheet_name)
+  sheet_name <- substr(sheet_name, 1, 31)
   existing_sheets <- tryCatch(openxlsx::sheets(wb),  
                               error = function(e) tryCatch(names(wb), error = function(...) character()))  
   if (sheet_name %in% existing_sheets) {  
@@ -546,8 +606,12 @@ add_curves_by_group_sheet <- function(wb, curve_wide, meta_df) {
         values_from = Valor,  
         values_fill = NA,  
         values_fn  = list(Valor = ~ mean(.x, na.rm = TRUE))  
-      ) %>%  
-      dplyr::arrange(BiologicalReplicate, Time) %>%  
+      )
+    tab_cur <- order_export_replicates(
+      tab_cur,
+      rep_col = "BiologicalReplicate",
+      time_col = "Time"
+    ) %>%  
       dplyr::select(Time, BiologicalReplicate, dplyr::any_of(media_order)) %>%  
       dplyr::rename(RepBiol = BiologicalReplicate)  
     
@@ -761,6 +825,449 @@ build_platemap_from_summary <- function(file) {
   )
 
   list(Datos = wide_df, PlotSettings = plot_settings, Labels = col_labels)
+}
+
+find_sheet_alias <- function(sheets, aliases) {
+  if (is.null(sheets) || !length(sheets)) return(NULL)
+  sh_norm <- normalize_header_key(sheets)
+  al_norm <- normalize_header_key(aliases)
+  idx <- match(al_norm, sh_norm)
+  idx <- idx[!is.na(idx)]
+  if (!length(idx)) return(NULL)
+  sheets[[idx[1]]]
+}
+
+rename_columns_by_alias <- function(df, aliases_map) {
+  if (is.null(df) || !is.data.frame(df) || is.null(names(df))) return(df)
+  hdr_norm <- normalize_header_key(names(df))
+  for (target in names(aliases_map)) {
+    if (target %in% names(df)) next
+    ali_norm <- normalize_header_key(aliases_map[[target]])
+    idx <- match(ali_norm, hdr_norm)
+    idx <- idx[!is.na(idx)]
+    if (length(idx)) names(df)[idx[1]] <- target
+  }
+  df
+}
+
+first_finite <- function(x, fallback = NA_real_) {
+  x <- suppressWarnings(as.numeric(x))
+  x <- x[is.finite(x)]
+  if (length(x)) x[1] else fallback
+}
+
+fill_missing_order <- function(df_groups, order_col = "Orden") {
+  out <- df_groups
+  ord <- suppressWarnings(as.integer(to_numeric(out[[order_col]])))
+  out[[order_col]] <- ord
+  miss <- which(is.na(out[[order_col]]) | out[[order_col]] <= 0)
+  if (length(miss)) {
+    used <- out[[order_col]][is.finite(out[[order_col]]) & out[[order_col]] > 0]
+    next_start <- if (length(used)) max(used) + 1L else 1L
+    out[[order_col]][miss] <- seq.int(next_start, length.out = length(miss))
+  }
+  out
+}
+
+build_platemap_from_mean_sd <- function(file) {
+  sheets <- readxl::excel_sheets(file)
+  sh <- find_sheet_alias(
+    sheets,
+    c("Parameters_Summary", "Parametros_Summary", "Summary_Parameters", "Resumen_Parametros")
+  )
+  if (is.null(sh)) return(NULL)
+
+  raw <- read_excel_tmp(file, sheet = sh)
+  mapped <- apply_column_aliases(raw, allow_media_alias = TRUE)
+  df <- mapped$datos
+  col_labels <- mapped$labels
+
+  df <- rename_columns_by_alias(
+    df,
+    list(
+      Parameter = c("Parameter", "Parametro", "Parámetro"),
+      Mean = c("Mean", "Promedio", "Average"),
+      SD = c("SD", "StdDev", "Std_Dev", "Desviacion", "Desviación"),
+      N = c("N", "n", "Count", "Replicates"),
+      Orden = c("Orden", "Order")
+    )
+  )
+
+  required_cols <- c("Strain", "Media", "Parameter", "Mean")
+  if (!all(required_cols %in% names(df))) return(NULL)
+
+  df <- df %>%
+    dplyr::mutate(
+      Strain = trimws(as.character(Strain)),
+      Media = trimws(as.character(Media)),
+      Parameter = trimws(as.character(Parameter)),
+      Mean = to_numeric(Mean),
+      SD = if ("SD" %in% names(.)) to_numeric(SD) else NA_real_,
+      N = if ("N" %in% names(.)) to_numeric(N) else NA_real_,
+      Orden = if ("Orden" %in% names(.)) suppressWarnings(as.integer(to_numeric(Orden))) else NA_integer_
+    ) %>%
+    dplyr::filter(
+      !is.na(Strain), nzchar(Strain),
+      !is.na(Media), nzchar(Media),
+      !is.na(Parameter), nzchar(Parameter)
+    )
+  if (!nrow(df)) return(NULL)
+
+  param_order <- unique(df$Parameter)
+  first_or_na <- function(x) {
+    x <- suppressWarnings(as.numeric(x))
+    x <- x[is.finite(x)]
+    if (length(x)) x[1] else NA_real_
+  }
+
+  order_map <- df %>%
+    dplyr::distinct(Strain, Media, Orden) %>%
+    fill_missing_order("Orden") %>%
+    dplyr::arrange(Orden)
+
+  mean_wide <- df %>%
+    dplyr::group_by(Strain, Media, Parameter) %>%
+    dplyr::summarise(Mean = mean(Mean, na.rm = TRUE), .groups = "drop") %>%
+    tidyr::pivot_wider(
+      id_cols = c(Strain, Media),
+      names_from = Parameter,
+      values_from = Mean,
+      values_fill = NA_real_,
+      values_fn = first_or_na
+    )
+
+  sd_wide <- df %>%
+    dplyr::group_by(Strain, Media, Parameter) %>%
+    dplyr::summarise(SD = mean(SD, na.rm = TRUE), .groups = "drop") %>%
+    tidyr::pivot_wider(
+      id_cols = c(Strain, Media),
+      names_from = Parameter,
+      values_from = SD,
+      names_prefix = "SD_",
+      values_fill = NA_real_,
+      values_fn = first_or_na
+    )
+
+  n_wide <- df %>%
+    dplyr::group_by(Strain, Media, Parameter) %>%
+    dplyr::summarise(N = mean(N, na.rm = TRUE), .groups = "drop") %>%
+    tidyr::pivot_wider(
+      id_cols = c(Strain, Media),
+      names_from = Parameter,
+      values_from = N,
+      names_prefix = "N_",
+      values_fill = NA_real_,
+      values_fn = first_or_na
+    )
+
+  wide_df <- order_map %>%
+    dplyr::left_join(mean_wide, by = c("Strain", "Media")) %>%
+    dplyr::left_join(sd_wide, by = c("Strain", "Media")) %>%
+    dplyr::left_join(n_wide, by = c("Strain", "Media")) %>%
+    dplyr::mutate(
+      BiologicalReplicate = 1L,
+      TechnicalReplicate = 1L
+    )
+
+  wells <- gen_wells(nrow(wide_df))
+  wide_df <- wide_df %>%
+    dplyr::mutate(Well = wells) %>%
+    dplyr::relocate(Well, .before = Strain)
+
+  id_cols <- c("Well", "Strain", "Media", "Orden", "BiologicalReplicate", "TechnicalReplicate")
+  param_cols <- intersect(param_order, names(wide_df))
+  sd_cols <- intersect(paste0("SD_", param_order), names(wide_df))
+  n_cols <- intersect(paste0("N_", param_order), names(wide_df))
+
+  if (length(param_cols)) {
+    wide_df[param_cols] <- lapply(wide_df[param_cols], to_numeric)
+  }
+  if (length(sd_cols)) {
+    wide_df[sd_cols] <- lapply(wide_df[sd_cols], to_numeric)
+  }
+  if (length(n_cols)) {
+    wide_df[n_cols] <- lapply(wide_df[n_cols], to_numeric)
+  }
+  wide_df <- wide_df %>%
+    dplyr::mutate(
+      BiologicalReplicate = as.integer(to_numeric(BiologicalReplicate)),
+      TechnicalReplicate = as.integer(to_numeric(TechnicalReplicate)),
+      Orden = as.integer(to_numeric(Orden))
+    ) %>%
+    dplyr::relocate(dplyr::any_of(param_cols), .after = TechnicalReplicate)
+
+  y_max <- vapply(param_cols, function(pm) {
+    vals <- suppressWarnings(as.numeric(wide_df[[pm]]))
+    sd_col <- paste0("SD_", pm)
+    sds <- if (sd_col %in% names(wide_df)) suppressWarnings(as.numeric(wide_df[[sd_col]])) else rep(0, length(vals))
+    mx <- suppressWarnings(max(vals + ifelse(is.finite(sds), sds, 0), na.rm = TRUE))
+    if (!is.finite(mx)) mx <- suppressWarnings(max(vals, na.rm = TRUE))
+    if (!is.finite(mx)) mx <- NA_real_
+    round_up_sig(mx, digits = 2)
+  }, numeric(1))
+  interval <- ifelse(is.na(y_max) | y_max == 0, NA_real_, y_max / 5)
+
+  plot_settings <- tibble::tibble(
+    Parameter = param_cols,
+    Y_Max = y_max,
+    Interval = interval,
+    Y_Title = param_cols
+  )
+
+  list(
+    Datos = wide_df,
+    PlotSettings = plot_settings,
+    Labels = col_labels,
+    SummaryMode = TRUE
+  )
+}
+
+build_curve_from_mean_sd <- function(file) {
+  sheets <- readxl::excel_sheets(file)
+  sh <- find_sheet_alias(
+    sheets,
+    c("Curves_Summary", "Curvas_Summary", "Summary_Curves", "Resumen_Curvas")
+  )
+  if (is.null(sh)) return(NULL)
+
+  raw <- read_excel_tmp(file, sheet = sh)
+  mapped <- apply_column_aliases(raw, allow_media_alias = TRUE)
+  df <- mapped$datos
+  df <- rename_columns_by_alias(
+    df,
+    list(
+      Time = c("Time", "Tiempo", "Minutes", "Minutos"),
+      Mean = c("Mean", "Promedio", "Average"),
+      SD = c("SD", "StdDev", "Std_Dev", "Desviacion", "Desviación"),
+      N = c("N", "n", "Count", "Replicates"),
+      Orden = c("Orden", "Order")
+    )
+  )
+
+  required_cols <- c("Time", "Strain", "Media", "Mean")
+  if (!all(required_cols %in% names(df))) return(NULL)
+
+  df <- df %>%
+    dplyr::mutate(
+      Time = to_numeric(Time),
+      Strain = trimws(as.character(Strain)),
+      Media = trimws(as.character(Media)),
+      Mean = to_numeric(Mean),
+      SD = if ("SD" %in% names(.)) to_numeric(SD) else NA_real_,
+      N = if ("N" %in% names(.)) to_numeric(N) else NA_real_,
+      Orden = if ("Orden" %in% names(.)) suppressWarnings(as.integer(to_numeric(Orden))) else NA_integer_
+    ) %>%
+    dplyr::filter(
+      is.finite(Time),
+      !is.na(Strain), nzchar(Strain),
+      !is.na(Media), nzchar(Media)
+    )
+  if (!nrow(df)) return(NULL)
+
+  group_map <- df %>%
+    dplyr::distinct(Strain, Media, Orden) %>%
+    fill_missing_order("Orden") %>%
+    dplyr::arrange(Orden) %>%
+    dplyr::mutate(Well = paste0("SUM_", dplyr::row_number()))
+
+  long <- df %>%
+    dplyr::select(-dplyr::any_of("Orden")) %>%
+    dplyr::left_join(
+      group_map %>% dplyr::select(Strain, Media, Orden, Well),
+      by = c("Strain", "Media")
+    ) %>%
+    dplyr::transmute(
+      Time = Time,
+      Well = Well,
+      Strain = Strain,
+      Media = Media,
+      Orden = Orden,
+      Mean = Mean,
+      SD = SD,
+      N = N
+    )
+
+  sheet1 <- long %>%
+    dplyr::group_by(Time, Well) %>%
+    dplyr::summarise(Value = mean(Mean, na.rm = TRUE), .groups = "drop") %>%
+    tidyr::pivot_wider(
+      id_cols = Time,
+      names_from = Well,
+      values_from = Value,
+      values_fill = NA_real_
+    ) %>%
+    dplyr::arrange(Time)
+
+  x_max <- suppressWarnings(max(long$Time, na.rm = TRUE))
+  y_max <- suppressWarnings(max(long$Mean + ifelse(is.finite(long$SD), long$SD, 0), na.rm = TRUE))
+  if (!is.finite(x_max) || x_max <= 0) x_max <- 1
+  if (!is.finite(y_max) || y_max <= 0) y_max <- suppressWarnings(max(long$Mean, na.rm = TRUE))
+  if (!is.finite(y_max) || y_max <= 0) y_max <- 1
+  x_break <- x_max / 3
+  y_break <- y_max / 3
+  if (!is.finite(x_break) || x_break <= 0) x_break <- 1
+  if (!is.finite(y_break) || y_break <= 0) y_break <- 1
+
+  sheet2 <- group_map %>%
+    dplyr::transmute(
+      X_Max = x_max,
+      Interval_X = x_break,
+      Y_Max = y_max,
+      Interval_Y = y_break,
+      X_Title = "Time",
+      Y_Title = "Signal",
+      Well = Well,
+      BiologicalReplicate = 1L
+    )
+
+  meta <- group_map %>%
+    dplyr::transmute(
+      Well = Well,
+      Strain = Strain,
+      Media = Media,
+      Orden = as.integer(Orden),
+      BiologicalReplicate = 1L,
+      TechnicalReplicate = 1L
+    )
+
+  curve_summary <- long %>%
+    dplyr::transmute(
+      Time = Time,
+      Well = Well,
+      Strain = Strain,
+      Media = Media,
+      Orden = as.integer(Orden),
+      Mean = Mean,
+      SD = SD,
+      N = N
+    )
+
+  list(
+    Sheet1 = sheet1,
+    Sheet2 = sheet2,
+    Meta = meta,
+    Summary = curve_summary,
+    SummaryMode = TRUE
+  )
+}
+
+load_curve_workbook <- function(file) {
+  sheets <- tryCatch(readxl::excel_sheets(file), error = function(e) character(0))
+  summary_aliases <- c(
+    "Curves_Summary", "Curvas_Summary", "Summary_Curves", "Resumen_Curvas"
+  )
+  has_sheet1 <- "Sheet1" %in% sheets
+  has_summary_sheet <- !is.null(find_sheet_alias(sheets, summary_aliases))
+
+  d <- tryCatch(read_excel_tmp(file, sheet = "Sheet1"), error = function(e) NULL)
+  s <- NULL
+  meta <- NULL
+  summary_tbl <- NULL
+  from_summary <- FALSE
+  parse_message <- NULL
+
+  if (is.null(d) || !"Time" %in% names(d)) {
+    parsed <- tryCatch(
+      build_curve_from_mean_sd(file),
+      error = function(e) {
+        parse_message <<- conditionMessage(e)
+        NULL
+      }
+    )
+    if (is.null(parsed)) {
+      reason <- if (isTRUE(has_sheet1) || isTRUE(has_summary_sheet)) "invalid" else "not_found"
+      if (identical(reason, "invalid") && (!is.character(parse_message) || !nzchar(parse_message))) {
+        parse_message <- "Curve workbook format not recognized."
+      }
+      return(list(
+        ok = FALSE,
+        reason = reason,
+        message = parse_message,
+        Sheet1 = NULL,
+        Sheet2 = NULL,
+        Meta = NULL,
+        Summary = NULL,
+        SummaryMode = FALSE
+      ))
+    }
+    d <- parsed$Sheet1
+    s <- parsed$Sheet2
+    meta <- parsed$Meta
+    summary_tbl <- parsed$Summary
+    from_summary <- TRUE
+  } else {
+    s <- tryCatch(read_excel_tmp(file, sheet = "Sheet2"), error = function(e) NULL)
+  }
+
+  if (is.null(d) || !"Time" %in% names(d)) {
+    return(list(
+      ok = FALSE,
+      reason = "invalid",
+      message = "Curve workbook format not recognized.",
+      Sheet1 = NULL,
+      Sheet2 = NULL,
+      Meta = NULL,
+      Summary = NULL,
+      SummaryMode = FALSE
+    ))
+  }
+
+  d_time_max <- suppressWarnings(max(as.numeric(d$Time), na.rm = TRUE))
+  if (!is.finite(d_time_max)) d_time_max <- 1
+
+  d_vals <- d[, setdiff(names(d), "Time"), drop = FALSE]
+  if (ncol(d_vals) == 0) {
+    d_val_max <- NA_real_
+  } else {
+    d_val_max <- suppressWarnings(
+      max(unlist(lapply(d_vals, as.numeric), use.names = FALSE), na.rm = TRUE)
+    )
+  }
+  if (!is.finite(d_val_max)) d_val_max <- 1
+
+  default_x_break <- if (is.finite(d_time_max) && d_time_max > 0) d_time_max / 3 else 1
+  default_y_break <- if (is.finite(d_val_max) && d_val_max > 0) d_val_max / 3 else 1
+
+  required_cols <- c("X_Max", "Interval_X", "Y_Max", "Interval_Y", "X_Title", "Y_Title")
+  if (is.null(s) || !all(required_cols %in% names(s))) {
+    s <- tibble::tibble(
+      X_Max = d_time_max,
+      Interval_X = default_x_break,
+      Y_Max = d_val_max,
+      Interval_Y = default_y_break,
+      X_Title = "Tiempo (min)",
+      Y_Title = "OD (620 nm)",
+      Well = NA,
+      BiologicalReplicate = NA
+    )
+  } else {
+    if (!"Well" %in% names(s)) s$Well <- NA
+    if (!"BiologicalReplicate" %in% names(s)) s$BiologicalReplicate <- NA
+  }
+
+  s <- s %>%
+    dplyr::mutate(
+      X_Max = suppressWarnings(as.numeric(X_Max)),
+      Interval_X = suppressWarnings(as.numeric(Interval_X)),
+      Y_Max = suppressWarnings(as.numeric(Y_Max)),
+      Interval_Y = suppressWarnings(as.numeric(Interval_Y))
+    )
+
+  s$X_Max[!is.finite(s$X_Max)] <- d_time_max
+  s$Y_Max[!is.finite(s$Y_Max)] <- d_val_max
+  s$Interval_X[!is.finite(s$Interval_X) | s$Interval_X <= 0] <- default_x_break
+  s$Interval_Y[!is.finite(s$Interval_Y) | s$Interval_Y <= 0] <- default_y_break
+
+  list(
+    ok = TRUE,
+    reason = "ok",
+    message = NULL,
+    Sheet1 = d,
+    Sheet2 = s,
+    Meta = meta,
+    Summary = summary_tbl,
+    SummaryMode = from_summary
+  )
 }
 
 # ────────────────────────────────────────────────────────────────

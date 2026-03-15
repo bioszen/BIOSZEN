@@ -12,19 +12,279 @@ ui <- fluidPage(
 
   tags$head(
     tags$style(HTML("
-      /* Chrome / Edge / Opera — zoom nativo */
-      @media (min-width: 1280px) {
-        body { zoom: 0.8; }              /* 80 % */
+      :root {
+        --bz-radius: 14px;
+        --bz-gap: 14px;
       }
 
-      /* Firefox no soporta ‘zoom’: usamos transform */
-      @media (min-width: 1280px) {
-        @-moz-document url-prefix() {
-          html {
-            transform: scale(0.8);
-            transform-origin: top left;
-            width: 125%;                 /* 1 / 0.8 ≈ 125 %  → evita barra lateral */
-          }
+      html, body {
+        min-height: 100%;
+      }
+
+      .bioszen-topbar {
+        position: sticky;
+        top: 0;
+        z-index: 1100;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 10px 16px;
+        margin: 0 -12px 8px -12px;
+        background: rgba(var(--bs-body-bg-rgb, 248, 249, 250), 0.93);
+        border-bottom: 1px solid var(--bs-border-color, rgba(0, 0, 0, 0.12));
+        backdrop-filter: blur(6px);
+      }
+
+      .bioszen-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .bioszen-brand img {
+        height: 58px !important;
+        width: auto;
+      }
+
+      .bioszen-brand-title {
+        font-size: clamp(18px, 2.2vw, 28px);
+        font-weight: 700;
+        line-height: 1.1;
+      }
+
+      .bioszen-topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .bioszen-topbar-actions .btn {
+        white-space: nowrap;
+      }
+
+      .bioszen-main-tabs {
+        margin-top: 4px;
+      }
+
+      .bioszen-main-tabs .nav-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+
+      .bioszen-main-tabs .nav-tabs > li > a {
+        white-space: normal;
+        line-height: 1.2;
+      }
+
+      .bioszen-sidebar-content,
+      .bioszen-main-content {
+        background: var(--bs-body-bg);
+        border: 1px solid var(--bs-border-color, rgba(0, 0, 0, 0.12));
+        border-radius: var(--bz-radius);
+        padding: 16px;
+      }
+
+      .bioszen-sidebar-content hr {
+        margin: 14px 0;
+      }
+
+      .bioszen-sidebar-content .form-group {
+        margin-bottom: 10px;
+      }
+
+      .bioszen-sidebar-content .btn {
+        width: 100%;
+        word-break: normal;
+        overflow-wrap: break-word;
+      }
+
+      .bioszen-sidebar-content .dropdown > .btn {
+        width: 100%;
+      }
+
+      .bioszen-sidebar-content .dropdown-menu {
+        min-width: 100%;
+      }
+
+      .bioszen-sidebar-content .accordion {
+        margin-top: 8px;
+      }
+
+      .bioszen-main-tabs .tab-pane .col-sm-4[style*='overflow-y'],
+      .bioszen-main-tabs .tab-pane .col-sm-3[style*='overflow-y'] {
+        min-width: 320px;
+        scrollbar-width: thin;
+      }
+
+      #statsTabs .checkbox {
+        margin-top: 6px;
+      }
+
+      .bioszen-main-content .dataTables_wrapper .dataTables_length,
+      .bioszen-main-content .dataTables_wrapper .dataTables_filter {
+        margin-bottom: 8px;
+      }
+
+      .bioszen-main-content .dataTables_wrapper .dataTables_filter input {
+        margin-left: 6px;
+      }
+
+      #statsPanel .accordion-header .accordion-button,
+      #curveStatsPanel .accordion-header .accordion-button,
+      #qcPanel .accordion-header .accordion-button,
+      #repsGlobalPanel .accordion-header .accordion-button,
+      #repsPanel .accordion-header .accordion-button,
+      #repsGrpPanel .accordion-header .accordion-button {
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .bundle-action-bar {
+        margin-top: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        justify-content: flex-end;
+      }
+
+      .bundle-action-bar .bundle-label-input {
+        min-width: 220px;
+        flex: 1 1 220px;
+      }
+
+      .bundle-action-bar .bundle-label-input input {
+        height: 40px;
+      }
+
+      .qc-help {
+        font-size: 13px;
+        color: var(--bs-secondary-color);
+        margin-bottom: 8px;
+      }
+
+      .bioszen-pane-fab {
+        display: none;
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 1300;
+      }
+
+      .bioszen-pane-fab .btn {
+        border: 0;
+        border-radius: 999px;
+        padding: 10px 16px;
+        font-weight: 700;
+        color: #fff;
+        background: linear-gradient(135deg, #006bb3, #00945f);
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+      }
+
+      .bioszen-pane-fab .btn:hover,
+      .bioszen-pane-fab .btn:focus {
+        color: #fff;
+        filter: brightness(1.05);
+      }
+
+      @media (max-width: 1200px) {
+        .bioszen-main-content .dataTables_wrapper .dataTables_length,
+        .bioszen-main-content .dataTables_wrapper .dataTables_filter {
+          float: none !important;
+          width: 100%;
+          text-align: left !important;
+        }
+        .bioszen-main-content .dataTables_wrapper .dataTables_length label,
+        .bioszen-main-content .dataTables_wrapper .dataTables_filter label {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+        }
+        .bioszen-main-content .dataTables_wrapper .dataTables_filter input {
+          margin-left: 0;
+          width: min(260px, 100%);
+        }
+        .bioszen-pane-fab {
+          display: block;
+        }
+        .bioszen-scroll-layout {
+          overflow: visible;
+        }
+        .bioszen-scroll-layout > .row > .col-sm-4,
+        .bioszen-scroll-layout > .row > .col-sm-3,
+        .bioszen-scroll-layout > .row > .col-sm-8,
+        .bioszen-scroll-layout > .row > .col-sm-9 {
+          float: none;
+          width: 100%;
+          max-width: 100%;
+          flex: none;
+        }
+        .bioszen-scroll-layout.show-sidebar > .row > .col-sm-8,
+        .bioszen-scroll-layout.show-sidebar > .row > .col-sm-9 {
+          display: none;
+        }
+        .bioszen-scroll-layout.show-main > .row > .col-sm-4,
+        .bioszen-scroll-layout.show-main > .row > .col-sm-3 {
+          display: none;
+        }
+        .bioszen-scroll-layout.show-main > .row > .col-sm-8,
+        .bioszen-scroll-layout.show-main > .row > .col-sm-9 {
+          display: block;
+        }
+        .bioszen-scroll-layout .col-sm-4[style*='overflow-y'],
+        .bioszen-scroll-layout .col-sm-3[style*='overflow-y'] {
+          position: static !important;
+          top: auto !important;
+          height: auto !important;
+          max-height: none !important;
+          overflow-y: visible !important;
+        }
+      }
+
+      @media (max-width: 991px) {
+        .bioszen-topbar {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .bioszen-topbar-actions {
+          justify-content: flex-start;
+        }
+        .bioszen-main-content {
+          margin-top: 12px;
+        }
+        .bioszen-scroll-layout .col-sm-4[style*='overflow-y'],
+        .bioszen-scroll-layout .col-sm-3[style*='overflow-y'] {
+          position: static !important;
+          top: auto !important;
+          height: auto !important;
+          max-height: none !important;
+          overflow-y: visible !important;
+        }
+      }
+
+      @media (max-width: 768px) {
+        .bioszen-pane-fab {
+          right: 12px;
+          bottom: 12px;
+        }
+        .bioszen-pane-fab .btn {
+          font-size: 14px;
+          padding: 9px 14px;
+        }
+        .bioszen-brand img {
+          height: 44px !important;
+        }
+        .bioszen-brand-title {
+          font-size: 18px;
+        }
+        .bundle-action-bar {
+          justify-content: stretch;
         }
       }
     "))
@@ -65,27 +325,32 @@ ui <- fluidPage(
     tags$style(HTML("
       #startup-loader {
         position: fixed;
-        inset: 0;
-        background: #0b0b0b;
+        right: 14px;
+        bottom: 14px;
+        background: rgba(11, 11, 11, 0.84);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 12px;
+        padding: 10px 12px;
         display: flex;
         align-items: center;
-        justify-content: center;
-        flex-direction: column;
-        gap: 12px;
+        justify-content: flex-start;
+        flex-direction: row;
+        gap: 10px;
         z-index: 9999;
+        pointer-events: none;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
       }
       #startup-loader img {
-        width: 260px;
-        max-width: 70vw;
+        width: 38px;
+        max-width: 38px;
         height: auto;
         filter: drop-shadow(0 6px 20px rgba(0,0,0,0.45));
       }
       #startup-loader .startup-text {
         color: #f3f3f3;
         font-family: Helvetica, Arial, sans-serif;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        font-size: 14px;
+        letter-spacing: 0.03em;
+        font-size: 12px;
       }
       #startup-loader.startup-hidden {
         opacity: 0;
@@ -96,6 +361,7 @@ ui <- fluidPage(
   ),
   tags$script(HTML("
     (function () {
+      var autoHideMs = 4500;
       function hideLoader() {
         var el = document.getElementById('startup-loader');
         if (!el || el.classList.contains('startup-hidden')) return;
@@ -104,14 +370,20 @@ ui <- fluidPage(
           if (el) el.style.display = 'none';
         }, 400);
       }
+      document.addEventListener('DOMContentLoaded', function () {
+        setTimeout(hideLoader, 1200);
+      });
       document.addEventListener('shiny:connected', hideLoader);
+      document.addEventListener('shiny:error', hideLoader);
       window.addEventListener('load', function () {
         if (window.Shiny && Shiny.shinyapp && Shiny.shinyapp.isConnected &&
             typeof Shiny.shinyapp.isConnected === 'function' &&
             Shiny.shinyapp.isConnected()) {
           hideLoader();
         }
+        setTimeout(hideLoader, 300);
       });
+      setTimeout(hideLoader, autoHideMs);
     })();
   ")),
   tags$div(
@@ -220,34 +492,35 @@ ui <- fluidPage(
       }
     })();
   ")),
-  # ------ Botones de modo + idioma (arriba-derecha) ---------------------------
-    # Panel fijo de modo/idioma
-  absolutePanel(
-    top  = 10, right = 10, draggable = FALSE, fixed = TRUE,
-    style = 'z-index:1000; display:flex; gap:8px;',
-    
-    ## ─── Botón “Idioma” con menú desplegable (Bootstrap 5) ───────────────────
+  tags$header(
+    class = "bioszen-topbar",
     tags$div(
-      class = "dropdown",
-      actionButton(
-        "lang_btn",
-        tr("lang_label"),
-        class = "btn btn-secondary dropdown-toggle",
-        `data-bs-toggle` = "dropdown",
-        `aria-expanded`  = "false"
-      ),
-      tags$ul(
-        class = "dropdown-menu dropdown-menu-end",
-        tags$li(actionLink("lang_es", tr("lang_es"), class = "dropdown-item")),
-        tags$li(actionLink("lang_en", tr("lang_en"), class = "dropdown-item"))
-      )
+      class = "bioszen-brand",
+      uiOutput("logo_img"),
+      tags$span(class = "bioszen-brand-title", tr("app_title"))
     ),
-    
-    ## Botones modo claro/oscuro (sin cambios)
-    actionButton('btn_light', label = tr("theme_light"),
-                 class = 'btn btn-light', style = 'color:#000;'),
-    actionButton('btn_dark',  label = tr("theme_dark"),
-                 class = 'btn btn-dark',  style = 'color:#fff;')
+    tags$div(
+      class = "bioszen-topbar-actions",
+      tags$div(
+        class = "dropdown",
+        actionButton(
+          "lang_btn",
+          tr("lang_label"),
+          class = "btn btn-secondary dropdown-toggle",
+          `data-bs-toggle` = "dropdown",
+          `aria-expanded`  = "false"
+        ),
+        tags$ul(
+          class = "dropdown-menu dropdown-menu-end",
+          tags$li(actionLink("lang_es", tr("lang_es"), class = "dropdown-item")),
+          tags$li(actionLink("lang_en", tr("lang_en"), class = "dropdown-item"))
+        )
+      ),
+      actionButton("btn_light", label = tr("theme_light"),
+                   class = "btn btn-light", style = "color:#000;"),
+      actionButton("btn_dark", label = tr("theme_dark"),
+                   class = "btn btn-dark", style = "color:#fff;")
+    )
   ),
   
   # ------ Google Analytics ---------------------------------------------------
@@ -295,6 +568,9 @@ ui <- fluidPage(
           Shiny.setInputValue('app_lang', lang, {priority: 'event'});
           Shiny.setInputValue('manual_lang', lang, {priority: 'event'});
         });
+        setTimeout(function () {
+          document.dispatchEvent(new Event('bioszen:lang-changed'));
+        }, 350);
       }
 
       window.BIOSZEN_applyLang = applyLang;
@@ -305,50 +581,134 @@ ui <- fluidPage(
       });
     })();
   ")),
-  tags$head(
-    tags$style(HTML("
-    #statsTabs .checkbox { margin-top: 6px; }
-  "))
-  ),
-  tags$head(
-    tags$style(HTML("
-    /* Hace más grande el encabezado del acordeón de estadística */
-    #statsPanel .accordion-header .accordion-button{
-      font-size: 18px;     /* cámbialo a gusto */
-      font-weight: 700;
-    }
-  "))
-  ),
-  tags$head(
-    tags$style(HTML("
-    /* Tamaño/estilo uniforme para TODOS los encabezados de accordion() que
-       nos interesan (estadística y réplicas) */
-    #statsPanel .accordion-header .accordion-button,
-    #repsPanel  .accordion-header .accordion-button,
-    #repsGrpPanel .accordion-header .accordion-button {
-      font-size: 18px;     /* mismo valor que pusiste a “Análisis estadísticos” */
-      font-weight: 700;
-    }
-  "))
-  ),
-  tags$head(
-    tags$style(HTML("
-      .bundle-action-bar {
-        margin-top: 12px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: center;
-        justify-content: flex-end;
+  tags$script(HTML("
+    (function () {
+      function getActiveLayout() {
+        var panes = document.querySelectorAll('.bioszen-main-tabs .tab-content > .tab-pane.active');
+        if (panes && panes.length) {
+          for (var i = 0; i < panes.length; i++) {
+            var layout = panes[i].querySelector('.bioszen-scroll-layout');
+            if (layout) return layout;
+          }
+        }
+        var allLayouts = document.querySelectorAll('.bioszen-scroll-layout');
+        if (allLayouts && allLayouts.length) {
+          for (var j = 0; j < allLayouts.length; j++) {
+            var node = allLayouts[j];
+            if (node.offsetParent !== null) return node;
+          }
+        }
+        return null;
       }
-      .bundle-action-bar .bundle-label-input {
-        min-width: 200px;
+
+      function getLabelText(id, fallback) {
+        var el = document.getElementById(id);
+        if (!el || !el.textContent) return fallback || '';
+        var txt = el.textContent.trim();
+        return txt || fallback || '';
       }
-      .bundle-action-bar .bundle-label-input input {
-        height: 40px;
+
+      function setSwitchLabel(state) {
+        var btn = document.getElementById('mobile_switch_panel');
+        if (!btn) return;
+        var sidebarLbl = getLabelText('mobile_switch_label_sidebar', btn.textContent || '');
+        var mainLbl = getLabelText('mobile_switch_label_main', sidebarLbl);
+        btn.textContent = (state === 'main') ? mainLbl : sidebarLbl;
+        if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+          Shiny.setInputValue('mobile_panel_state', state, { priority: 'event' });
+        }
       }
-    "))
-  ),
+
+      function setPaneLabels(sidebarLabel, mainLabel) {
+        var sidebarSpan = document.getElementById('mobile_switch_label_sidebar');
+        var mainSpan = document.getElementById('mobile_switch_label_main');
+        if (sidebarSpan && typeof sidebarLabel === 'string' && sidebarLabel.length) {
+          sidebarSpan.textContent = sidebarLabel;
+        }
+        if (mainSpan && typeof mainLabel === 'string' && mainLabel.length) {
+          mainSpan.textContent = mainLabel;
+        }
+        setTimeout(syncSwitchFromLayout, 10);
+      }
+
+      function refreshPlotAfterSwitch() {
+        setTimeout(function () {
+          var container = document.getElementById('plotInteractivo');
+          var plotElem = null;
+          if (container) {
+            plotElem = container.querySelector('.js-plotly-plot') ||
+              (container.classList && container.classList.contains('js-plotly-plot') ? container : null) ||
+              container.querySelector('.plotly');
+          }
+          if (plotElem && window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === 'function') {
+            try { Plotly.Plots.resize(plotElem); } catch (e) {}
+          }
+          if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+            Shiny.setInputValue('mobile_plot_refresh', Date.now(), { priority: 'event' });
+          }
+          window.dispatchEvent(new Event('resize'));
+        }, 80);
+      }
+
+      function syncSwitchFromLayout() {
+        var layout = getActiveLayout();
+        if (!layout) return;
+        var state = layout.classList.contains('show-main') ? 'main' : 'sidebar';
+        setSwitchLabel(state);
+      }
+
+      function togglePane() {
+        var layout = getActiveLayout();
+        if (!layout) return false;
+        if (layout.classList.contains('show-main')) {
+          layout.classList.remove('show-main');
+          layout.classList.add('show-sidebar');
+          setSwitchLabel('sidebar');
+        } else {
+          layout.classList.remove('show-sidebar');
+          layout.classList.add('show-main');
+          setSwitchLabel('main');
+          refreshPlotAfterSwitch();
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return false;
+      }
+
+      window.BIOSZEN_togglePane = togglePane;
+      window.BIOSZEN_setPaneLabels = setPaneLabels;
+
+      function bindSwitchButton() {
+        var btn = document.getElementById('mobile_switch_panel');
+        if (!btn) return;
+        if (btn.dataset && btn.dataset.bioszenBound === '1') return;
+        if (btn.dataset) btn.dataset.bioszenBound = '1';
+        btn.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          togglePane();
+        });
+      }
+
+      document.addEventListener('shown.bs.tab', function () {
+        setTimeout(syncSwitchFromLayout, 10);
+      });
+
+      document.addEventListener('bioszen:lang-changed', function () {
+        bindSwitchButton();
+        setTimeout(syncSwitchFromLayout, 420);
+      });
+
+      document.addEventListener('DOMContentLoaded', function () {
+        bindSwitchButton();
+        var prefLang = (localStorage.getItem('appLang') || 'en').toLowerCase();
+        if (prefLang === 'es') {
+          setPaneLabels('Ver gráficos', 'Panel de configuración');
+        } else {
+          setPaneLabels('View charts', 'Configuration panel');
+        }
+        setTimeout(syncSwitchFromLayout, 120);
+      });
+    })();
+  ")),
   # ------ Handler de descarga Plotly ----------------------------------------
   tags$script(HTML("
     Shiny.addCustomMessageHandler('downloadPlotlyImage', function(msg){
@@ -427,29 +787,42 @@ ui <- fluidPage(
     });
   ")),
 
-  # ------ Cabecera -----------------------------------------------------------
-  titlePanel(tags$div(
-    style = 'display:flex; align-items:center; gap:10px;',
-    uiOutput('logo_img'),
-    tags$span(tr("app_title"),
-              style = 'font-size:30px; font-weight:bold;')
-  )),
   uiOutput("app_announcement"),
+  tags$div(
+    class = "bioszen-pane-fab",
+    actionButton(
+      "mobile_switch_panel",
+      label = tr("mobile_switch_view_graphics"),
+      class = "btn bioszen-pane-switch-btn"
+    ),
+    tags$span(id = "mobile_switch_label_sidebar", style = "display:none;", tr("mobile_switch_view_graphics")),
+    tags$span(id = "mobile_switch_label_main", style = "display:none;", tr("mobile_switch_config_panel"))
+  ),
   # --- Inicio de pesta?as principales ---
-  tabsetPanel(id = "mainTabs", type = "tabs",
+  tags$div(
+    class = "bioszen-main-tabs",
+    tabsetPanel(id = "mainTabs", type = "tabs",
     tabPanel(title = HTML(as.character(tr("tab_plots"))), value = "tab_plots",
              # --------------------------------------------------------------------------
              #  Layout principal: barra lateral + área de trazado/tablas
              # --------------------------------------------------------------------------
-             sidebarLayout(
+             tags$div(
+               class = "bioszen-scroll-layout show-sidebar",
+               sidebarLayout(
                
                ###########################################################################
                #  SIDEBAR ----------------------------------------------------------------
                ###########################################################################
-              sidebarPanel(style="overflow-y:auto;max-height:95vh;position:sticky;top:0;",
-                 
-                fileInput('dataFile',  tr("file_data"), accept = '.xlsx'),
-                fileInput('curveFile', tr("file_curves"),              accept = '.xlsx'),
+              sidebarPanel(
+                width = 4,
+                style = "position:sticky; top:86px; height:calc(100vh - 98px); overflow-y:auto;",
+                tags$div(
+                  class = "bioszen-sidebar-content",
+                  fileInput('dataFile',  tr("file_data"), accept = '.xlsx'),
+                tags$div(
+                  id = "curve_upload_section",
+                  fileInput('curveFile', tr("file_curves"), accept = '.xlsx')
+                ),
                 fileInput('metaFiles', tr("file_meta"),    accept = '.xlsx', multiple = TRUE),
 
                  # ---- Botones de descarga de ejemplos ----------------------------------
@@ -469,10 +842,10 @@ ui <- fluidPage(
                  radioButtons(
                    "scope",
                    tr("scope_label"),
-                   choices = named_choices(
-                     c("Por Cepa", "Combinado"),
-                     c(tr("scope_by_strain"), tr("scope_combined"))
-                   ),
+                  choices = named_choices(
+                    c("Por Cepa", "Combinado"),
+                    list(tr("scope_by_strain"), tr("scope_combined"))
+                  ),
                    selected = "Por Cepa"
                  ),
                  conditionalPanel(
@@ -486,7 +859,7 @@ ui <- fluidPage(
                    tr("plot_type_label"),
                    choices = named_choices(
                      c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion"),
-                     c(
+                     list(
                        tr("plot_boxplot"),
                        tr("plot_bars"),
                        tr("plot_violin"),
@@ -522,10 +895,10 @@ ui <- fluidPage(
                    ),
                    radioButtons(
                      "corr_method", tr("corr_method_label"),
-                     choices = named_choices(
-                       c("pearson", "spearman"),
-                       c(tr("corr_method_pearson"), tr("corr_method_spearman"))
-                     ),
+                    choices = named_choices(
+                      c("pearson", "spearman"),
+                      list(tr("corr_method_pearson"), tr("corr_method_spearman"))
+                    ),
                      selected = "pearson", inline = TRUE
                    ),
                    checkboxInput("corr_show_line",   tr("corr_show_line"), TRUE),
@@ -534,6 +907,23 @@ ui <- fluidPage(
                    checkboxInput("corr_show_p",      tr("corr_show_p"), TRUE),
                    checkboxInput("corr_show_r2",     tr("corr_show_r2"), FALSE),
                    checkboxInput("corr_show_eq",     tr("corr_show_eq"), FALSE),
+                   checkboxInput("corr_show_ci",     tr("corr_show_ci"), FALSE),
+                   radioButtons(
+                     "corr_ci_style", tr("corr_ci_style"),
+                     choices = named_choices(
+                       c("band", "dashed"),
+                       list(tr("corr_ci_band"), tr("corr_ci_dashed"))
+                     ),
+                     selected = "band", inline = TRUE
+                   ),
+                   numericInput(
+                     "corr_ci_level",
+                     tr("corr_ci_level"),
+                     value = 0.95,
+                     min = 0.5,
+                     max = 0.999,
+                     step = 0.01
+                   ),
                    
                    textInput("corr_xlab", tr("corr_xlab"), value = ""),
                    textInput("corr_ylab", tr("corr_ylab"), value = ""),
@@ -546,12 +936,89 @@ ui <- fluidPage(
                      column(6, numericInput("xbreak_corr", tr("corr_xbreak"), value = 1,  min = 0.001)),
                      column(6, numericInput("ybreak_corr", tr("corr_ybreak"), value = 1,  min = 0.001))
                    ),
-                   fluidRow(
-                     column(6, numericInput("ymin_corr", tr("corr_ymin"), value = 0,  min = 0)),
-                     column(6, numericInput("ymax_corr", tr("corr_ymax"), value = 0,  min = 0)),
-                     column(6, numericInput("corr_label_size",
-                                            tr("corr_label_size"), value = 4, min = 1))
-                   )
+                    fluidRow(
+                      column(6, numericInput("ymin_corr", tr("corr_ymin"), value = 0,  min = 0)),
+                      column(6, numericInput("ymax_corr", tr("corr_ymax"), value = 0,  min = 0)),
+                      column(6, numericInput("corr_label_size",
+                                             tr("corr_label_size"), value = 4, min = 1))
+                    )
+                  ),
+
+                 # ---------- SECCION "Matriz de Correlacion" ---------------------------
+                 conditionalPanel(
+                   condition = "input.tipo == 'MatrizCorrelacion'",
+                   h4(tr("corr_matrix_settings")),
+                   selectizeInput(
+                     "corrm_params",
+                     tr("corr_matrix_params"),
+                     choices = NULL,
+                     selected = NULL,
+                     multiple = TRUE,
+                     options = list(plugins = list("remove_button"))
+                   ),
+                   radioButtons(
+                     "corrm_method",
+                     tr("corr_method_label"),
+                     choices = named_choices(
+                       c("pearson", "spearman", "kendall"),
+                       list(tr("corr_method_pearson"), tr("corr_method_spearman"), tr("corr_method_kendall"))
+                     ),
+                     selected = "spearman",
+                     inline = TRUE
+                   ),
+                   radioButtons(
+                     "corrm_adjust",
+                     tr("multitest_method"),
+                     choices = named_choices(
+                       c("holm", "fdr", "bonferroni", "none"),
+                       list(
+                         tr("multitest_holm"),
+                         tr("multitest_fdr"),
+                         tr("multitest_bonferroni"),
+                         tr("multitest_none")
+                       )
+                     ),
+                     selected = "holm",
+                     inline = TRUE
+                   ),
+                   checkboxInput("corrm_show_sig", tr("corr_matrix_show_sig"), TRUE)
+                 ),
+
+                 # ---------- SECCION "Heatmap" -----------------------------------------
+                 conditionalPanel(
+                   condition = "input.tipo == 'Heatmap'",
+                   h4(tr("heatmap_settings")),
+                   selectizeInput(
+                     "heat_params",
+                     tr("heatmap_params"),
+                     choices = NULL,
+                     selected = NULL,
+                     multiple = TRUE,
+                     options = list(plugins = list("remove_button"))
+                   ),
+                   radioButtons(
+                     "heat_scale_mode",
+                     tr("heatmap_scale_mode"),
+                     choices = named_choices(
+                       c("none", "row", "column"),
+                       list(
+                         tr("heatmap_scale_none"),
+                         tr("heatmap_scale_row"),
+                         tr("heatmap_scale_col")
+                       )
+                     ),
+                     selected = "none",
+                     inline = TRUE
+                   ),
+                   selectInput(
+                     "heat_hclust_method",
+                     tr("heatmap_cluster_method"),
+                     choices = c("ward.D2", "ward.D", "complete", "average", "single", "mcquitty", "median", "centroid"),
+                     selected = "ward.D2"
+                   ),
+                   checkboxInput("heat_cluster_rows", tr("heatmap_dendro_rows"), FALSE),
+                   checkboxInput("heat_cluster_cols", tr("heatmap_dendro_cols"), FALSE),
+                   checkboxInput("heat_show_values", tr("heatmap_show_values"), FALSE)
                  ),
                  
                 
@@ -597,7 +1064,49 @@ ui <- fluidPage(
                     column(6, textInput('cur_xlab', tr("curves_xlab"), '')),
                     column(6, textInput('cur_ylab', tr("curves_ylab"), ''))
                   ),
-                  numericInput('curve_lwd', tr("curves_linewidth"), value = 1.5, min = 0.5, step = 0.1)
+                  numericInput('curve_lwd', tr("curves_linewidth"), value = 1.5, min = 0.5, step = 0.1),
+                  checkboxInput("cur_show_ci", tr("curves_show_ci"), FALSE),
+                  radioButtons(
+                    "cur_ci_style", tr("curves_ci_style"),
+                    choices = named_choices(
+                      c("ribbon", "errorbar"),
+                      list(tr("curves_ci_ribbon"), tr("curves_ci_errorbar"))
+                    ),
+                    selected = "ribbon",
+                    inline = TRUE
+                  ),
+                  checkboxInput("cur_show_reps", tr("curves_show_reps"), FALSE),
+                  sliderInput("cur_rep_alpha", tr("curves_rep_alpha"),
+                              min = 0.05, max = 1, value = 0.25, step = 0.05),
+                  radioButtons(
+                    "curve_geom", tr("curves_geom"),
+                    choices = named_choices(
+                      c("line_points", "line_only"),
+                      list(tr("curves_geom_line_points"), tr("curves_geom_line_only"))
+                    ),
+                    selected = "line_points",
+                    inline = TRUE
+                  ),
+                  radioButtons(
+                    "curve_color_mode", tr("curves_color_mode"),
+                    choices = named_choices(
+                      c("by_group", "single"),
+                      list(tr("curves_color_by_group"), tr("curves_color_single"))
+                    ),
+                    selected = "by_group",
+                    inline = TRUE
+                  ),
+                  conditionalPanel(
+                    condition = "input.curve_color_mode == 'single'",
+                    tags$label(`for` = "curve_single_color", tr("curves_single_color")),
+                    tags$input(
+                      id = "curve_single_color",
+                      type = "color",
+                      value = "#000000",
+                      class = "form-control form-control-color",
+                      oninput = "Shiny.setInputValue('curve_single_color', this.value, {priority: 'event'});"
+                    )
+                  )
                 ),
                  
                  # Réplicas a mostrar para Curvas
@@ -628,7 +1137,7 @@ ui <- fluidPage(
                       "OkabeIto", "OkabeIto Suave",
                       "Tableau", "Tableau Suave"
                     ),
-                    c(
+                    list(
                       tr("palette_default"),
                       tr("palette_default_soft"),
                       tr("palette_bw"),
@@ -687,7 +1196,7 @@ ui <- fluidPage(
                         tr("palette_type_label"),
                         choices = named_choices(
                           c("seq", "div", "qual"),
-                          c(tr("palette_type_seq"), tr("palette_type_div"), tr("palette_type_qual"))
+                          list(tr("palette_type_seq"), tr("palette_type_div"), tr("palette_type_qual"))
                         ),
                         selected = "seq",
                         inline = TRUE
@@ -702,7 +1211,7 @@ ui <- fluidPage(
                         tr("palette_filters_label"),
                         choices = named_choices(
                           c("colorblind", "print", "photocopy"),
-                          c(
+                          list(
                             tr("palette_filter_colorblind"),
                             tr("palette_filter_print"),
                             tr("palette_filter_photocopy")
@@ -848,12 +1357,13 @@ ui <- fluidPage(
                            'normTests', NULL,
                            choices = named_choices(
                              c('shapiro', 'ks', 'ad'),
-                             c(tr("norm_shapiro"), tr("norm_ks"), tr("norm_ad"))
+                             list(tr("norm_shapiro"), tr("norm_ks"), tr("norm_ad"))
                            ),
                            selected = c('shapiro','ks','ad')),
                            actionButton('runNorm',
                                         label = tagList(icon('vial'), tr("run_normality")),
-                                        class = 'btn btn-primary'),
+                                        class = "btn btn-primary w-100",
+                                        style = "white-space: normal;"),
                            br(), br(),
                            DTOutput('normTable')
                          ),
@@ -862,7 +1372,7 @@ ui <- fluidPage(
                            radioButtons('sigTest', NULL,
                                         choices = named_choices(
                                           c('ANOVA', 'Kruskal-Wallis', 'ttest', 'wilcox'),
-                                          c(
+                                          list(
                                             tr("sigtest_anova"),
                                             tr("sigtest_kruskal"),
                                             tr("sigtest_ttest"),
@@ -874,9 +1384,23 @@ ui <- fluidPage(
                            radioButtons('compMode', NULL,
                                         choices = named_choices(
                                           c('all', 'control', 'pair'),
-                                          c(tr("comp_all"), tr("comp_control"), tr("comp_pair"))
+                                          list(tr("comp_all"), tr("comp_control"), tr("comp_pair"))
                                         ),
                                         selected = 'all'),
+                           radioButtons(
+                             "multitest_method",
+                             tr("multitest_method"),
+                             choices = named_choices(
+                               c("holm", "fdr", "bonferroni", "none"),
+                               list(
+                                 tr("multitest_holm"),
+                                 tr("multitest_fdr"),
+                                 tr("multitest_bonferroni"),
+                                 tr("multitest_none")
+                               )
+                             ),
+                             selected = "holm"
+                           ),
                            conditionalPanel(
                              condition = "input.compMode=='control'",
                              selectInput('controlGroup', tr("control_label"), choices = NULL)
@@ -889,7 +1413,8 @@ ui <- fluidPage(
                            actionButton('runSig',
                                         label = tagList(icon('chart-bar'),
                                                         tr("run_significance")),
-                                        class = 'btn btn-primary'),
+                                        class = "btn btn-primary w-100",
+                                        style = "white-space: normal;"),
                            br(), br(),
                            DTOutput('sigTable')
                          )
@@ -898,12 +1423,111 @@ ui <- fluidPage(
                      )
                  )),
                  conditionalPanel(
+                   condition = "input.tipo == 'Curvas'",
+                   accordion(
+                     id = "curveStatsPanel",
+                     open = FALSE,
+                     multiple = TRUE,
+                     accordion_panel_safe(
+                       tr("curves_stats_title"),
+                       checkboxGroupInput(
+                         "curve_stats_methods",
+                         NULL,
+                         choices = named_choices(
+                           c("S1", "S2", "S3", "S4"),
+                           list(
+                             tr("curves_stats_s1"),
+                             tr("curves_stats_s2"),
+                             tr("curves_stats_s3"),
+                             tr("curves_stats_s4")
+                           )
+                         ),
+                         selected = c("S1", "S2", "S3", "S4")
+                       ),
+                       actionButton(
+                         "runCurveStats",
+                         tr("curves_stats_run"),
+                         class = "btn btn-primary w-100"
+                       ),
+                       br(), br(),
+                       DTOutput("curveStatsTable"),
+                       style = "info"
+                     )
+                   )
+                 ),
+                 accordion(
+                   id = "qcPanel",
+                   open = FALSE,
+                   multiple = TRUE,
+                   accordion_panel_safe(
+                     tr("qc_title"),
+                     tags$p(class = "qc-help", tr("qc_subtitle")),
+                     tags$p(
+                       tags$strong(tr("qc_what_is")),
+                       tags$span(" "),
+                       tr("qc_what_is_desc")
+                     ),
+                     tabsetPanel(
+                       tabPanel(
+                         title = tr("qc_missing_table"),
+                         tags$p(class = "qc-help", tr("qc_missing_help")),
+                         DTOutput("qcMissingTable")
+                       ),
+                        tabPanel(
+                          title = tr("qc_outlier_table"),
+                          tags$p(class = "qc-help", tr("qc_outlier_help")),
+                          numericInput(
+                            "qc_outlier_iqr_mult",
+                            tr("qc_outlier_iqr_multiplier_label"),
+                            value = 1.5,
+                            min = 0.1,
+                            step = 0.1
+                          ),
+                          tags$p(class = "qc-help", tr("qc_outlier_iqr_multiplier_help")),
+                          actionButton(
+                            "qc_apply_outlier_exclusion",
+                            tr("qc_outlier_apply_button"),
+                            class = "btn btn-outline-primary w-100",
+                            style = "white-space: normal;"
+                          ),
+                          br(),
+                          numericInput(
+                            "qc_keep_top_n",
+                            tr("qc_outlier_keep_n_label"),
+                            value = 3,
+                            min = 1,
+                            step = 1
+                          ),
+                          tags$p(class = "qc-help", tr("qc_outlier_keep_n_help")),
+                          actionButton(
+                            "qc_apply_top_n",
+                            tr("qc_outlier_apply_topn_button"),
+                            class = "btn btn-outline-secondary w-100",
+                            style = "white-space: normal;"
+                          ),
+                          br(), br(),
+                          DTOutput("qcOutlierTable"),
+                          tags$hr(),
+                          tags$h5(tr("qc_outlier_group_counts")),
+                          tags$p(class = "qc-help", tr("qc_outlier_group_counts_help")),
+                          DTOutput("qcOutlierGroupTable")
+                        ),
+                       tabPanel(
+                         title = tr("qc_sample_table"),
+                         tags$p(class = "qc-help", tr("qc_sample_help")),
+                         DTOutput("qcSampleTable")
+                       )
+                     ),
+                     style = "secondary"
+                   )
+                 ),
+                 conditionalPanel(
                    condition = "['Boxplot','Barras','Violin','Apiladas'].indexOf(input.tipo) >= 0",
                    hr(), h4(tr("sig_bars_title")),
-                  radioButtons('sig_mode', NULL,
+                         radioButtons('sig_mode', NULL,
                                choices = named_choices(
                                  c('bars', 'labels'),
-                                 c(tr("sig_mode_bars"), tr("sig_mode_labels"))
+                                 list(tr("sig_mode_bars"), tr("sig_mode_labels"))
                                ),
                                selected = 'bars', inline = TRUE),
                   conditionalPanel(
@@ -921,15 +1545,20 @@ ui <- fluidPage(
                   ),
                   textInput('sig_label', tr("sig_label"), '*'),
                   fluidRow(
-                    column(4, actionButton('add_sig',
-                                           label = tagList(icon('plus'), tr("sig_add_bar")),
-                                           class = 'btn btn-primary w-100')),
-                    column(4, actionButton('remove_sig',
+                    column(6, actionButton('add_sig',
+                                            label = tagList(icon('plus'), tr("sig_add_bar")),
+                                            class = 'btn btn-primary w-100', style='white-space: normal; margin-bottom: 5px;')),
+                    column(6, actionButton('sig_update_label',
+                                           label = tagList(icon('edit'), tr("sig_update_label")),
+                                           class = 'btn btn-outline-primary w-100', style='white-space: normal; margin-bottom: 5px;'))
+                  ),
+                  fluidRow(
+                    column(6, actionButton('remove_sig',
                                            label = tagList(icon('minus'), tr("sig_remove")),
-                                           class = 'btn btn-secondary w-100')),
-                    column(4, actionButton('clear_sig',
+                                           class = 'btn btn-secondary w-100', style='white-space: normal;')),
+                    column(6, actionButton('clear_sig',
                                            label = tagList(icon('eraser'), tr("sig_clear")),
-                                           class = 'btn btn-secondary w-100'))
+                                           class = 'btn btn-secondary w-100', style='white-space: normal;'))
                   ),
                   selectizeInput('sig_current', tr("sig_current_label"),
                                  choices = NULL, multiple = TRUE,
@@ -942,6 +1571,39 @@ ui <- fluidPage(
                     column(6, actionButton('sig_move_down',
                                            label = tagList(icon('arrow-down'), tr("sig_move_down")),
                                            class = 'btn btn-outline-primary w-100'))
+                  ),
+                  conditionalPanel(
+                    condition = "input.runSig > 0",
+                    hr(),
+                    h5(tr("sig_auto_title")),
+                    tags$p(class = "qc-help", tr("sig_auto_help")),
+                    radioButtons(
+                      "sig_auto_include",
+                      tr("sig_auto_include"),
+                      choices = named_choices(
+                        c("significant", "all"),
+                        list(tr("sig_auto_significant"), tr("sig_auto_all"))
+                      ),
+                      selected = "significant",
+                      inline = TRUE
+                    ),
+                    radioButtons(
+                      "sig_auto_label_mode",
+                      tr("sig_auto_label_mode"),
+                      choices = named_choices(
+                        c("stars", "pvalue"),
+                        list(tr("sig_auto_label_stars"), tr("sig_auto_label_p"))
+                      ),
+                      selected = "stars",
+                      inline = TRUE
+                    ),
+                    checkboxInput("sig_auto_replace", tr("sig_auto_replace"), TRUE),
+                    actionButton(
+                      "sig_auto_apply",
+                      label = tagList(icon("magic"), tr("sig_auto_apply")),
+                      class = "btn btn-primary w-100",
+                      style = "white-space: normal;"
+                    )
                   ),
                   fluidRow(
                     column(6,
@@ -1030,62 +1692,72 @@ ui <- fluidPage(
 
                  downloadButton("downloadBundleZip", tr("download_bundle"),
                                 class = "btn btn-secondary"),
-                 hr(),
-                 
+                 hr()
+                )
                ),  # ---- FIN sidebarPanel -----------------------------------------------
                
                ###########################################################################
                #  MAIN PANEL -------------------------------------------------------------
                ###########################################################################
-               mainPanel(
-                 uiOutput('plotInteractivoUI'),
-                 br(),
-                 tags$div(
-                   class = "bundle-action-bar",
+                mainPanel(
+                   width = 8,
+                  tags$div(
+                    class = "bioszen-main-content",
+                    uiOutput('plotInteractivoUI'),
+                    br(),
                    tags$div(
-                     class = "bundle-label-input",
-                     textInput(
-                       "bundle_label",
-                       label = NULL,
-                       placeholder = tr_text("bundle_label_placeholder")
+                     class = "bundle-action-bar",
+                     tags$div(
+                       class = "bundle-label-input",
+                       textInput(
+                         "bundle_label",
+                         label = NULL,
+                         placeholder = tr_text("bundle_label_placeholder")
+                       )
+                     ),
+                     actionButton(
+                       "copy_plot_clipboard",
+                       label = tagList(icon("copy"), tr("copy_plot")),
+                       class = "btn btn-secondary"
+                     ),
+                     actionButton(
+                       "save_bundle_version",
+                       label = tagList(icon("save"), tr("save_version")),
+                       class = "btn btn-primary"
+                     ),
+                     actionButton(
+                       "add2panel",
+                       label = tagList(icon("plus-circle"), tr("add_to_panel")),
+                       class = "btn btn-success"
                      )
                    ),
-                   actionButton(
-                     "copy_plot_clipboard",
-                     label = tagList(icon("copy"), tr("copy_plot")),
-                     class = "btn btn-secondary"
-                   ),
-                   actionButton(
-                     "save_bundle_version",
-                     label = tagList(icon("save"), tr("save_version")),
-                     class = "btn btn-primary"
-                   ),
-                   actionButton(
-                     "add2panel",
-                     label = tagList(icon("plus-circle"), tr("add_to_panel")),
-                     class = "btn btn-success"
+                   DTOutput('statsTable'),
+                   hr(),
+                   tags$div(
+                      style = "font-size:16px; text-align:center; color:#555;",
+                      tr("comments_label"),
+                      tags$a("bioszenf@gmail.com",
+                             href = "mailto:bioszenf@gmail.com",
+                              style = "font-weight:bold;")
                    )
-                 ),
-               DTOutput('statsTable'),
-               hr(),
-               tags$div(
-                  style = "font-size:16px; text-align:center; color:#555;",
-                  tr("comments_label"),
-                  tags$a("bioszenf@gmail.com",
-                         href = "mailto:bioszenf@gmail.com",
-                          style = "font-weight:bold;")
-                   
-                 )   # ← comentario dice “FIN sidebarLayout”, pero en realidad cierra sólo <div>
+               )
                ) # ← este cierra <mainPanel>
+             )
              )
     ),
     tabPanel(title = HTML(as.character(tr("tab_growth"))), value = "tab_growth",
-             sidebarLayout(
-               sidebarPanel(style="overflow-y:auto;max-height:95vh;position:sticky;top:0;",
-                 fileInput(
-                   "growthFiles",
-                   tr("growth_files"),
-                   accept = ".xlsx",
+             tags$div(
+               class = "bioszen-scroll-layout show-sidebar",
+               sidebarLayout(
+                sidebarPanel(
+                   width = 4,
+                   style = "position:sticky; top:86px; height:calc(100vh - 98px); overflow-y:auto;",
+                  tags$div(
+                    class = "bioszen-sidebar-content",
+                    fileInput(
+                     "growthFiles",
+                     tr("growth_files"),
+                    accept = ".xlsx",
                    multiple = TRUE
                  ),
                  numericInput(
@@ -1113,11 +1785,18 @@ ui <- fluidPage(
                   ),
                   # solo mostramos cuando el usuario haya subido exactamente 1 archivo
                   uiOutput("showImportBtn")
+                 )
                 ),
                 mainPanel(
-                  DTOutput("growthTable")
+                  width = 8,
+                  tags$div(
+                    class = "bioszen-main-content",
+                    DTOutput("growthTable")
+                  )
                )
              )
+             )
     )  # ← cierre de tabPanel Growth Rates (sin coma si es la última)
+    )
   )
 )

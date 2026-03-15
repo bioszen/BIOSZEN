@@ -44,6 +44,7 @@ download_bundle,Download package (ZIP)
 copy_plot,Copy plot
 save_version,Save version
 notify_copy_success,Plot copied to clipboard.
+notify_copy_fallback_success,Clipboard blocked by browser policy; image downloaded instead.
 notify_copy_error_prefix,Could not copy plot:
 notify_version_saved,Version saved to bundle.
 norm_ctrl_required,Select the control medium first.
@@ -66,6 +67,8 @@ metadata_type_unknown,Could not identify plot type in %s. Include a 'tipo' field
 metadata_type_mismatch,Warning: %s indicates type %s by filename but Metadata shows %s - using %s.
 sig_remove_select,Select at least one bar to remove.
 curve_file_invalid,Invalid curves file: %s
+curve_embedded_invalid,Embedded curves were detected but could not be read: %s
+curve_embedded_missing,No embedded curves were found in this grouped or summary workbook. Add a Curves_Summary sheet to enable Curves plots.
 data_file_invalid,Invalid data file: %s
 add_to_panel,Add to panel
 comments_label,Comments and suggestions to 
@@ -253,6 +256,8 @@ norm_medium_label,Normalizing medium:
 groups_label,Groups:
 select_groups_prompt,Select groups to show first.
 reps_by_group,Replicates by group
+reps_media_select_all,Select all replicates again
+reps_group_select_all,Select all replicates again
 posthoc_label,Post-hoc:
 plot_label,Plot
 default_title_combined,%s combined of %s
@@ -302,3 +307,115 @@ override_apply_all,Apply changes to ALL
 no_data_plot,No data to plot
 norm_failed_generic,Normalization could not be applied; showing raw values.
 norm_fallback_ctrl,"Normalization could not use control ""%s""; showing raw values."
+plot_raincloud,Raincloud
+plot_estimation,Estimation
+plot_heatmap,Heatmap
+plot_corr_matrix,Correlation Matrix
+multitest_method,Multiple-testing correction:
+multitest_holm,Holm
+multitest_fdr,FDR (Benjamini-Hochberg)
+multitest_bonferroni,Bonferroni
+multitest_none,None
+corr_method_kendall,Kendall
+corr_matrix_settings,Correlation Matrix Settings
+corr_matrix_params,Parameters for matrix:
+corr_matrix_show_sig,Show only significant correlations
+heatmap_settings,Heatmap Settings
+heatmap_params,Parameters for heatmap:
+heatmap_scale_mode,Normalization:
+heatmap_scale_none,None
+heatmap_scale_row,By row (parameter)
+heatmap_scale_col,By column (group)
+heatmap_cluster_method,Clustering method:
+heatmap_dendro_rows,Show side dendrogram (rows)
+heatmap_dendro_cols,Show top dendrogram (columns)
+heatmap_zscore,Z-score normalize by parameter
+heatmap_cluster_rows,Cluster rows (groups)
+heatmap_cluster_cols,Cluster columns (parameters)
+heatmap_show_values,Show values in cells
+estimation_settings,Estimation Settings
+estimation_boot_n,Bootstrap iterations:
+curves_show_ci,Show confidence interval ribbon
+curves_show_reps,Show replicate trajectories
+curves_rep_alpha,Replicate line transparency:
+curves_geom,Curve rendering:
+curves_geom_line_points,Line + points
+curves_geom_line_only,Line only
+curves_color_mode,Curve color mode:
+curves_color_by_group,By group palette
+curves_color_single,Single color
+curves_single_color,Line color:
+curves_ci_style,CI style:
+curves_ci_ribbon,Ribbon
+curves_ci_errorbar,Error bars
+curves_stats_title,Curve Statistics
+curves_stats_s1,Global curve shape (model-based)
+curves_stats_s2,Point-by-point differences
+curves_stats_s3,End-point difference
+curves_stats_s4,Area under the curve (AUC)
+curves_stats_run,Run curve statistics
+stats_tab_advanced,Advanced Statistics
+resample_method,Resampling method:
+resample_bootstrap,Bootstrap
+resample_permutation,Permutation
+resample_iter,Resampling iterations:
+run_mixed_model,Run mixed-effects model
+run_advanced_stats,Run advanced statistics
+mixed_model_not_available,Mixed model results are not available for this dataset.
+progress_advanced_stats,Running advanced statistics...
+progress_normality,Running normality tests...
+progress_normalization,Normalizing data...
+download_repro_report,Download reproducibility report
+tab_qc,Data Quality
+qc_title,Data quality control
+qc_subtitle,Missingness and outlier counts and sample sizes for the current filters.
+qc_missing_table,Missing values by parameter
+qc_outlier_table,Outliers by parameter and group
+qc_sample_table,Sample sizes by group
+advanced_stats_help,Run resampling-based comparisons with confidence intervals and optional mixed-effects modeling.
+qc_what_is,What this section does:
+qc_what_is_desc,It provides quality checks for the current filters before interpretation and publication.
+qc_missing_help,Counts non-finite or missing values by parameter.
+qc_outlier_help,Detects IQR-based outliers within each group.
+qc_outlier_iqr_multiplier_label,Outlier strictness (IQR multiplier)
+qc_outlier_iqr_multiplier_help,Lower values are stricter and detect more outliers. Higher values are more permissive. Default: 1.5 (Tukey rule).
+qc_outlier_apply_button,Deselect detected outlier replicates
+qc_outlier_keep_n_label,Replicates to keep per group
+qc_outlier_keep_n_help,Keeps the N most reproducible replicates per group using distance to the group median across parameters.
+qc_outlier_apply_topn_button,Apply replicate limit
+qc_outlier_group_counts,Outliers detected by group
+qc_outlier_group_counts_help,Shows total outliers per group for the current strictness setting.
+qc_outlier_no_matches,No outliers were detected with the current settings.
+qc_outlier_apply_error,Could not detect outliers for the current data selection.
+qc_outlier_not_enough_data,Not enough valid data to apply this automatic selection.
+qc_outlier_apply_done,Outlier exclusion applied. Replicates deselected: %s. By group: %s
+qc_outlier_topn_invalid,Enter a replicate count greater than 0.
+qc_outlier_topn_error,Could not rank replicates by reproducibility for the current data selection.
+qc_outlier_topn_no_change,No replicate selection changes were needed.
+qc_outlier_topn_done,Replicate limit applied. Replicates kept: %s. By group: %s
+qc_sample_help,Summarizes sample size and biological replicate coverage per group.
+sig_auto_title,Auto-generate from test
+sig_auto_help,Build significance bars directly from the latest significance test output.
+sig_auto_include,Include comparisons:
+sig_auto_significant,Only significant
+sig_auto_all,All comparisons
+sig_auto_label_mode,Auto label mode:
+sig_auto_label_stars,Stars (*, **, ***)
+sig_auto_label_p,P-value (3 decimals)
+sig_auto_replace,Replace current bars
+sig_auto_apply,Auto-add bars
+sig_update_label,Update selected label
+sig_update_select_one,Select exactly one bar to edit.
+sig_auto_no_matches,No comparisons matched the selected auto criteria.
+sig_auto_added_n,Auto-significance added: %s
+corr_show_ci,Show confidence interval
+corr_ci_style,Confidence interval style:
+corr_ci_band,Shaded band
+corr_ci_dashed,Dashed bounds
+corr_ci_level,Confidence level:
+mobile_go_charts_summary,Go to charts and summary
+mobile_back_controls,Back to controls
+mobile_go_results_table,Go to results table
+mobile_switch_panel,Switch panel
+mobile_switch_view_graphics,View charts
+mobile_switch_config_panel,Configuration panel

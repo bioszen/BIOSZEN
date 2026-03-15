@@ -71,7 +71,8 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     if (length(ids)) ov_trigger(ov_trigger() + 1)
   })
   observeEvent(input$add2panel, {
-    id   <- paste0('p', as.integer(Sys.time()))
+    stamp <- gsub("[^0-9]", "", format(Sys.time(), "%Y%m%d%H%M%OS3"))
+    id <- paste0("p", stamp, "_", sprintf("%04d", sample.int(9999, 1)))
     snap <- snapshot_fun()
     meta <- meta_fun()
     cfg  <- if (identical(input$tipo, 'Curvas')) curve_settings() else NULL
@@ -178,6 +179,19 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       }
       p
     }
+    safe_brewer_combo <- function(name, n) {
+      if (n <= 0) return(character(0))
+      max_col <- RColorBrewer::brewer.pal.info[name, "maxcolors"]
+      if (n < 3) {
+        base <- RColorBrewer::brewer.pal(3, name)
+        return(base[seq_len(n)])
+      }
+      if (n > max_col) {
+        base <- RColorBrewer::brewer.pal(max_col, name)
+        return(grDevices::colorRampPalette(base)(n))
+      }
+      RColorBrewer::brewer.pal(n, name)
+    }
 
     plots <- lapply(plot_bank$all[input$plots_chosen], function(info) {
       p  <- info$plot
@@ -219,14 +233,14 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
                     'Plasma'         = viridis::plasma(max_col),
                     'Magma'          = viridis::magma(max_col),
                     'Cividis'        = viridis::cividis(max_col),
-                    'Set1'           = RColorBrewer::brewer.pal(n = max_col, name = 'Set1'),
-                    'Set2'           = RColorBrewer::brewer.pal(n = max_col, name = 'Set2'),
-                    'Set3'           = RColorBrewer::brewer.pal(n = max_col, name = 'Set3'),
-                    'Dark2'          = RColorBrewer::brewer.pal(n = max_col, name = 'Dark2'),
-                    'Accent'         = RColorBrewer::brewer.pal(n = max_col, name = 'Accent'),
-                    'Paired'         = RColorBrewer::brewer.pal(n = max_col, name = 'Paired'),
-                    'Pastel1'        = RColorBrewer::brewer.pal(n = max_col, name = 'Pastel1'),
-                    'Pastel2'        = RColorBrewer::brewer.pal(n = max_col, name = 'Pastel2'),
+                    'Set1'           = safe_brewer_combo('Set1', max_col),
+                    'Set2'           = safe_brewer_combo('Set2', max_col),
+                    'Set3'           = safe_brewer_combo('Set3', max_col),
+                    'Dark2'          = safe_brewer_combo('Dark2', max_col),
+                    'Accent'         = safe_brewer_combo('Accent', max_col),
+                    'Paired'         = safe_brewer_combo('Paired', max_col),
+                    'Pastel1'        = safe_brewer_combo('Pastel1', max_col),
+                    'Pastel2'        = safe_brewer_combo('Pastel2', max_col),
                     safe_hue(max_col))
       pal_fill <- if (identical(input$combo_pal, 'Blanco y Negro'))
         rep('white', length(pal))

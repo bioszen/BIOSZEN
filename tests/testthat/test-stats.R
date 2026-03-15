@@ -17,10 +17,11 @@ make_stats_df <- function() {
 }
 
 test_that("do_anova returns tidy results for Tukey", {
-  skip_if_not_installed("broom")
+  skip_if_not_installed("rstatix")
   df <- make_stats_df()
   res <- do_anova(df, post_hoc = "Tukey")
   expect_true("p.adj" %in% names(res))
+  expect_true(all(c("group1", "group2") %in% names(res)))
   expect_true(nrow(res) > 0)
 })
 

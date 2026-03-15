@@ -44,6 +44,7 @@ download_bundle,Descargar paquete (ZIP)
 copy_plot,Copiar gráfico
 save_version,Guardar versión
 notify_copy_success,Gráfico copiado al portapapeles.
+notify_copy_fallback_success,El portapapeles fue bloqueado por el navegador; se descargó la imagen.
 notify_copy_error_prefix,No se pudo copiar el gráfico:
 notify_version_saved,Versión guardada en el paquete.
 norm_ctrl_required,Selecciona primero el medio control.
@@ -66,6 +67,8 @@ metadata_type_unknown,No se pudo identificar el tipo de gráfico en %s. Incluye 
 metadata_type_mismatch,Aviso: %s indica tipo %s por nombre pero en Metadata figura %s - se usará %s.
 sig_remove_select,Selecciona al menos una barra para eliminar.
 curve_file_invalid,Archivo de curvas inválido: %s
+curve_embedded_invalid,Se detectaron curvas embebidas pero no se pudieron leer: %s
+curve_embedded_missing,No se encontraron curvas embebidas en este archivo agrupado o resumido. Agrega una hoja Curves_Summary para habilitar el gráfico de Curvas.
 data_file_invalid,Archivo de datos inválido: %s
 add_to_panel,Añadir al panel
 comments_label,Comentarios y sugerencias a 
@@ -253,6 +256,8 @@ norm_medium_label,Medio normalizador:
 groups_label,Grupos:
 select_groups_prompt,Selecciona primero los grupos a mostrar.
 reps_by_group,Réplicas por grupo
+reps_media_select_all,Seleccionar todas las réplicas nuevamente
+reps_group_select_all,Seleccionar todas las réplicas nuevamente
 posthoc_label,Post-hoc:
 plot_label,Gráfico
 default_title_combined,%s combinado de %s
@@ -302,3 +307,115 @@ override_apply_all,Aplicar cambios a TODOS
 no_data_plot,No hay datos para graficar
 norm_failed_generic,No fue posible normalizar; se muestran valores sin normalizar.
 norm_fallback_ctrl,"No se pudo usar el control ""%s""; se muestran valores sin normalizar."
+plot_raincloud,Raincloud
+plot_estimation,Estimación
+plot_heatmap,Mapa de calor
+plot_corr_matrix,Matriz de correlación
+multitest_method,Corrección por pruebas múltiples:
+multitest_holm,Holm
+multitest_fdr,FDR (Benjamini-Hochberg)
+multitest_bonferroni,Bonferroni
+multitest_none,Ninguna
+corr_method_kendall,Kendall
+corr_matrix_settings,Ajustes matriz de correlación
+corr_matrix_params,Parámetros para la matriz:
+corr_matrix_show_sig,Mostrar solo correlaciones significativas
+heatmap_settings,Ajustes mapa de calor
+heatmap_params,Parámetros para heatmap:
+heatmap_scale_mode,Normalización:
+heatmap_scale_none,Ninguna
+heatmap_scale_row,Por fila (parámetro)
+heatmap_scale_col,Por columna (grupo)
+heatmap_cluster_method,Método de agrupamiento:
+heatmap_dendro_rows,Mostrar dendrograma lateral (filas)
+heatmap_dendro_cols,Mostrar dendrograma superior (columnas)
+heatmap_zscore,Normalizar por z-score por parámetro
+heatmap_cluster_rows,Agrupar filas (grupos)
+heatmap_cluster_cols,Agrupar columnas (parámetros)
+heatmap_show_values,Mostrar valores en celdas
+estimation_settings,Ajustes de estimación
+estimation_boot_n,Iteraciones bootstrap:
+curves_show_ci,Mostrar banda de intervalo de confianza
+curves_show_reps,Mostrar trayectorias de réplicas
+curves_rep_alpha,Transparencia de líneas de réplicas:
+curves_geom,Renderizado de curvas:
+curves_geom_line_points,Línea + puntos
+curves_geom_line_only,Solo línea
+curves_color_mode,Modo de color de curvas:
+curves_color_by_group,Paleta por grupo
+curves_color_single,Color único
+curves_single_color,Color de línea:
+curves_ci_style,Estilo del IC:
+curves_ci_ribbon,Banda
+curves_ci_errorbar,Barras de error
+curves_stats_title,Estadística de curvas
+curves_stats_s1,Forma global de la curva (modelo)
+curves_stats_s2,Diferencias punto por punto
+curves_stats_s3,Diferencia en el punto final
+curves_stats_s4,Área bajo la curva (AUC)
+curves_stats_run,Ejecutar estadística de curvas
+stats_tab_advanced,Estadística avanzada
+resample_method,Método de remuestreo:
+resample_bootstrap,Bootstrap
+resample_permutation,Permutación
+resample_iter,Iteraciones de remuestreo:
+run_mixed_model,Ejecutar modelo de efectos mixtos
+run_advanced_stats,Ejecutar estadística avanzada
+mixed_model_not_available,No hay resultados de modelo mixto disponibles para este conjunto de datos.
+progress_advanced_stats,Ejecutando estadística avanzada...
+progress_normality,Ejecutando pruebas de normalidad...
+progress_normalization,Normalizando datos...
+download_repro_report,Descargar reporte de reproducibilidad
+tab_qc,Control de calidad
+qc_title,Control de calidad de datos
+qc_subtitle,Faltantes y conteo de outliers y tamaños muestrales para los filtros actuales.
+qc_missing_table,Valores faltantes por parámetro
+qc_outlier_table,Outliers por parámetro y grupo
+qc_sample_table,Tamaños muestrales por grupo
+advanced_stats_help,Ejecuta comparaciones por remuestreo con intervalos de confianza y modelo mixto opcional.
+qc_what_is,Qué hace esta sección:
+qc_what_is_desc,Entrega controles de calidad para los filtros actuales antes de interpretar o publicar.
+qc_missing_help,Cuenta valores no finitos o faltantes por parámetro.
+qc_outlier_help,Detecta outliers por IQR dentro de cada grupo.
+qc_outlier_iqr_multiplier_label,Rigor de outliers (multiplicador IQR)
+qc_outlier_iqr_multiplier_help,Valores bajos son más estrictos y detectan más outliers. Valores altos son más permisivos. Valor por defecto: 1.5 (regla de Tukey).
+qc_outlier_apply_button,Deseleccionar réplicas outlier detectadas
+qc_outlier_keep_n_label,Réplicas a conservar por grupo
+qc_outlier_keep_n_help,Conserva las N réplicas más reproducibles por grupo usando distancia a la mediana del grupo entre parámetros.
+qc_outlier_apply_topn_button,Aplicar límite de réplicas
+qc_outlier_group_counts,Outliers detectados por grupo
+qc_outlier_group_counts_help,Muestra el total de outliers por grupo con el rigor actual.
+qc_outlier_no_matches,No se detectaron outliers con la configuración actual.
+qc_outlier_apply_error,No fue posible detectar outliers para la selección de datos actual.
+qc_outlier_not_enough_data,No hay datos válidos suficientes para aplicar esta selección automática.
+qc_outlier_apply_done,Exclusión de outliers aplicada. Réplicas deseleccionadas: %s. Por grupo: %s
+qc_outlier_topn_invalid,Ingresa un número de réplicas mayor que 0.
+qc_outlier_topn_error,No fue posible ordenar réplicas por reproducibilidad para la selección de datos actual.
+qc_outlier_topn_no_change,No se requirieron cambios en la selección de réplicas.
+qc_outlier_topn_done,Límite de réplicas aplicado. Réplicas conservadas: %s. Por grupo: %s
+qc_sample_help,Resume tamaño muestral y cobertura de réplicas biológicas por grupo.
+sig_auto_title,Auto-generar desde test
+sig_auto_help,Construye barras de significancia directamente desde el último resultado estadístico.
+sig_auto_include,Incluir comparaciones:
+sig_auto_significant,Solo significativas
+sig_auto_all,Todas las comparaciones
+sig_auto_label_mode,Modo de etiqueta automática:
+sig_auto_label_stars,Estrellas (*, **, ***)
+sig_auto_label_p,P-value (3 decimales)
+sig_auto_replace,Reemplazar barras actuales
+sig_auto_apply,Agregar barras automático
+sig_update_label,Actualizar etiqueta seleccionada
+sig_update_select_one,Selecciona exactamente una barra para editar.
+sig_auto_no_matches,No hubo comparaciones que cumplan el criterio automático.
+sig_auto_added_n,Barras agregadas automáticamente: %s
+corr_show_ci,Mostrar intervalo de confianza
+corr_ci_style,Estilo del intervalo de confianza:
+corr_ci_band,Banda sombreada
+corr_ci_dashed,Límites punteados
+corr_ci_level,Nivel de confianza:
+mobile_go_charts_summary,Ir a gráficos y resumen
+mobile_back_controls,Volver a controles
+mobile_go_results_table,Ir a tabla de resultados
+mobile_switch_panel,Cambiar panel
+mobile_switch_view_graphics,Ver gráficos
+mobile_switch_config_panel,Panel de configuración

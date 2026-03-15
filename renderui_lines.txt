@@ -1,0 +1,22 @@
+285: output$app_announcement <- renderUI({
+1312: output$logo_img <- renderUI({
+1786: output$repSelCurvas <- renderUI({
+1811: checkboxGroupInput(
+2258: output$paramSel <- renderUI({
+2323: output$showMediosUI <- renderUI({
+2326: checkboxGroupInput("showMedios", paste0(media_label, ":"),
+2349: output$rmRepsGlobalUI <- renderUI({
+2366: checkboxGroupInput(
+2374: output$filterMediaHeader <- renderUI({
+2379: output$repsByMediaTitle <- renderUI({
+2466: output$repsStrainUI <- renderUI({
+2485: checkboxGroupInput(
+2494: output$ctrlSelUI <- renderUI({
+2532: output$groupSel <- renderUI({
+2543: checkboxGroupInput(
+2557: output$repsGrpUI <- renderUI({
+2585: checkboxGroupInput(
+3100: output$postHocUI <- renderUI({
+4460: output$adv_pal_group_ui <- renderUI({
+8303: output$plotInteractivoUI <- renderUI({
+9042: output$showImportBtn <- renderUI({
