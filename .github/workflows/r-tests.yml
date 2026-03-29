@@ -42,6 +42,7 @@ jobs:
             any::shinytest2
             any::chromote
           needs: check
+          pak-version: stable
 
       - name: Install dependencies (core lanes)
         if: matrix.os != 'ubuntu-latest' || matrix.r-version != 'release'
@@ -50,6 +51,7 @@ jobs:
           extra-packages: |
             any::testthat
           needs: check
+          pak-version: stable
 
       - name: Run full testthat suite (incl shiny e2e)
         if: matrix.os == 'ubuntu-latest' && matrix.r-version == 'release'
@@ -57,4 +59,4 @@ jobs:
 
       - name: Run core testthat suite (exclude shiny e2e)
         if: matrix.os != 'ubuntu-latest' || matrix.r-version != 'release'
-        run: Rscript -e "files <- list.files('tests/testthat', pattern='^test-.*\\\\.R$', full.names = TRUE); files <- files[basename(files) != 'test-shinytest2-integration.R']; invisible(lapply(files, testthat::test_file))"
+        run: Rscript -e "files <- list.files('tests/testthat', pattern='^test-.*[.]R$', full.names = TRUE); files <- files[basename(files) != 'test-shinytest2-integration.R']; invisible(lapply(files, testthat::test_file))"
