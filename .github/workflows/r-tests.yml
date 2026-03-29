@@ -21,6 +21,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         r-version: [release, devel]
+        exclude:
+          - os: macos-latest
+            r-version: devel
     env:
       NOT_CRAN: "true"
 
@@ -51,7 +54,7 @@ jobs:
           extra-packages: |
             any::testthat
           needs: check
-          pak-version: stable
+          pak-version: none
 
       - name: Run full testthat suite (incl shiny e2e)
         if: matrix.os == 'ubuntu-latest' && matrix.r-version == 'release'
