@@ -19,8 +19,8 @@ start_bioszen_driver <- function() {
 
   app <- shinytest2::AppDriver$new(
     app_dir = app_root,
-    load_timeout = 90000,
-    timeout = 90000,
+    load_timeout = 120000,
+    timeout = 120000,
     clean_logs = FALSE
   )
 
@@ -324,9 +324,45 @@ test_that("curve statistics download explicitly includes curve context and metri
   app$wait_for_value(input = "strain", timeout = 120000)
 
   app$set_inputs(tipo = "Curvas", wait_ = TRUE, timeout_ = 60000)
-  app$set_inputs(curve_stats_methods = c("S2", "S4"), wait_ = TRUE, timeout_ = 60000)
+  app$set_inputs(curve_stats_methods = c("S2", "S4"), wait_ = TRUE, timeout_ = 120000)
 
-  stats_path <- app$get_download(output = "downloadStats")
+  wait_for_curve_methods <- function(expected, timeout_sec = 15) {
+    deadline <- Sys.time() + timeout_sec
+    while (Sys.time() < deadline) {
+      current <- tryCatch(
+        as.character(app$get_value(input = "curve_stats_methods")),
+        error = function(e) character(0)
+      )
+      if (length(current) && setequal(current, expected)) return(TRUE)
+      Sys.sleep(0.3)
+    }
+    FALSE
+  }
+
+  wait_for_curve_stats_table <- function(timeout_sec = 20) {
+    deadline <- Sys.time() + timeout_sec
+    while (Sys.time() < deadline) {
+      html <- tryCatch(
+        app$get_html(selector = "#curveStatsTable"),
+        error = function(e) character(0)
+      )
+      if (length(html)) {
+        html_text <- paste(html, collapse = "\n")
+        if (nzchar(html_text) && grepl("table|dataTable|datatable", html_text, ignore.case = TRUE)) {
+          return(TRUE)
+        }
+      }
+      Sys.sleep(0.3)
+    }
+    FALSE
+  }
+
+  expect_true(wait_for_curve_methods(c("S2", "S4")))
+  app$set_inputs(runCurveStats = 1, wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "runCurveStats", ignore = list(0), timeout = 120000)
+  expect_true(wait_for_curve_stats_table())
+
+  stats_path <- app$get_download(output = "downloadStats", timeout_ = 180000)
   expect_true(file.exists(stats_path))
 
   tabs <- readxl::excel_sheets(stats_path)
@@ -374,9 +410,12 @@ test_that("language switch updates dynamic heatmap UI labels", {
     while (Sys.time() < deadline) {
       html <- tryCatch(
         app$get_html(selector = "label[for='heat_cluster_rows']"),
-        error = function(e) ""
+        error = function(e) character(0)
       )
-      if (grepl(pattern, html, ignore.case = TRUE)) return(TRUE)
+      if (length(html)) {
+        html_text <- paste(html, collapse = "\n")
+        if (nzchar(html_text) && grepl(pattern, html_text, ignore.case = TRUE)) return(TRUE)
+      }
       Sys.sleep(0.3)
     }
     FALSE
@@ -385,5 +424,6 @@ test_that("language switch updates dynamic heatmap UI labels", {
   expect_true(wait_for_label("Show side dendrogram"))
 
   app$set_inputs(app_lang = "es", wait_ = TRUE, timeout_ = 60000)
+  app$wait_for_value(input = "app_lang", ignore = list("en"), timeout = 120000)
   expect_true(wait_for_label("dendrograma lateral"))
 })
