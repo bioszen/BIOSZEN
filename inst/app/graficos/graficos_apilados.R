@@ -72,11 +72,13 @@ build_apiladas_plot_impl <- function(ctx) {
       df_long[[eje_x]] <- wrap_label(df_long[[eje_x]], lines = input$x_wrap_lines)
     }
 
+    flip_plot <- isTRUE(input$plot_flip)
     x_ang <- get_x_angle(
       n = length(unique(df_long[[eje_x]])),
       angle_input = input$x_angle
     )
-    b_mar <- get_bottom_margin(x_ang, input$x_wrap, input$x_wrap_lines)
+    x_ang_cat <- if (flip_plot && is.na(input$x_angle)) 0 else x_ang
+    b_mar <- get_bottom_margin(x_ang_cat, input$x_wrap, input$x_wrap_lines)
     extra_bottom <- ceiling(input$fs_axis * 0.8)
     b_mar <- b_mar + extra_bottom
 
@@ -211,9 +213,48 @@ build_apiladas_plot_impl <- function(ctx) {
     label_tops <- label_tops %>%
       transmute(group = group, param = Parametro, y_top = y_top)
 
-    base_margin <- margin_adj(12, 18, b_mar, 28)
+    base_margin <- if (flip_plot) {
+      margin_adj(12, 18, 28, b_mar)
+    } else {
+      margin_adj(12, 18, b_mar, 28)
+    }
+    y_axis_label <- if (nzchar(input$yLab)) input$yLab else ps$Y_Title
+    axis_title_x_el <- if (flip_plot) {
+      element_text(size = fs_axis, face = "bold", colour = "black")
+    } else {
+      element_blank()
+    }
+    axis_title_y_el <- if (flip_plot) {
+      element_blank()
+    } else {
+      element_text(size = fs_axis, face = "bold", colour = "black")
+    }
+    axis_text_x_el <- if (flip_plot) {
+      element_text(size = fs_axis, colour = "black")
+    } else {
+      element_text(
+        size = fs_axis,
+        angle = x_ang_cat,
+        hjust = ifelse(x_ang_cat == 0, .5, 1),
+        colour = "black"
+      )
+    }
+    axis_text_y_el <- if (flip_plot) {
+      element_text(
+        size = fs_axis,
+        angle = x_ang_cat,
+        hjust = ifelse(x_ang_cat == 0, .5, 1),
+        colour = "black"
+      )
+    } else {
+      element_text(size = fs_axis, colour = "black")
+    }
     p <- p +
-      labs(title = input$plotTitle, x = NULL, y = if (nzchar(input$yLab)) input$yLab else ps$Y_Title) +
+      labs(
+        title = input$plotTitle,
+        x = if (flip_plot) y_axis_label else NULL,
+        y = if (flip_plot) NULL else y_axis_label
+      ) +
       scale_y_continuous(
         limits = c(0, input$ymax),
         breaks = seq(0, input$ymax, by = input$ybreak),
@@ -224,14 +265,10 @@ build_apiladas_plot_impl <- function(ctx) {
       theme(
         plot.margin = base_margin,
         plot.title = element_text(size = fs_title, face = "bold", colour = "black"),
-        axis.title.y = element_text(size = fs_axis, face = "bold", colour = "black"),
-        axis.text.x = element_text(
-          size = fs_axis,
-          angle = x_ang,
-          hjust = ifelse(x_ang == 0, .5, 1),
-          colour = "black"
-        ),
-        axis.text.y = element_text(size = fs_axis, colour = "black"),
+        axis.title.x = axis_title_x_el,
+        axis.title.y = axis_title_y_el,
+        axis.text.x = axis_text_x_el,
+        axis.text.y = axis_text_y_el,
         axis.line = element_line(linewidth = axis_size, colour = "black"),
         axis.ticks = element_line(linewidth = axis_size, colour = "black"),
         axis.ticks.length = unit(4, "pt"),
@@ -249,6 +286,9 @@ build_apiladas_plot_impl <- function(ctx) {
       plot_height = input$plot_h,
       default_param = input$sig_param
     )
+    if (flip_plot) {
+      p <- suppressMessages(p + coord_flip(clip = "off"))
+    }
 
     p
   })

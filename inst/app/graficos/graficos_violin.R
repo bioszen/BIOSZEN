@@ -28,11 +28,13 @@ build_violin_plot_impl <- function(ctx) {
       df_labels$Label <- factor(df_labels$Label, levels = levels(df_plot$Label))
 
       pal <- palette_for_labels(df_labels, levels(df_plot$Label))
+      flip_plot <- isTRUE(input$plot_flip)
       x_ang <- get_x_angle(
         n = nlevels(df_plot$Label),
         angle_input = input$x_angle
       )
-      b_mar <- get_bottom_margin(x_ang, input$x_wrap, input$x_wrap_lines)
+      x_ang_cat <- if (flip_plot && is.na(input$x_angle)) 0 else x_ang
+      b_mar <- get_bottom_margin(x_ang_cat, input$x_wrap, input$x_wrap_lines)
 
       v_width <- input$violin_width %||% 0.45
       if (!is.finite(v_width) || v_width <= 0) v_width <- 0.45
@@ -122,9 +124,47 @@ build_violin_plot_impl <- function(ctx) {
           scale_fill_manual(values = pal)
       }
 
-      base_margin <- margin_adj(12, 18, b_mar, 28)
+      base_margin <- if (flip_plot) {
+        margin_adj(12, 18, 28, b_mar)
+      } else {
+        margin_adj(12, 18, b_mar, 28)
+      }
+      axis_title_x_el <- if (flip_plot) {
+        element_text(size = fs_axis, face = "bold", colour = "black")
+      } else {
+        element_blank()
+      }
+      axis_title_y_el <- if (flip_plot) {
+        element_blank()
+      } else {
+        element_text(size = fs_axis, face = "bold", colour = "black")
+      }
+      axis_text_x_el <- if (flip_plot) {
+        element_text(size = fs_axis, colour = "black")
+      } else {
+        element_text(
+          size = fs_axis,
+          angle = x_ang_cat,
+          hjust = ifelse(x_ang_cat == 0, .5, 1),
+          colour = "black"
+        )
+      }
+      axis_text_y_el <- if (flip_plot) {
+        element_text(
+          size = fs_axis,
+          angle = x_ang_cat,
+          hjust = ifelse(x_ang_cat == 0, .5, 1),
+          colour = "black"
+        )
+      } else {
+        element_text(size = fs_axis, colour = "black")
+      }
       p <- p +
-        labs(title = input$plotTitle, y = ylab, x = NULL) +
+        labs(
+          title = input$plotTitle,
+          x = if (flip_plot) ylab else NULL,
+          y = if (flip_plot) NULL else ylab
+        ) +
         scale_y_continuous(
           limits = c(0, ymax),
           breaks = seq(0, ymax, by = ybreak),
@@ -136,14 +176,10 @@ build_violin_plot_impl <- function(ctx) {
         theme(
           plot.margin = base_margin,
           plot.title = element_text(size = fs_title, face = "bold", colour = "black"),
-          axis.title.y = element_text(size = fs_axis, face = "bold", colour = "black"),
-          axis.text.x = element_text(
-            size = fs_axis,
-            angle = x_ang,
-            hjust = ifelse(x_ang == 0, .5, 1),
-            colour = "black"
-          ),
-          axis.text.y = element_text(size = fs_axis, colour = "black"),
+          axis.title.x = axis_title_x_el,
+          axis.title.y = axis_title_y_el,
+          axis.text.x = axis_text_x_el,
+          axis.text.y = axis_text_y_el,
           axis.line = element_line(linewidth = axis_size, colour = "black"),
           axis.ticks = element_line(linewidth = axis_size, colour = "black"),
           axis.ticks.length = unit(4, "pt"),
@@ -167,6 +203,9 @@ build_violin_plot_impl <- function(ctx) {
         margin_base = base_margin,
         plot_height = input$plot_h
       )
+      if (flip_plot) {
+        p <- suppressMessages(p + coord_flip(clip = "off"))
+      }
       if (show_legend) {
         p <- apply_square_legend_right(p)
       }
@@ -190,11 +229,13 @@ build_violin_plot_impl <- function(ctx) {
 
     media_levels <- if (is.factor(df_raw$Media)) levels(df_raw$Media) else unique(as.character(df_raw$Media))
     pal <- palette_for_levels(media_levels)
+    flip_plot <- isTRUE(input$plot_flip)
     x_ang <- get_x_angle(
       n = nlevels(factor(df_raw$Media)),
       angle_input = input$x_angle
     )
-    b_mar <- get_bottom_margin(x_ang, input$x_wrap, input$x_wrap_lines)
+    x_ang_cat <- if (flip_plot && is.na(input$x_angle)) 0 else x_ang
+    b_mar <- get_bottom_margin(x_ang_cat, input$x_wrap, input$x_wrap_lines)
 
     v_width <- input$violin_width %||% 0.45
     if (!is.finite(v_width) || v_width <= 0) v_width <- 0.45
@@ -286,9 +327,47 @@ build_violin_plot_impl <- function(ctx) {
         scale_fill_manual(values = pal)
     }
 
-    base_margin <- margin_adj(12, 18, b_mar, 28)
+    base_margin <- if (flip_plot) {
+      margin_adj(12, 18, 28, b_mar)
+    } else {
+      margin_adj(12, 18, b_mar, 28)
+    }
+    axis_title_x_el <- if (flip_plot) {
+      element_text(size = fs_axis, face = "bold", colour = "black")
+    } else {
+      element_blank()
+    }
+    axis_title_y_el <- if (flip_plot) {
+      element_blank()
+    } else {
+      element_text(size = fs_axis, face = "bold", colour = "black")
+    }
+    axis_text_x_el <- if (flip_plot) {
+      element_text(size = fs_axis, colour = "black")
+    } else {
+      element_text(
+        size = fs_axis,
+        angle = x_ang_cat,
+        hjust = ifelse(x_ang_cat == 0, .5, 1),
+        colour = "black"
+      )
+    }
+    axis_text_y_el <- if (flip_plot) {
+      element_text(
+        size = fs_axis,
+        angle = x_ang_cat,
+        hjust = ifelse(x_ang_cat == 0, .5, 1),
+        colour = "black"
+      )
+    } else {
+      element_text(size = fs_axis, colour = "black")
+    }
     p <- p +
-      labs(title = input$plotTitle, y = ylab, x = NULL) +
+      labs(
+        title = input$plotTitle,
+        x = if (flip_plot) ylab else NULL,
+        y = if (flip_plot) NULL else ylab
+      ) +
       scale_y_continuous(
         limits = c(0, ymax),
         breaks = seq(0, ymax, by = ybreak),
@@ -300,14 +379,10 @@ build_violin_plot_impl <- function(ctx) {
       theme(
         plot.margin = base_margin,
         plot.title = element_text(size = fs_title, face = "bold", colour = "black"),
-        axis.title.y = element_text(size = fs_axis, face = "bold", colour = "black"),
-        axis.text.x = element_text(
-          size = fs_axis,
-          angle = x_ang,
-          hjust = ifelse(x_ang == 0, .5, 1),
-          colour = "black"
-        ),
-        axis.text.y = element_text(size = fs_axis, colour = "black"),
+        axis.title.x = axis_title_x_el,
+        axis.title.y = axis_title_y_el,
+        axis.text.x = axis_text_x_el,
+        axis.text.y = axis_text_y_el,
         axis.line = element_line(linewidth = axis_size, colour = "black"),
         axis.ticks = element_line(linewidth = axis_size, colour = "black"),
         axis.ticks.length = unit(4, "pt"),
@@ -327,6 +402,9 @@ build_violin_plot_impl <- function(ctx) {
       margin_base = base_margin,
       plot_height = input$plot_h
     )
+    if (flip_plot) {
+      p <- suppressMessages(p + coord_flip(clip = "off"))
+    }
     if (show_legend) {
       p <- apply_square_legend_right(p)
     }

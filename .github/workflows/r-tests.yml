@@ -14,7 +14,13 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }}, R-${{ matrix.r-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        r-version: [release, devel]
     env:
       NOT_CRAN: "true"
 
@@ -24,8 +30,11 @@ jobs:
 
       - name: Set up R
         uses: r-lib/actions/setup-r@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590
+        with:
+          r-version: ${{ matrix.r-version }}
 
-      - name: Install dependencies
+      - name: Install dependencies (full lane)
+        if: matrix.os == 'ubuntu-latest' && matrix.r-version == 'release'
         uses: r-lib/actions/setup-r-dependencies@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590
         with:
           extra-packages: |
@@ -34,5 +43,18 @@ jobs:
             any::chromote
           needs: check
 
-      - name: Run testthat suite
+      - name: Install dependencies (core lanes)
+        if: matrix.os != 'ubuntu-latest' || matrix.r-version != 'release'
+        uses: r-lib/actions/setup-r-dependencies@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590
+        with:
+          extra-packages: |
+            any::testthat
+          needs: check
+
+      - name: Run full testthat suite (incl shiny e2e)
+        if: matrix.os == 'ubuntu-latest' && matrix.r-version == 'release'
         run: Rscript -e "testthat::test_dir('tests/testthat')"
+
+      - name: Run core testthat suite (exclude shiny e2e)
+        if: matrix.os != 'ubuntu-latest' || matrix.r-version != 'release'
+        run: Rscript -e "files <- list.files('tests/testthat', pattern='^test-.*\\\\.R$', full.names = TRUE); files <- files[basename(files) != 'test-shinytest2-integration.R']; invisible(lapply(files, testthat::test_file))"

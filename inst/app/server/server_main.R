@@ -972,10 +972,11 @@ server <- function(input, output, session) {
     if (input$tipo %in% c("Boxplot", "Barras", "Apiladas", "Violin")) {
       meta <- add_row(
         meta,
-        Campo = c("pt_size", "x_angle", "x_wrap", "x_wrap_lines"),
+        Campo = c("pt_size", "x_angle", "plot_flip", "x_wrap", "x_wrap_lines"),
         Valor = c(
           as.character(input$pt_size),
           as.character(input$x_angle),
+          as.character(input$plot_flip %||% FALSE),
           as.character(input$x_wrap),
           as.character(input$x_wrap_lines)
         )
@@ -10199,13 +10200,24 @@ server <- function(input, output, session) {
     tryCatch(
       {
         if (input$tipo == "Apiladas") {
-          # Devuelve un objeto *plotly* listo
-          build_plotly_stack(
-            scope_sel,
-            strain_sel,
-            width  = input$plot_w,
-            height = input$plot_h
-          )
+          if (isTRUE(input$plot_flip)) {
+            p_stack <- build_plot(scope_sel, strain_sel, "Apiladas", for_interactive = TRUE)
+            safe_ggplotly(
+              p_stack,
+              tooltip = c("x", "y", "name", "text"),
+              width = input$plot_w,
+              height = input$plot_h,
+              originalData = FALSE
+            )
+          } else {
+            # Devuelve un objeto *plotly* listo
+            build_plotly_stack(
+              scope_sel,
+              strain_sel,
+              width  = input$plot_w,
+              height = input$plot_h
+            )
+          }
         } else {
           # Todo lo demÃƒÂ¡s sigue con tu funciÃƒÂ³n ggplot2
           build_plot(scope_sel, strain_sel, input$tipo, for_interactive = TRUE)
@@ -11777,6 +11789,7 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("margin_left_adj"))) updateNumericInput(session, "margin_left_adj", value = as.numeric(v))
     if (!is.null(v <- get_val("pt_size")))     updateNumericInput(session, "pt_size",     value = as.numeric(v))
     if (!is.null(v <- get_val("x_angle")))     updateNumericInput(session, "x_angle",     value = as.numeric(v))
+    if (!is.null(v <- get_val("plot_flip")))   updateCheckboxInput(session, "plot_flip", value = parse_bool(v))
     if (!is.null(v <- get_val("x_wrap")))      updateCheckboxInput(session, "x_wrap", value = tolower(v) == "true")
     if (!is.null(v <- get_val("x_wrap_lines")))updateNumericInput(session, "x_wrap_lines", value = as.numeric(v))
     if (!is.null(v <- get_val("legend_right"))) updateCheckboxInput(session, "legend_right", value = tolower(v) == "true")

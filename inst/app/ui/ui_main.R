@@ -1707,6 +1707,11 @@ ui <- fluidPage(
                      step  = 5
                    ),
                    checkboxInput(
+                     "plot_flip",
+                     tr("plot_flip"),
+                     FALSE
+                   ),
+                   checkboxInput(
                      "x_wrap",
                      tr("x_wrap"),
                      FALSE

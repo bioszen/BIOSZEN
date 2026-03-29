@@ -215,11 +215,13 @@ build_barras_plot_impl <- function(ctx) {
         resumen$Label <- factor(as.character(resumen$Label), levels = unique(as.character(resumen$Label)))
       }
 
+      flip_plot <- isTRUE(input$plot_flip)
       x_ang <- get_x_angle(
         n = nlevels(resumen$Label),
         angle_input = input$x_angle
       )
-      b_mar <- get_bottom_margin(x_ang, input$x_wrap, input$x_wrap_lines)
+      x_ang_cat <- if (flip_plot && is.na(input$x_angle)) 0 else x_ang
+      b_mar <- get_bottom_margin(x_ang_cat, input$x_wrap, input$x_wrap_lines)
       df_labels$Label <- factor(df_labels$Label, levels = levels(resumen$Label))
       pal <- palette_for_labels(df_labels, levels(resumen$Label))
 
@@ -283,9 +285,47 @@ build_barras_plot_impl <- function(ctx) {
         lw = input$errbar_size %||% 0.8
       )
 
-      base_margin <- margin_adj(12, 18, b_mar, 28)
+      base_margin <- if (flip_plot) {
+        margin_adj(12, 18, 28, b_mar)
+      } else {
+        margin_adj(12, 18, b_mar, 28)
+      }
+      axis_title_x_el <- if (flip_plot) {
+        element_text(size = fs_axis, face = "bold", colour = "black")
+      } else {
+        element_blank()
+      }
+      axis_title_y_el <- if (flip_plot) {
+        element_blank()
+      } else {
+        element_text(size = fs_axis, face = "bold", colour = "black")
+      }
+      axis_text_x_el <- if (flip_plot) {
+        element_text(size = fs_axis, colour = "black")
+      } else {
+        element_text(
+          size = fs_axis,
+          angle = x_ang_cat,
+          hjust = ifelse(x_ang_cat == 0, .5, 1),
+          colour = "black"
+        )
+      }
+      axis_text_y_el <- if (flip_plot) {
+        element_text(
+          size = fs_axis,
+          angle = x_ang_cat,
+          hjust = ifelse(x_ang_cat == 0, .5, 1),
+          colour = "black"
+        )
+      } else {
+        element_text(size = fs_axis, colour = "black")
+      }
       p <- p +
-        labs(title = input$plotTitle, y = ylab, x = NULL) +
+        labs(
+          title = input$plotTitle,
+          x = if (flip_plot) ylab else NULL,
+          y = if (flip_plot) NULL else ylab
+        ) +
         scale_y_continuous(
           limits = c(0, ymax),
           breaks = seq(0, ymax, by = ybreak),
@@ -297,14 +337,10 @@ build_barras_plot_impl <- function(ctx) {
         theme(
           plot.margin = base_margin,
           plot.title = element_text(size = fs_title, face = "bold", colour = "black"),
-          axis.title.y = element_text(size = fs_axis, face = "bold", colour = "black"),
-          axis.text.x = element_text(
-            size = fs_axis,
-            angle = x_ang,
-            hjust = ifelse(x_ang == 0, .5, 1),
-            colour = "black"
-          ),
-          axis.text.y = element_text(size = fs_axis, colour = "black"),
+          axis.title.x = axis_title_x_el,
+          axis.title.y = axis_title_y_el,
+          axis.text.x = axis_text_x_el,
+          axis.text.y = axis_text_y_el,
           axis.line = element_line(linewidth = axis_size, colour = "black"),
           axis.ticks = element_line(linewidth = axis_size, colour = "black"),
           axis.ticks.length = unit(4, "pt"),
@@ -326,6 +362,9 @@ build_barras_plot_impl <- function(ctx) {
         margin_base = base_margin,
         plot_height = input$plot_h
       )
+      if (flip_plot) {
+        p <- suppressMessages(p + coord_flip(clip = "off"))
+      }
       if (show_legend) {
         p <- apply_square_legend_right(p)
       }
@@ -345,11 +384,13 @@ build_barras_plot_impl <- function(ctx) {
           annotate("text", x = 0, y = 0, label = msg_no_data_sel)
       )
     }
+    flip_plot <- isTRUE(input$plot_flip)
     x_ang <- get_x_angle(
       n = nlevels(factor(df_raw$Media)),
       angle_input = input$x_angle
     )
-    b_mar <- get_bottom_margin(x_ang, input$x_wrap, input$x_wrap_lines)
+    x_ang_cat <- if (flip_plot && is.na(input$x_angle)) 0 else x_ang
+    b_mar <- get_bottom_margin(x_ang_cat, input$x_wrap, input$x_wrap_lines)
     summary_mode_active <- isTRUE(is_summary_mode())
     sd_col <- resolve_prefixed_param_col(df_raw, "SD_", param_sel)
     resumen <- df_raw %>%
@@ -423,9 +464,47 @@ build_barras_plot_impl <- function(ctx) {
       x_col = "Media",
       lw = input$errbar_size %||% 0.8
     )
-    base_margin <- margin_adj(12, 18, b_mar, 28)
+    base_margin <- if (flip_plot) {
+      margin_adj(12, 18, 28, b_mar)
+    } else {
+      margin_adj(12, 18, b_mar, 28)
+    }
+    axis_title_x_el <- if (flip_plot) {
+      element_text(size = fs_axis, face = "bold", colour = "black")
+    } else {
+      element_blank()
+    }
+    axis_title_y_el <- if (flip_plot) {
+      element_blank()
+    } else {
+      element_text(size = fs_axis, face = "bold", colour = "black")
+    }
+    axis_text_x_el <- if (flip_plot) {
+      element_text(size = fs_axis, colour = "black")
+    } else {
+      element_text(
+        size = fs_axis,
+        angle = x_ang_cat,
+        hjust = ifelse(x_ang_cat == 0, .5, 1),
+        colour = "black"
+      )
+    }
+    axis_text_y_el <- if (flip_plot) {
+      element_text(
+        size = fs_axis,
+        angle = x_ang_cat,
+        hjust = ifelse(x_ang_cat == 0, .5, 1),
+        colour = "black"
+      )
+    } else {
+      element_text(size = fs_axis, colour = "black")
+    }
     p <- p +
-      labs(title = input$plotTitle, y = ylab, x = NULL) +
+      labs(
+        title = input$plotTitle,
+        x = if (flip_plot) ylab else NULL,
+        y = if (flip_plot) NULL else ylab
+      ) +
       scale_y_continuous(
         limits = c(0, ymax),
         breaks = seq(0, ymax, by = ybreak),
@@ -437,14 +516,10 @@ build_barras_plot_impl <- function(ctx) {
       theme(
         plot.margin = base_margin,
         plot.title = element_text(size = fs_title, face = "bold", colour = "black"),
-        axis.title.y = element_text(size = fs_axis, face = "bold", colour = "black"),
-        axis.text.x = element_text(
-          size = fs_axis,
-          angle = x_ang,
-          hjust = ifelse(x_ang == 0, .5, 1),
-          colour = "black"
-        ),
-        axis.text.y = element_text(size = fs_axis, colour = "black"),
+        axis.title.x = axis_title_x_el,
+        axis.title.y = axis_title_y_el,
+        axis.text.x = axis_text_x_el,
+        axis.text.y = axis_text_y_el,
         axis.line = element_line(linewidth = axis_size, colour = "black"),
         axis.ticks = element_line(linewidth = axis_size, colour = "black"),
         axis.ticks.length = unit(4, "pt"),
@@ -461,6 +536,9 @@ build_barras_plot_impl <- function(ctx) {
       margin_base = base_margin,
       plot_height = input$plot_h
     )
+    if (flip_plot) {
+      p <- suppressMessages(p + coord_flip(clip = "off"))
+    }
     if (show_legend) {
       p <- apply_square_legend_right(p)
     }

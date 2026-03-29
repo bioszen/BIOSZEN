@@ -220,6 +220,7 @@ stats_tab_significance,Significancia
 stats_title,Análisis estadísticos
 toggle_all,Seleccionar / Deseleccionar todos
 x_angle,Ángulo etiquetas X:
+plot_flip,Voltear orientación (horizontal)
 x_wrap,Ajustar etiquetas X
 x_wrap_lines,Máx. líneas:
 y_axis_settings,Ajustes Eje Y

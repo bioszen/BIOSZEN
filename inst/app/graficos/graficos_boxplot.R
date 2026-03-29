@@ -126,11 +126,13 @@ build_boxplot_plot_impl <- function(ctx) {
         mutate(group = as.character(Label)) %>%
         dplyr::select(group, q1, median, q3, lower, upper)
       pal <- palette_for_labels(df_labels, levels(df_plot$Label))
+      flip_plot <- isTRUE(input$plot_flip)
       x_ang <- get_x_angle(
         n = nlevels(df_plot$Label),
         angle_input = input$x_angle
       )
-      b_mar <- get_bottom_margin(x_ang, input$x_wrap, input$x_wrap_lines)
+      x_ang_cat <- if (flip_plot && is.na(input$x_angle)) 0 else x_ang
+      b_mar <- get_bottom_margin(x_ang_cat, input$x_wrap, input$x_wrap_lines)
       p <- ggplot(df_plot, aes(Label, Valor))
       show_legend <- legend_right_enabled(input$colorMode)
 
@@ -181,9 +183,47 @@ build_boxplot_plot_impl <- function(ctx) {
           scale_fill_manual(values = pal)
       }
 
-      base_margin <- margin_adj(5.5, 5.5, b_mar, 25)
+      base_margin <- if (flip_plot) {
+        margin_adj(5.5, 5.5, 25, b_mar)
+      } else {
+        margin_adj(5.5, 5.5, b_mar, 25)
+      }
+      axis_title_x_el <- if (flip_plot) {
+        element_text(size = fs_axis, face = "bold", colour = "black")
+      } else {
+        element_blank()
+      }
+      axis_title_y_el <- if (flip_plot) {
+        element_blank()
+      } else {
+        element_text(size = fs_axis, face = "bold", colour = "black")
+      }
+      axis_text_x_el <- if (flip_plot) {
+        element_text(size = fs_axis, colour = "black")
+      } else {
+        element_text(
+          size = fs_axis,
+          angle = x_ang_cat,
+          hjust = ifelse(x_ang_cat == 0, .5, 1),
+          colour = "black"
+        )
+      }
+      axis_text_y_el <- if (flip_plot) {
+        element_text(
+          size = fs_axis,
+          angle = x_ang_cat,
+          hjust = ifelse(x_ang_cat == 0, .5, 1),
+          colour = "black"
+        )
+      } else {
+        element_text(size = fs_axis, colour = "black")
+      }
       p <- p +
-        labs(title = input$plotTitle, y = ylab, x = NULL) +
+        labs(
+          title = input$plotTitle,
+          x = if (flip_plot) ylab else NULL,
+          y = if (flip_plot) NULL else ylab
+        ) +
         scale_y_continuous(
           limits = c(0, ymax_plot),
           breaks = seq(0, ymax_plot, by = ybreak),
@@ -195,14 +235,10 @@ build_boxplot_plot_impl <- function(ctx) {
         theme(
           plot.margin = base_margin,
           plot.title = element_text(size = fs_title, face = "bold"),
-          axis.title.y = element_text(size = fs_axis, face = "bold", colour = "black"),
-          axis.text.x = element_text(
-            size = fs_axis,
-            angle = x_ang,
-            hjust = ifelse(x_ang == 0, .5, 1),
-            colour = "black"
-          ),
-          axis.text.y = element_text(size = fs_axis, colour = "black"),
+          axis.title.x = axis_title_x_el,
+          axis.title.y = axis_title_y_el,
+          axis.text.x = axis_text_x_el,
+          axis.text.y = axis_text_y_el,
           axis.line = element_line(linewidth = axis_size, colour = "black"),
           axis.ticks = element_line(linewidth = axis_size, colour = "black"),
           panel.grid = element_blank(),
@@ -233,6 +269,9 @@ build_boxplot_plot_impl <- function(ctx) {
         input$box_w,
         input$errbar_size
       )
+      if (flip_plot) {
+        p <- suppressMessages(p + coord_flip(clip = "off"))
+      }
       if (!is.null(box_stats)) {
         attr(p, "box_stats") <- box_stats
       }
@@ -281,11 +320,13 @@ build_boxplot_plot_impl <- function(ctx) {
       ) %>%
       mutate(group = as.character(Media)) %>%
       dplyr::select(group, q1, median, q3, lower, upper)
+    flip_plot <- isTRUE(input$plot_flip)
     x_ang <- get_x_angle(
       n = nlevels(factor(df$Media)),
       angle_input = input$x_angle
     )
-    b_mar <- get_bottom_margin(x_ang, input$x_wrap, input$x_wrap_lines)
+    x_ang_cat <- if (flip_plot && is.na(input$x_angle)) 0 else x_ang
+    b_mar <- get_bottom_margin(x_ang_cat, input$x_wrap, input$x_wrap_lines)
     show_legend <- legend_right_enabled(colourMode)
     if (colourMode == "Blanco y Negro") {
       p <- ggplot(df, aes(Media, .data[[param_sel]])) +
@@ -337,9 +378,47 @@ build_boxplot_plot_impl <- function(ctx) {
         ) +
         scale_fill_manual(values = pal)
     }
-    base_margin <- margin_adj(5.5, 5.5, b_mar, 25)
+    base_margin <- if (flip_plot) {
+      margin_adj(5.5, 5.5, 25, b_mar)
+    } else {
+      margin_adj(5.5, 5.5, b_mar, 25)
+    }
+    axis_title_x_el <- if (flip_plot) {
+      element_text(size = fs_axis, face = "bold", colour = "black")
+    } else {
+      element_blank()
+    }
+    axis_title_y_el <- if (flip_plot) {
+      element_blank()
+    } else {
+      element_text(size = fs_axis, face = "bold", colour = "black")
+    }
+    axis_text_x_el <- if (flip_plot) {
+      element_text(size = fs_axis, colour = "black")
+    } else {
+      element_text(
+        size = fs_axis,
+        angle = x_ang_cat,
+        hjust = ifelse(x_ang_cat == 0, .5, 1),
+        colour = "black"
+      )
+    }
+    axis_text_y_el <- if (flip_plot) {
+      element_text(
+        size = fs_axis,
+        angle = x_ang_cat,
+        hjust = ifelse(x_ang_cat == 0, .5, 1),
+        colour = "black"
+      )
+    } else {
+      element_text(size = fs_axis, colour = "black")
+    }
     p <- p +
-      labs(title = input$plotTitle, y = ylab, x = NULL) +
+      labs(
+        title = input$plotTitle,
+        x = if (flip_plot) ylab else NULL,
+        y = if (flip_plot) NULL else ylab
+      ) +
       scale_y_continuous(
         limits = c(0, ymax_plot),
         breaks = seq(0, ymax_plot, by = ybreak),
@@ -351,14 +430,10 @@ build_boxplot_plot_impl <- function(ctx) {
       theme(
         plot.margin = base_margin,
         plot.title = element_text(size = fs_title, face = "bold"),
-        axis.title.y = element_text(size = fs_axis, face = "bold", colour = "black"),
-        axis.text.x = element_text(
-          size = fs_axis,
-          angle = x_ang,
-          hjust = ifelse(x_ang == 0, .5, 1),
-          colour = "black"
-        ),
-        axis.text.y = element_text(size = fs_axis, colour = "black"),
+        axis.title.x = axis_title_x_el,
+        axis.title.y = axis_title_y_el,
+        axis.text.x = axis_text_x_el,
+        axis.text.y = axis_text_y_el,
         axis.line = element_line(linewidth = axis_size, colour = "black"),
         axis.ticks = element_line(linewidth = axis_size, colour = "black"),
         panel.grid = element_blank(),
@@ -385,6 +460,9 @@ build_boxplot_plot_impl <- function(ctx) {
       input$box_w,
       input$errbar_size
     )
+    if (flip_plot) {
+      p <- suppressMessages(p + coord_flip(clip = "off"))
+    }
 
     p
   })

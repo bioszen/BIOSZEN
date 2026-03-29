@@ -83,23 +83,27 @@ Curves requirements:
 - Best for raw replicate distributions.
 - Control spread with jitter, box width, and point size.
 - Add significance bars or labels after stats.
+- **Flip orientation (horizontal)** option swaps `X`/`Y` axes to improve readability when group labels are long.
 
 ### Barplot
 
 - Best for summarized comparison by group.
 - Supports mean with error bars and optional raw points (raw mode).
 - Supports manual and automatic significance annotations.
+- **Flip orientation (horizontal)** option renders horizontal bars for clearer category-to-category comparison.
 
 ### Violin
 
 - Best for distribution shape with replicate overlays.
 - Supports same annotation workflow as boxplot/barplot.
+- **Flip orientation (horizontal)** option swaps axes to prioritize readable group/category labels.
 
 ### Stacked
 
 - Use parameter selector and parameter order controls.
 - Configure deviation bars and parameter color behavior.
 - Supports label or bracket significance mode.
+- **Flip orientation (horizontal)** option is available for stacked views when a horizontal layout is easier to read.
 
 ### Correlation
 
@@ -169,6 +173,36 @@ Enable **Normalize by control** and choose a control medium.
 - t-test
 - Wilcoxon
 
+### R packages used by statistical test
+
+Normality tests:
+
+- Shapiro-Wilk: `stats::shapiro.test`
+- Kolmogorov-Smirnov: `stats::ks.test`
+- Anderson-Darling: `nortest::ad.test`
+
+Significance tests (main panel):
+
+- ANOVA: `stats::aov`
+- Kruskal-Wallis: `stats::kruskal.test`
+- t-test: `rstatix::t_test` and `rstatix::pairwise_t_test`
+- Wilcoxon: `rstatix::wilcox_test`
+- Multiple-testing correction (Holm/FDR/Bonferroni): `stats::p.adjust`
+
+Post hoc paths by selection:
+
+- Tukey and Games-Howell: `rstatix`
+- Dunn: `rstatix::dunn_test`
+- Dunnett: `DescTools::DunnettTest`
+- Scheffe, Conover, Nemenyi, and DSCF: `PMCMRplus`
+
+Curve statistics (S1-S4):
+
+- S1 (global shape difference): `stats::lm` + `splines::ns` + `stats::anova`
+- S2 (pointwise Fisher comparison): `stats::pnorm` + `stats::pchisq`
+- S3 (endpoint difference): `stats::pnorm`
+- S4 (AUC): `gcplyr::auc`, with normality-based method selection (`stats::shapiro.test`) and comparison via `stats::t.test`, `stats::wilcox.test`, `stats::aov`, or `stats::kruskal.test` as applicable
+
 Comparison modes:
 
 - All vs all
@@ -237,6 +271,12 @@ Metadata workflow:
 
 - Export current UI state with **Download metadata**.
 - Re-import metadata to restore compatible settings.
+- The **Flip orientation (horizontal)** state is preserved in metadata export/import roundtrip.
+
+Regression coverage:
+
+- Automated regression tests verify that orientation flip applies only to `Boxplot`, `Barras` (Barplot), `Violin`, and `Apiladas` (Stacked).
+- They also verify metadata roundtrip persistence and orientation application in final plot builders.
 
 Versioning and bundle workflow:
 
@@ -267,6 +307,16 @@ The growth tab extracts growth parameters from uploaded files:
 - `ODmax`
 - `max_time`
 - `AUC`
+
+Definition of extracted GrowthRates parameters:
+
+- `uMax`: estimated maximum slope in the exponential phase (specific growth rate).
+- `max_percap_time`: mean time window where maximum per-capita growth is detected.
+- `doub_time`: estimated doubling time as `ln(2) / uMax`.
+- `lag_time`: estimated transition time before sustained exponential growth.
+- `ODmax`: maximum measured signal/OD value in the curve.
+- `max_time`: time at which `ODmax` is reached.
+- `AUC`: area under the curve over the analyzed time window.
 
 Typical use:
 

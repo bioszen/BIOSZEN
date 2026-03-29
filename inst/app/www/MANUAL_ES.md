@@ -83,23 +83,27 @@ Requisitos del archivo de curvas:
 - Ideal para distribución de réplicas crudas.
 - Controla dispersión con jitter, ancho de caja y tamaño de punto.
 - Agrega barras o etiquetas de significancia después de estadística.
+- Opción **Voltear orientación (horizontal)** para invertir ejes (`X`/`Y`) y mejorar legibilidad cuando hay etiquetas de grupos largas.
 
 ### Barras
 
 - Ideal para comparación resumida por grupo.
 - Soporta media con barras de error y puntos crudos opcionales (modo crudo).
 - Soporta anotaciones manuales y automáticas de significancia.
+- Opción **Voltear orientación (horizontal)** para presentar barras horizontales y facilitar comparaciones por categoría.
 
 ### Violín
 
 - Ideal para forma de distribución con superposición de réplicas.
 - Usa el mismo flujo de anotaciones que caja/barras.
+- Opción **Voltear orientación (horizontal)** para intercambiar ejes y priorizar lectura de nombres de grupo.
 
 ### Apilado
 
 - Usa selector de parámetros y control de orden de parámetros.
 - Configura barras de desviación y comportamiento de color por parámetro.
 - Soporta modo de significancia con barras o etiquetas.
+- Opción **Voltear orientación (horizontal)** para mostrar apilados en horizontal cuando conviene priorizar etiquetas/categorías.
 
 ### Correlación
 
@@ -169,6 +173,36 @@ Activa **Normalizar por control** y elige un medio control.
 - t-test
 - Wilcoxon
 
+### Paquetes de R usados por prueba estadística
+
+Pruebas de normalidad:
+
+- Shapiro-Wilk: `stats::shapiro.test`
+- Kolmogorov-Smirnov: `stats::ks.test`
+- Anderson-Darling: `nortest::ad.test`
+
+Pruebas de significancia (panel principal):
+
+- ANOVA: `stats::aov`
+- Kruskal-Wallis: `stats::kruskal.test`
+- t-test: `rstatix::t_test` y `rstatix::pairwise_t_test`
+- Wilcoxon: `rstatix::wilcox_test`
+- Corrección por múltiples pruebas (Holm/FDR/Bonferroni): `stats::p.adjust`
+
+Post hoc disponibles según selección:
+
+- Tukey y Games-Howell: `rstatix`
+- Dunn: `rstatix::dunn_test`
+- Dunnett: `DescTools::DunnettTest`
+- Scheffe, Conover, Nemenyi y DSCF: `PMCMRplus`
+
+Estadística de curvas (S1-S4):
+
+- S1 (diferencia global de forma): `stats::lm` + `splines::ns` + `stats::anova`
+- S2 (comparación punto a punto Fisher): `stats::pnorm` + `stats::pchisq`
+- S3 (diferencia en endpoint): `stats::pnorm`
+- S4 (AUC): `gcplyr::auc`, con selección de prueba por normalidad (`stats::shapiro.test`) y comparación por `stats::t.test`, `stats::wilcox.test`, `stats::aov` o `stats::kruskal.test` según corresponda
+
 Modos de comparación:
 
 - Todos contra todos
@@ -237,6 +271,12 @@ Flujo de metadatos:
 
 - Exporta estado de UI con **Descargar metadatos**.
 - Reimporta metadatos para restaurar configuración compatible.
+- El estado de **Voltear orientación (horizontal)** se conserva en el flujo exportar/importar metadatos (roundtrip).
+
+Cobertura de regresión:
+
+- Pruebas automatizadas validan que la opción de orientación aplique solo a `Boxplot`, `Barras`, `Violin` y `Apiladas`.
+- También validan persistencia de metadatos (roundtrip) y la aplicación de orientación en la construcción final del gráfico.
 
 Flujo de versionado y bundle:
 
@@ -267,6 +307,16 @@ La pestaña de crecimiento extrae parámetros desde archivos cargados:
 - `ODmax`
 - `max_time`
 - `AUC`
+
+Definición de parámetros obtenidos (GrowthRates):
+
+- `uMax`: pendiente máxima estimada en fase exponencial (tasa específica de crecimiento).
+- `max_percap_time`: tiempo promedio del tramo donde se detecta la fase exponencial máxima.
+- `doub_time`: tiempo de duplicación estimado como `ln(2) / uMax`.
+- `lag_time`: tiempo estimado de transición previo al crecimiento exponencial.
+- `ODmax`: valor máximo de señal/OD medido en la curva.
+- `max_time`: tiempo en que se alcanza `ODmax`.
+- `AUC`: área bajo la curva en el intervalo temporal analizado.
 
 Uso típico:
 
