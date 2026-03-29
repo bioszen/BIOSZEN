@@ -1,17 +1,21 @@
 source_dir <- function(path, envir) {
-  files <- list.files(path, pattern = "\\.R$", full.names = TRUE)
+  files <- sort(list.files(path, pattern = "\\.R$", full.names = TRUE))
   for (f in files) sys.source(f, envir = envir)
 }
 
-app_env <- new.env(parent = globalenv())
+resolve_app_parent_env <- function() {
+  if ("package:BIOSZEN" %in% search()) {
+    return(as.environment("package:BIOSZEN"))
+  }
+  if (requireNamespace("BIOSZEN", quietly = TRUE)) {
+    return(asNamespace("BIOSZEN"))
+  }
+  globalenv()
+}
+
+app_env <- new.env(parent = resolve_app_parent_env())
 
 sys.source("global.R", envir = app_env)          # paquetes y configuraciones generales
-pkg_parent <- NULL
-search_path <- search()
-if (length(search_path) >= 2 && grepl("^package:", search_path[2])) {
-  pkg_parent <- as.environment(search_path[2])
-}
-if (!is.null(pkg_parent)) parent.env(app_env) <- pkg_parent
 
 sys.source("helpers.R", envir = app_env)         # funciones compartidas
 
@@ -20,9 +24,7 @@ source_dir("params", envir = app_env)        # utilidades de parametros
 source_dir("stats", envir = app_env)         # funciones estadisticas
 source_dir("graficos", envir = app_env)      # helpers de graficos
 source_dir("server", envir = app_env)        # modulos de servidor
-
-sys.source("ui/ui_main.R", envir = app_env)      # interfaz
-sys.source("server/server_main.R", envir = app_env)  # logica
+source_dir("ui", envir = app_env)            # interfaz
 
 shiny::addResourcePath("www", "www")
 

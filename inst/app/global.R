@@ -35,9 +35,6 @@ library(rlang)
 library(patchwork)
 library(officer)
 library(rvg)
-library(future)
-library(future.apply)
-library(parallelly)
 
 find_i18n_dir <- function(pkg = "BIOSZEN") {
   if (dir.exists("i18n")) return(normalizePath("i18n", winslash = "/", mustWork = TRUE))
@@ -137,10 +134,18 @@ label_to_text <- function(label) {
   if (is.character(label)) return(label[1])
   key <- extract_i18n_key(label)
   if (!is.null(key)) return(tr_text(key))
+  if (is.list(label)) {
+    nested <- vapply(label, label_to_text, character(1))
+    nested <- trimws(nested)
+    nested <- nested[nzchar(nested) & !tolower(nested) %in% c("span", "i18n")]
+    if (length(nested)) return(nested[[1]])
+  }
   out <- tryCatch(as.character(label), error = function(e) character(0))
-  if (length(out) && nzchar(out[1])) {
-    out[1] <- gsub("<[^>]+>", "", out[1])
-    return(out[1])
+  if (length(out)) {
+    out <- gsub("<[^>]+>", "", out)
+    out <- trimws(out)
+    out <- out[nzchar(out) & !tolower(out) %in% c("span", "i18n")]
+    if (length(out)) return(out[[1]])
   }
   ""
 }
@@ -221,6 +226,9 @@ options(shiny.error = function(e = NULL) {
   )
 })
 
+# Avoid noisy jsonlite deprecation warnings from named vectors in Shiny internals.
+options(jsonlite.warn_keep_vec_names = FALSE)
+
 ## Fuente y color por defecto para TODO ggplot2
 theme_update(
   text = element_text(colour = "black", family = "Helvetica")
@@ -230,91 +238,8 @@ theme_update(
 # Las funciones matrix_to_tibble() y pmcmr_to_tibble() ahora residen en
 # helpers.R para evitar duplicaciones.
 
-#──────────────────────────────────────────────────────────────────────────  
-# Helpers estadísticos ─ NUEVOS  
-split_comparison <- function(x) {  
-  stringr::str_split_fixed(x, "-", 2)  
-}  
-
-dunnett_to_tibble <- function(obj) {  
-  # obj es la lista que devuelve DescTools::DunnettTest()  
-  mat <- obj[[1]][ , 4, drop = FALSE]        # 4ª columna = p ajustado  
-  cmp <- split_comparison(rownames(mat))  
-  tibble(  
-    grupo1 = cmp[, 1],  
-    grupo2 = cmp[, 2],  
-    p.adj  = mat[, 1]  
-  )  
-}  
-
-set_control <- function(df, control_lbl) {  
-  if (!is.null(control_lbl) && control_lbl %in% df$Label)  
-    df$Label <- forcats::fct_relevel(df$Label, control_lbl)  
-  df  
-}  
-
-# Si ya existían matrix_to_tibble() y pmcmr_to_tibble() NO los dupliques.  
-#──────────────────────────────────────────────────────────────────────────  
-safe_pairwise_t <- function(df, method = "none") {
-  df <- filter_min_obs(df) |> droplevels()
-  grupos <- levels(df$Label)
-  if (length(grupos) < 2) return(tibble())
-  combinaciones <- utils::combn(grupos, 2, simplify = FALSE)
-  resultados <- lapply(combinaciones, function(g) {
-    sub <- dplyr::filter(df, Label %in% g)
-    tryCatch(
-      rstatix::t_test(sub, Valor ~ Label, paired = can_paired(sub)),
-      error = function(e) NULL
-    )
-  })
-  resultados <- resultados[!vapply(resultados, is.null, logical(1))]
-  if (length(resultados) == 0) return(tibble())
-  dplyr::bind_rows(resultados) %>%
-    rstatix::adjust_pvalue(method = method) %>%
-    rstatix::add_significance("p.adj")
-}
-
-safe_pairwise_wilcox <- function(df, method = "none") {
-  df <- filter_min_obs(df) |> droplevels()
-  grupos <- levels(df$Label)
-  if (length(grupos) < 2) return(tibble())
-  combinaciones <- utils::combn(grupos, 2, simplify = FALSE)
-  resultados <- lapply(combinaciones, function(g) {
-    sub <- dplyr::filter(df, Label %in% g)
-    tryCatch(
-      rstatix::wilcox_test(sub, Valor ~ Label, paired = can_paired(sub)),
-      error = function(e) NULL
-    )
-  })
-  resultados <- resultados[!vapply(resultados, is.null, logical(1))]
-  if (length(resultados) == 0) return(tibble())
-  dplyr::bind_rows(resultados) %>%
-    rstatix::adjust_pvalue(method = method) %>%
-    rstatix::add_significance("p.adj")
-}
-
-
-# ── Nombre seguro para archivos (mantiene la extensión) ────────────  
-safe_file <- function(x) {  
-  # separa nombre y extensión  
-  ext  <- tools::file_ext(x)           # "png"  
-  name <- tools::file_path_sans_ext(x) # "NAD+_Boxplot"  
-  
-  # sanea solo el nombre (letras, números, _ y -)  
-  name <- gsub("[^A-Za-z0-9_\\-]", "_", name)  
-  
-  paste0(name, ".", ext)               # vuelve a unir con .  
-}  
-
-# ── Nombre seguro para hojas de Excel ──────────────────────────────  
-safe_sheet <- function(x) {  
-  ## solo letras, números o "_" (lo demás → "_")  
-  gsub("[^A-Za-z0-9_]", "_", x)  
-}  
-# ── Nombre seguro para etiquetas simples ────────────────────  
-sanitize <- function(x) {  
-  gsub("[/\\\\:*?\"<>|]", "_", x)  
-}  
+# Canonical statistical/file helper implementations live in helpers.R.
+# Keep this file free of duplicate helper definitions to avoid silent overrides.
 
 theme_light <- bs_theme(version = 5)
 theme_dark  <- bs_theme(version = 5, bootswatch = "cyborg")
@@ -324,62 +249,216 @@ tab_compos <- tabPanel(
   value = "tab_composition",
   sidebarLayout(
     sidebarPanel(style="overflow-y:auto;max-height:95vh;position:sticky;top:0;",
-      uiOutput("plotPicker"),
-      checkboxInput("show_legend_combo", tr("combo_show_legend"), value = FALSE),
-      hr(),
-      numericInput("nrow_combo", tr("combo_rows"), 1, min = 1, max = 4),
-      numericInput("ncol_combo", tr("combo_cols"), 1, min = 1, max = 4),
-      numericInput("combo_width",  tr("combo_width"), 1920, min = 400),
-      numericInput("combo_height", tr("combo_height"), 1080, min = 400),
-      numericInput("base_size_combo", tr("combo_base_size"), 18, min = 8),
-      numericInput("fs_title_all",      tr("combo_title_size"), 20, min = 6),
-      numericInput("fs_axis_title_all", tr("combo_axis_titles"), 16, min = 6),
-      numericInput("fs_axis_text_all",  tr("combo_axis_ticks"),  14, min = 6),
-      numericInput("fs_legend_all",     tr("combo_legend_text"), 16, min = 6),
-      selectInput(
-        "combo_pal",
-        tr("combo_palette_label"),
-        choices = named_choices(
-          c(
-            "Original", "Default", "Blanco y Negro", "Viridis",
-            "Plasma", "Magma", "Cividis", "Set1", "Set2",
-            "Set3", "Dark2", "Accent", "Paired", "Pastel1",
-            "Pastel2"
-          ),
-          c(
-            tr("palette_original"),
-            tr("palette_default"),
-            tr("palette_bw"),
-            tr("palette_viridis"),
-            tr("palette_plasma"),
-            tr("palette_magma"),
-            tr("palette_cividis"),
-            tr("palette_set1"),
-            tr("palette_set2"),
-            tr("palette_set3"),
-            tr("palette_dark2"),
-            tr("palette_accent"),
-            tr("palette_paired"),
-            tr("palette_pastel1"),
-            tr("palette_pastel2")
-          )
+      bslib::accordion(
+        id = "comboAccordion",
+        open = c("combo_section_selection", "combo_section_layout", "combo_section_actions"),
+        multiple = TRUE,
+        accordion_panel_safe(
+          tr("combo_section_selection"),
+          uiOutput("plotPicker"),
+          value = "combo_section_selection"
         ),
-        selected = "Original"
-      ),
-      uiOutput("plotOverrideUI"),
-      actionButton("makeCombo", tr("combo_preview"),
-                   class = "btn btn-primary"),
-      br(), br(),
-      downloadButton("dl_combo_png",  tr("combo_download_png")),
-      downloadButton("dl_combo_pptx", tr("combo_download_pptx")),
-      downloadButton("dl_combo_pdf",  tr("combo_download_pdf")),
-      br(), br(),
-      downloadButton("dl_combo_meta", tr("combo_download_meta")),
-      fileInput("combo_meta", tr("combo_upload_meta"),
-                accept = ".xlsx")
+        accordion_panel_safe(
+          tr("combo_section_layout"),
+          numericInput("nrow_combo", tr("combo_rows"), 1, min = 1, max = 4),
+          numericInput("ncol_combo", tr("combo_cols"), 1, min = 1, max = 4),
+          textAreaInput(
+            "combo_layout_grid",
+            tr("combo_layout_grid"),
+            value = "",
+            rows = 4,
+            placeholder = "1 1 2\n3 4 4"
+          ),
+          textInput("combo_col_widths", tr("combo_col_widths"), ""),
+          textInput("combo_row_heights", tr("combo_row_heights"), ""),
+          helpText(tr("combo_layout_hint")),
+          textOutput("comboLayoutMap"),
+          numericInput("combo_width",  tr("combo_width"), 1000, min = 400),
+          numericInput("combo_height", tr("combo_height"), 700, min = 400),
+          value = "combo_section_layout"
+        ),
+        accordion_panel_safe(
+          tr("combo_section_style"),
+          helpText(tr("combo_style_live_hint")),
+          checkboxInput("show_legend_combo", tr("combo_show_legend"), value = FALSE),
+          textInput("combo_title", tr("combo_title"), ""),
+          numericInput("combo_title_size", tr("combo_comp_title_size"), 24, min = 8),
+          selectInput(
+            "combo_legend_scope",
+            tr("combo_legend_scope"),
+            choices = named_choices(
+              c("all_plots", "by_type", "collect"),
+              tr_text(
+                c("combo_legend_scope_all", "combo_legend_scope_type", "combo_legend_scope_collect"),
+                i18n_lang
+              )
+            ),
+            selected = "by_type"
+          ),
+          radioButtons(
+            "combo_legend_side",
+            tr("combo_legend_side"),
+            choices = named_choices(
+              c("right", "left"),
+              tr_text(c("combo_legend_side_right", "combo_legend_side_left"), i18n_lang)
+            ),
+            selected = "right",
+            inline = TRUE
+          ),
+          selectInput(
+            "combo_font_family",
+            tr("combo_font_family"),
+            choices = c("Helvetica", "Arial", "Calibri", "Times New Roman", "Courier New"),
+            selected = "Helvetica"
+          ),
+          checkboxInput("combo_apply_paper_theme", tr("combo_apply_paper_theme"), value = FALSE),
+          numericInput("fs_title_all",      tr("combo_plot_title_size"), 20, min = 6),
+          numericInput("fs_axis_title_all", tr("combo_axis_titles"), 16, min = 6),
+          numericInput("fs_axis_text_all",  tr("combo_axis_ticks"),  14, min = 6),
+          numericInput("combo_axis_line_size", tr("combo_axis_line_size"), 1, min = 0.1, step = 0.1),
+          numericInput("fs_legend_all",     tr("combo_legend_text"), 16, min = 6),
+          selectInput(
+            "combo_pal",
+            tr("combo_palette_label"),
+            choices = named_choices(
+              c(
+                "Original",
+                "Default", "Default Suave",
+                "Blanco y Negro", "Blanco y Negro Suave",
+                "Viridis", "Viridis Suave",
+                "Plasma", "Plasma Suave",
+                "Magma", "Magma Suave",
+                "Cividis", "Cividis Suave",
+                "Set1", "Set1 Suave",
+                "Set2", "Set2 Suave",
+                "Set3", "Set3 Suave",
+                "Dark2", "Dark2 Suave",
+                "Accent", "Accent Suave",
+                "Paired", "Paired Suave",
+                "Pastel1", "Pastel1 Suave",
+                "Pastel2", "Pastel2 Suave",
+                "OkabeIto", "OkabeIto Suave",
+                "Tableau", "Tableau Suave"
+              ),
+              tr_text(
+                c(
+                  "palette_original",
+                  "palette_default",
+                  "palette_default_soft",
+                  "palette_bw",
+                  "palette_bw_soft",
+                  "palette_viridis",
+                  "palette_viridis_soft",
+                  "palette_plasma",
+                  "palette_plasma_soft",
+                  "palette_magma",
+                  "palette_magma_soft",
+                  "palette_cividis",
+                  "palette_cividis_soft",
+                  "palette_set1",
+                  "palette_set1_soft",
+                  "palette_set2",
+                  "palette_set2_soft",
+                  "palette_set3",
+                  "palette_set3_soft",
+                  "palette_dark2",
+                  "palette_dark2_soft",
+                  "palette_accent",
+                  "palette_accent_soft",
+                  "palette_paired",
+                  "palette_paired_soft",
+                  "palette_pastel1",
+                  "palette_pastel1_soft",
+                  "palette_pastel2",
+                  "palette_pastel2_soft",
+                  "palette_okabeito",
+                  "palette_okabeito_soft",
+                  "palette_tableau",
+                  "palette_tableau_soft"
+                ),
+                i18n_lang
+              )
+            ),
+            selected = "Original"
+          ),
+          checkboxInput("combo_adv_pal_enable", tr("palette_advanced_enable"), value = FALSE),
+          conditionalPanel(
+            condition = "input.combo_adv_pal_enable == true",
+            radioButtons(
+              "combo_adv_pal_type",
+              tr("palette_type_label"),
+              choices = named_choices(
+                c("seq", "div", "qual"),
+                tr_text(c("palette_type_seq", "palette_type_div", "palette_type_qual"), i18n_lang)
+              ),
+              selected = "seq",
+              inline = TRUE
+            ),
+            checkboxInput("combo_adv_pal_reverse", tr("palette_reverse"), value = FALSE),
+            checkboxGroupInput(
+              "combo_adv_pal_filters",
+              tr("palette_filters_label"),
+              choices = named_choices(
+                c("colorblind", "print", "photocopy"),
+                tr_text(
+                  c("palette_filter_colorblind", "palette_filter_print", "palette_filter_photocopy"),
+                  i18n_lang
+                )
+              ),
+              selected = character(0),
+              inline = TRUE
+            ),
+            selectInput(
+              "combo_adv_pal_name",
+              tr("palette_scheme_label"),
+              choices = c("Viridis", "Plasma", "Magma", "Inferno", "Cividis"),
+              selected = "Viridis"
+            )
+          ),
+          value = "combo_section_style"
+        ),
+        accordion_panel_safe(
+          tr("combo_section_richtext"),
+          checkboxInput("combo_rich_enable", tr("combo_rich_enable"), value = FALSE),
+          textAreaInput("combo_rich_text", tr("combo_rich_text"), value = "", rows = 3),
+          numericInput("combo_rich_x", tr("combo_rich_x"), 0.50, min = 0, max = 1, step = 0.01),
+          numericInput("combo_rich_y", tr("combo_rich_y"), 0.92, min = 0, max = 1, step = 0.01),
+          numericInput("combo_rich_box_w", tr("combo_rich_box_w"), 0.40, min = 0.05, max = 1, step = 0.01),
+          numericInput("combo_rich_box_h", tr("combo_rich_box_h"), 0.16, min = 0.05, max = 1, step = 0.01),
+          numericInput("combo_rich_size", tr("combo_rich_size"), 4.5, min = 1, max = 20, step = 0.25),
+          textInput("combo_rich_color", tr("combo_rich_color"), "black"),
+          textInput("combo_rich_fill", tr("combo_rich_fill"), "#FFFFFFCC"),
+          value = "combo_section_richtext"
+        ),
+        accordion_panel_safe(
+          tr("combo_section_overrides"),
+          helpText(tr("combo_override_apply_hint")),
+          uiOutput("plotOverrideUI"),
+          value = "combo_section_overrides"
+        ),
+        accordion_panel_safe(
+          tr("combo_section_actions"),
+          helpText(tr("combo_actions_hint")),
+          actionButton("makeCombo", tr("combo_preview_optional"), class = "btn btn-primary"),
+          br(), br(),
+          downloadButton("dl_combo_png",  tr("combo_download_png")),
+          downloadButton("dl_combo_pptx", tr("combo_download_pptx")),
+          downloadButton("dl_combo_pdf",  tr("combo_download_pdf")),
+          br(), br(),
+          downloadButton("dl_combo_meta", tr("combo_download_meta")),
+          fileInput("combo_meta", tr("combo_upload_meta"), accept = ".xlsx"),
+          value = "combo_section_actions"
+        )
+      )
     ),
     mainPanel(
-      plotOutput("comboPreview", height = "auto")
+      plotOutput("comboPreview", height = "auto"),
+      br(),
+      actionButton(
+        "copy_combo_clipboard",
+        label = tagList(icon("copy"), tr("copy_plot")),
+        class = "btn btn-secondary"
+      )
     )
   )
 )
@@ -401,6 +480,97 @@ read_excel_tmp <- function(path, sheet = NULL) {
   
   stop("El archivo subido no es un Excel válido (.xls o .xlsx)")  
 }  
+
+is_csv_filename <- function(name) {
+  nm <- as.character(name %||% "")
+  if (!length(nm) || is.na(nm[[1]]) || !nzchar(nm[[1]])) return(FALSE)
+  identical(tolower(tools::file_ext(nm[[1]])), "csv")
+}
+
+detect_csv_delimiter <- function(path, candidates = c(",", ";", "\t", "|"), n_max = 20L) {
+  lines <- tryCatch(
+    readLines(path, n = n_max, warn = FALSE, encoding = "UTF-8"),
+    error = function(e) character(0)
+  )
+  if (!length(lines)) return(",")
+  lines[[1]] <- sub("^\ufeff", "", lines[[1]])
+  lines <- lines[!is.na(lines) & nzchar(trimws(lines))]
+  if (!length(lines)) return(",")
+
+  # Prefer header structure first to avoid confusing decimal commas as delimiters.
+  header <- lines[[1]]
+  header_counts <- vapply(candidates, function(delim) {
+    length(strsplit(header, delim, fixed = TRUE)[[1]])
+  }, integer(1))
+  header_best <- which.max(header_counts)
+  if (is.finite(header_counts[[header_best]]) && header_counts[[header_best]] > 1) {
+    return(candidates[[header_best]])
+  }
+
+  score_delim <- function(delim) {
+    pieces <- strsplit(lines, delim, fixed = TRUE)
+    counts <- vapply(pieces, length, integer(1))
+    if (!length(counts)) return(-Inf)
+    stats::median(counts, na.rm = TRUE)
+  }
+
+  scores <- vapply(candidates, score_delim, numeric(1))
+  best_idx <- which.max(scores)
+  best <- candidates[[best_idx]]
+  if (!is.finite(scores[[best_idx]]) || scores[[best_idx]] <= 1) "," else best
+}
+
+read_csv_tmp <- function(path, delim = NULL) {
+  delim_chr <- as.character(delim %||% detect_csv_delimiter(path))
+  delim_chr <- if (length(delim_chr)) delim_chr[[1]] else ","
+  if (!nzchar(delim_chr)) delim_chr <- ","
+
+  out <- tryCatch(
+    readr::read_delim(
+      file = path,
+      delim = delim_chr,
+      col_names = TRUE,
+      locale = readr::locale(encoding = "UTF-8"),
+      trim_ws = TRUE,
+      show_col_types = FALSE,
+      progress = FALSE,
+      name_repair = "minimal",
+      na = c("", "NA", "N/A")
+    ),
+    error = function(e) NULL
+  )
+
+  if (is.null(out)) {
+    out <- tryCatch(
+      {
+        if (identical(delim_chr, "\t")) {
+          utils::read.delim(
+            path,
+            stringsAsFactors = FALSE,
+            check.names = FALSE,
+            fileEncoding = "UTF-8-BOM"
+          )
+        } else {
+          utils::read.table(
+            path,
+            sep = delim_chr,
+            header = TRUE,
+            quote = "\"",
+            comment.char = "",
+            stringsAsFactors = FALSE,
+            check.names = FALSE,
+            fileEncoding = "UTF-8-BOM"
+          )
+        }
+      },
+      error = function(e) {
+        stop(sprintf("Could not read CSV file: %s", conditionMessage(e)))
+      }
+    )
+  }
+
+  as.data.frame(out, stringsAsFactors = FALSE, check.names = FALSE)
+}
 # ──────────────────────────────────────────────────────────────────────────────  
 
 # Natural sort for replicate-like IDs (1,2,3,...,10) while keeping non-numeric IDs stable.
@@ -827,6 +997,769 @@ build_platemap_from_summary <- function(file) {
   list(Datos = wide_df, PlotSettings = plot_settings, Labels = col_labels)
 }
 
+platemap_merge_key <- function(strain, media) {
+  strain_chr <- ifelse(is.na(strain), "<NA>", as.character(strain))
+  media_chr <- ifelse(is.na(media), "<NA>", as.character(media))
+  paste0(strain_chr, "||", media_chr)
+}
+
+merge_clean_char <- function(x) {
+  if (is.character(x)) trimws(x) else x
+}
+
+merge_read_sheet_text <- function(path, sheet = NULL) {
+  sig <- readBin(path, "raw", n = 8)
+  is_xls <- identical(sig[1:4], as.raw(c(208, 207, 17, 224)))
+  is_zip <- identical(sig[1:4], as.raw(c(80, 75, 3, 4)))
+
+  # Force text import for merge workflow so literal labels like "NA"
+  # are preserved as text and not silently coerced to missing values.
+  if (is_xls) {
+    return(readxl::read_xls(path, sheet = sheet, col_types = "text", na = ""))
+  }
+  if (is_zip) {
+    return(readxl::read_xlsx(path, sheet = sheet, col_types = "text", na = ""))
+  }
+  stop("The uploaded file is not a valid Excel workbook (.xls or .xlsx).")
+}
+
+merge_add_missing_cols <- function(df, target_cols) {
+  missing_cols <- setdiff(target_cols, names(df))
+  if (length(missing_cols)) {
+    for (cc in missing_cols) df[[cc]] <- NA
+  }
+  df[, target_cols, drop = FALSE]
+}
+
+merge_excel_letters <- function(n) {
+  out <- character(n)
+  for (i in seq_len(n)) {
+    x <- i
+    s <- ""
+    while (x > 0) {
+      r <- (x - 1) %% 26
+      s <- paste0(LETTERS[r + 1], s)
+      x <- (x - 1) %/% 26
+    }
+    out[[i]] <- s
+  }
+  out
+}
+
+merge_make_plate_wells <- function(n, ncol = 12) {
+  row_idx <- ((seq_len(n) - 1) %/% ncol) + 1
+  col_idx <- ((seq_len(n) - 1) %% ncol) + 1
+  paste0(merge_excel_letters(max(row_idx))[row_idx], col_idx)
+}
+
+merge_pad_group_rows <- function(df, n_target) {
+  if (nrow(df) >= n_target) return(df)
+
+  if (!nrow(df)) {
+    out <- as.data.frame(
+      matrix(NA, nrow = n_target, ncol = ncol(df)),
+      stringsAsFactors = FALSE
+    )
+    names(out) <- names(df)
+    return(out)
+  }
+
+  extra_n <- n_target - nrow(df)
+  extra <- df[rep(1, extra_n), , drop = FALSE]
+  extra[,] <- NA
+
+  if ("Strain" %in% names(df)) extra$Strain <- df$Strain[[1]]
+  if ("Media" %in% names(df)) extra$Media <- df$Media[[1]]
+  if ("Orden" %in% names(df)) extra$Orden <- df$Orden[[1]]
+
+  dplyr::bind_rows(df, extra)
+}
+
+merge_prepare_group_replicates <- function(df) {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(df)
+
+  if (!"BiologicalReplicate" %in% names(df)) df$BiologicalReplicate <- NA_integer_
+  if (!"Replicate" %in% names(df)) df$Replicate <- NA_integer_
+  if (!"TechnicalReplicate" %in% names(df)) df$TechnicalReplicate <- NA_character_
+
+  bio <- suppressWarnings(as.integer(to_numeric(df$BiologicalReplicate)))
+  rep <- suppressWarnings(as.integer(to_numeric(df$Replicate)))
+
+  bio_from_rep <- is.na(bio) & !is.na(rep)
+  bio[bio_from_rep] <- rep[bio_from_rep]
+
+  rep_from_bio <- is.na(rep) & !is.na(bio)
+  rep[rep_from_bio] <- bio[rep_from_bio]
+
+  tech <- as.character(df$TechnicalReplicate)
+  tech_blank <- is.na(tech) | !nzchar(trimws(tech))
+  tech[tech_blank] <- "A"
+
+  df$BiologicalReplicate <- bio
+  df$Replicate <- rep
+  df$TechnicalReplicate <- tech
+  df
+}
+
+merge_compact_biorep <- function(df) {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(integer(0))
+  tmp <- merge_prepare_group_replicates(df)
+  bio <- suppressWarnings(as.integer(to_numeric(tmp$BiologicalReplicate)))
+  rep <- suppressWarnings(as.integer(to_numeric(tmp$Replicate)))
+  bio_from_rep <- is.na(bio) & !is.na(rep)
+  bio[bio_from_rep] <- rep[bio_from_rep]
+  if (all(is.na(bio))) bio <- rep(1L, length(bio))
+  bio[is.na(bio)] <- 1L
+  uniq <- unique(bio)
+  mapping <- stats::setNames(seq_along(uniq), as.character(uniq))
+  as.integer(unname(mapping[as.character(bio)]))
+}
+
+merge_offset_biorep <- function(old_group, inc_group) {
+  if (is.null(inc_group) || !is.data.frame(inc_group) || !nrow(inc_group)) return(inc_group)
+  old_group <- merge_prepare_group_replicates(old_group)
+  inc_group <- merge_prepare_group_replicates(inc_group)
+
+  old_bio <- suppressWarnings(as.integer(to_numeric(old_group$BiologicalReplicate)))
+  old_max <- suppressWarnings(max(old_bio, na.rm = TRUE))
+  if (!is.finite(old_max)) old_max <- 0L
+
+  inc_bio <- merge_compact_biorep(inc_group)
+  inc_group$BiologicalReplicate <- as.integer(inc_bio + as.integer(old_max))
+  inc_group$Replicate <- inc_group$BiologicalReplicate
+  inc_group
+}
+
+merge_finalize_group_replicates <- function(df) {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(df)
+  out <- merge_prepare_group_replicates(df)
+  if (!".GroupKey" %in% names(out)) {
+    out$.GroupKey <- platemap_merge_key(out$Strain, out$Media)
+  }
+
+  keys <- as.character(out$.GroupKey)
+  key_levels <- unique(keys)
+
+  for (kk in key_levels) {
+    idx <- which(keys == kk)
+    if (!length(idx)) next
+
+    bio <- suppressWarnings(as.integer(to_numeric(out$BiologicalReplicate[idx])))
+    rep <- suppressWarnings(as.integer(to_numeric(out$Replicate[idx])))
+
+    bio_from_rep <- is.na(bio) & !is.na(rep)
+    bio[bio_from_rep] <- rep[bio_from_rep]
+
+    if (all(is.na(bio))) {
+      bio <- rep(1L, length(idx))
+    } else if (any(is.na(bio))) {
+      next_val <- max(bio, na.rm = TRUE) + 1L
+      bio[is.na(bio)] <- seq.int(next_val, length.out = sum(is.na(bio)))
+    }
+
+    uniq <- unique(bio)
+    mapping <- stats::setNames(seq_along(uniq), as.character(uniq))
+    bio <- as.integer(unname(mapping[as.character(bio)]))
+
+    out$BiologicalReplicate[idx] <- bio
+    out$Replicate[idx] <- bio
+  }
+
+  out
+}
+
+auto_map_cfg_parameters <- function(cfg, data_params) {
+  if (is.null(cfg) || !is.data.frame(cfg) || !nrow(cfg) || !"Parameter" %in% names(cfg)) {
+    return(cfg)
+  }
+  data_params <- as.character(data_params %||% character(0))
+  data_params <- data_params[!is.na(data_params) & nzchar(data_params)]
+  if (!length(data_params)) return(cfg)
+
+  cfg$Parameter <- trimws(as.character(cfg$Parameter))
+  cfg_only <- setdiff(cfg$Parameter[!is.na(cfg$Parameter) & nzchar(cfg$Parameter)], data_params)
+  data_only <- setdiff(data_params, cfg$Parameter)
+
+  # Conservative auto-fix for one-to-one mismatch (for example CTP1 vs YBR291C).
+  if (length(cfg_only) == 1L && length(data_only) == 1L) {
+    cfg$Parameter[cfg$Parameter == cfg_only[[1]]] <- data_only[[1]]
+  }
+
+  cfg
+}
+
+read_platemap_for_merge <- function(file, file_label = basename(file), media_alias = NULL, file_index = 1L) {
+  datos_raw <- merge_read_sheet_text(file, sheet = "Datos")
+  mapped <- apply_column_aliases(datos_raw, allow_media_alias = TRUE)
+  datos <- as.data.frame(mapped$datos, stringsAsFactors = FALSE, check.names = FALSE)
+
+  names(datos) <- trimws(names(datos))
+  datos[] <- lapply(datos, merge_clean_char)
+
+  if (!is.null(media_alias) && "Media" %in% names(datos)) {
+    datos$Media <- dplyr::recode(datos$Media, !!!as.list(media_alias))
+  }
+
+  plot <- tryCatch(
+    merge_read_sheet_text(file, sheet = "PlotSettings"),
+    error = function(e) data.frame()
+  )
+  plot <- as.data.frame(plot, stringsAsFactors = FALSE, check.names = FALSE)
+  if (ncol(plot) > 0) {
+    names(plot) <- trimws(names(plot))
+    plot[] <- lapply(plot, merge_clean_char)
+  }
+
+  meta_cols <- c(
+    "Well", "Strain", "Media", "Orden",
+    "Replicate", "BiologicalReplicate", "TechnicalReplicate"
+  )
+
+  for (cc in setdiff(meta_cols, names(datos))) {
+    datos[[cc]] <- NA
+  }
+
+  datos$Strain <- as.character(datos$Strain)
+  datos$Media <- as.character(datos$Media)
+  datos$Well <- as.character(datos$Well)
+  datos$TechnicalReplicate <- as.character(datos$TechnicalReplicate)
+  datos$.SourceLabel <- as.character(file_label)
+  datos$.SourceWell <- as.character(datos$Well)
+  datos$.SourceRow <- seq_len(nrow(datos))
+  datos$.SourceIndex <- as.integer(file_index)
+
+  datos$Orden <- suppressWarnings(as.integer(to_numeric(datos$Orden)))
+  if (all(is.na(datos$Orden))) {
+    grp0 <- unique(platemap_merge_key(datos$Strain, datos$Media))
+    ord0 <- seq_along(grp0)
+    names(ord0) <- grp0
+    datos$Orden <- ord0[platemap_merge_key(datos$Strain, datos$Media)]
+  }
+
+  datos$Replicate <- suppressWarnings(as.integer(to_numeric(datos$Replicate)))
+  datos$BiologicalReplicate <- suppressWarnings(as.integer(to_numeric(datos$BiologicalReplicate)))
+  if (all(is.na(datos$BiologicalReplicate)) && any(!is.na(datos$Replicate))) {
+    datos$BiologicalReplicate <- datos$Replicate
+  }
+  if (all(is.na(datos$Replicate)) && any(!is.na(datos$BiologicalReplicate))) {
+    datos$Replicate <- datos$BiologicalReplicate
+  }
+
+  technical_blank <- is.na(datos$TechnicalReplicate) | !nzchar(trimws(datos$TechnicalReplicate))
+  datos$TechnicalReplicate[technical_blank] <- "A"
+
+  non_param_cols <- c(meta_cols, ".SourceLabel", ".SourceWell", ".SourceRow", ".SourceIndex", ".merge_key")
+  data_params <- setdiff(names(datos), non_param_cols)
+  data_params <- data_params[!is.na(data_params) & nzchar(data_params)]
+  if (length(data_params)) {
+    datos[data_params] <- lapply(datos[data_params], to_numeric)
+  }
+
+  plot <- auto_map_cfg_parameters(plot, data_params)
+  if (nrow(plot) > 0 && "Parameter" %in% names(plot)) {
+    plot$Parameter <- trimws(as.character(plot$Parameter))
+    plot <- plot[!is.na(plot$Parameter) & nzchar(plot$Parameter), , drop = FALSE]
+  }
+
+  datos$.merge_key <- platemap_merge_key(datos$Strain, datos$Media)
+
+  list(
+    datos = datos,
+    plot = plot,
+    labels = mapped$labels,
+    source = tools::file_path_sans_ext(file_label),
+    params = data_params,
+    file_label = as.character(file_label),
+    file_index = as.integer(file_index)
+  )
+}
+
+merge_platemap_workbooks <- function(
+  base_file,
+  additional_files = character(0),
+  additional_labels = NULL,
+  media_alias = NULL,
+  plate_ncol = 12
+) {
+  additional_files <- as.character(additional_files %||% character(0))
+  additional_files <- additional_files[!is.na(additional_files) & nzchar(additional_files)]
+  if (!length(additional_files)) {
+    stop("No additional platemap files were provided for merge.")
+  }
+
+  if (is.null(base_file) || !nzchar(base_file) || !file.exists(base_file)) {
+    stop("Base platemap file does not exist.")
+  }
+
+  initial_labels <- if (is.null(additional_labels)) {
+    basename(additional_files)
+  } else {
+    additional_labels <- as.character(additional_labels)
+    if (length(additional_labels) == length(additional_files)) {
+      additional_labels
+    } else {
+      basename(additional_files)
+    }
+  }
+
+  base_norm <- normalizePath(base_file, winslash = "/", mustWork = FALSE)
+  add_norm <- normalizePath(additional_files, winslash = "/", mustWork = FALSE)
+  keep <- add_norm != base_norm
+  additional_files <- additional_files[keep]
+  add_norm <- add_norm[keep]
+  initial_labels <- initial_labels[keep]
+
+  # Avoid duplicate files when users upload the same file multiple times.
+  if (length(additional_files)) {
+    unique_idx <- !duplicated(add_norm)
+    additional_files <- additional_files[unique_idx]
+    add_norm <- add_norm[unique_idx]
+    initial_labels <- initial_labels[unique_idx]
+  }
+  if (!length(additional_files)) {
+    stop("No additional platemap files were provided for merge.")
+  }
+
+  additional_labels <- initial_labels
+
+  files <- c(base_file, additional_files)
+  labels <- c(basename(base_file), additional_labels)
+
+  plate_list <- lapply(
+    seq_along(files),
+    function(i) {
+      read_platemap_for_merge(
+        file = files[[i]],
+        file_label = labels[[i]],
+        media_alias = media_alias,
+        file_index = i
+      )
+    }
+  )
+
+  meta_cols <- c(
+    "Well", "Strain", "Media", "Orden",
+    "Replicate", "BiologicalReplicate", "TechnicalReplicate"
+  )
+  track_cols <- c(".SourceLabel", ".SourceWell", ".SourceRow", ".SourceIndex")
+
+  base_df <- plate_list[[1]]$datos
+  names(base_df) <- trimws(names(base_df))
+  base_df[] <- lapply(base_df, merge_clean_char)
+
+  for (cc in setdiff(meta_cols, names(base_df))) {
+    base_df[[cc]] <- NA
+  }
+  for (cc in setdiff(track_cols, names(base_df))) {
+    base_df[[cc]] <- NA
+  }
+  if (!".merge_key" %in% names(base_df)) {
+    base_df$.merge_key <- platemap_merge_key(base_df$Strain, base_df$Media)
+  }
+
+  if (all(is.na(suppressWarnings(as.integer(to_numeric(base_df$Orden)))))) {
+    grp0 <- unique(base_df$.merge_key)
+    ord0 <- seq_along(grp0)
+    names(ord0) <- grp0
+    base_df$Orden <- ord0[base_df$.merge_key]
+  }
+  base_df$Orden <- suppressWarnings(as.integer(to_numeric(base_df$Orden)))
+
+  base_params <- setdiff(names(base_df), c(meta_cols, ".merge_key", track_cols))
+  base_params <- base_params[!is.na(base_params) & nzchar(base_params)]
+  all_param_cols <- base_params
+  all_cols <- c(meta_cols, all_param_cols, ".merge_key", track_cols)
+
+  base_df <- merge_add_missing_cols(base_df, all_cols)
+
+  base_keys_df <- base_df %>%
+    dplyr::distinct(.merge_key, Strain, Media, Orden) %>%
+    dplyr::arrange(Orden, Strain, Media)
+
+  if (!nrow(base_keys_df)) {
+    stop("Base platemap does not contain groups to merge.")
+  }
+
+  group_keys <- base_keys_df$.merge_key
+  group_order <- as.list(stats::setNames(base_keys_df$Orden, group_keys))
+
+  group_list <- list()
+  group_params <- list()
+  group_sequence <- character(0)
+  source_map_records <- list()
+  append_source_map <- function(df, group_key, target_rows) {
+    if (is.null(df) || !nrow(df) || !length(target_rows)) return(invisible(NULL))
+    rec <- data.frame(
+      .GroupKey = as.character(group_key),
+      .RowWithinGroup = as.integer(target_rows),
+      SourceLabel = as.character(df$.SourceLabel %||% NA_character_),
+      SourceWell = as.character(df$.SourceWell %||% NA_character_),
+      SourceRow = suppressWarnings(as.integer(df$.SourceRow %||% NA_integer_)),
+      SourceIndex = suppressWarnings(as.integer(df$.SourceIndex %||% NA_integer_)),
+      stringsAsFactors = FALSE
+    )
+    source_map_records[[length(source_map_records) + 1L]] <<- rec
+    invisible(NULL)
+  }
+
+  for (kk in group_keys) {
+    grp <- base_df[base_df$.merge_key == kk, , drop = FALSE]
+    group_list[[kk]] <- grp
+    group_params[[kk]] <- base_params
+    group_sequence <- c(group_sequence, kk)
+    append_source_map(grp, kk, seq_len(nrow(grp)))
+  }
+
+  next_order <- suppressWarnings(max(base_df$Orden, na.rm = TRUE))
+  if (!is.finite(next_order)) next_order <- 0
+
+  for (i in 2:length(plate_list)) {
+    inc_df <- plate_list[[i]]$datos
+    names(inc_df) <- trimws(names(inc_df))
+    inc_df[] <- lapply(inc_df, merge_clean_char)
+
+    for (cc in setdiff(meta_cols, names(inc_df))) {
+      inc_df[[cc]] <- NA
+    }
+    for (cc in setdiff(track_cols, names(inc_df))) {
+      inc_df[[cc]] <- NA
+    }
+    if (!".merge_key" %in% names(inc_df)) {
+      inc_df$.merge_key <- platemap_merge_key(inc_df$Strain, inc_df$Media)
+    }
+
+    inc_params <- setdiff(names(inc_df), c(meta_cols, ".merge_key", track_cols))
+    inc_params <- inc_params[!is.na(inc_params) & nzchar(inc_params)]
+
+    new_param_cols <- setdiff(inc_params, all_param_cols)
+    if (length(new_param_cols) > 0) {
+      all_param_cols <- c(all_param_cols, new_param_cols)
+    }
+
+    all_cols <- c(meta_cols, all_param_cols, ".merge_key", track_cols)
+
+    group_list <- lapply(group_list, merge_add_missing_cols, target_cols = all_cols)
+    inc_df <- merge_add_missing_cols(inc_df, all_cols)
+
+    inc_keys <- unique(inc_df$.merge_key)
+    inc_keys <- inc_keys[!is.na(inc_keys) & nzchar(inc_keys)]
+
+    for (kk in inc_keys) {
+      inc_group <- inc_df[inc_df$.merge_key == kk, , drop = FALSE]
+      if (!nrow(inc_group)) next
+
+      if (!(kk %in% names(group_list))) {
+        next_order <- next_order + 1
+        inc_group$Orden <- next_order
+        inc_group <- merge_prepare_group_replicates(inc_group)
+        group_list[[kk]] <- merge_add_missing_cols(inc_group, all_cols)
+        group_order[[kk]] <- next_order
+        group_params[[kk]] <- inc_params
+        group_sequence <- c(group_sequence, kk)
+        append_source_map(inc_group, kk, seq_len(nrow(inc_group)))
+        next
+      }
+
+      old_group <- merge_add_missing_cols(group_list[[kk]], all_cols)
+      already_present_params <- group_params[[kk]] %||% character(0)
+      repeated_params <- intersect(inc_params, already_present_params)
+
+      if (length(repeated_params) > 0) {
+        old_n <- nrow(old_group)
+        inc_group$Orden <- group_order[[kk]]
+        old_group <- merge_prepare_group_replicates(old_group)
+        inc_group <- merge_offset_biorep(old_group, inc_group)
+        inc_group <- merge_add_missing_cols(inc_group, all_cols)
+        group_list[[kk]] <- dplyr::bind_rows(old_group, inc_group)
+        group_params[[kk]] <- union(already_present_params, inc_params)
+        append_source_map(inc_group, kk, old_n + seq_len(nrow(inc_group)))
+      } else {
+        old_n_raw <- nrow(old_group)
+        n_target <- max(nrow(old_group), nrow(inc_group))
+        old_group <- merge_pad_group_rows(old_group, n_target)
+        inc_group <- merge_pad_group_rows(inc_group, n_target)
+        old_group <- merge_prepare_group_replicates(old_group)
+        inc_group <- merge_prepare_group_replicates(inc_group)
+
+        if (length(inc_params)) {
+          old_group[seq_len(nrow(inc_group)), inc_params] <- inc_group[, inc_params, drop = FALSE]
+        }
+        row_idx <- seq_len(nrow(inc_group))
+        old_bio <- old_group$BiologicalReplicate[row_idx]
+        old_rep <- old_group$Replicate[row_idx]
+        old_tech <- as.character(old_group$TechnicalReplicate[row_idx])
+        inc_bio <- inc_group$BiologicalReplicate[row_idx]
+        inc_rep <- inc_group$Replicate[row_idx]
+        inc_tech <- as.character(inc_group$TechnicalReplicate[row_idx])
+
+        fill_bio <- is.na(old_bio) & !is.na(inc_bio)
+        fill_rep <- is.na(old_rep) & !is.na(inc_rep)
+        fill_tech <- ((row_idx > old_n_raw) | (is.na(old_tech) | !nzchar(trimws(old_tech)))) &
+          (!is.na(inc_tech) & nzchar(trimws(inc_tech)))
+
+        if (any(fill_bio)) {
+          tmp_bio <- old_group$BiologicalReplicate[row_idx]
+          tmp_bio[fill_bio] <- inc_bio[fill_bio]
+          old_group$BiologicalReplicate[row_idx] <- tmp_bio
+        }
+        if (any(fill_rep)) {
+          tmp_rep <- old_group$Replicate[row_idx]
+          tmp_rep[fill_rep] <- inc_rep[fill_rep]
+          old_group$Replicate[row_idx] <- tmp_rep
+        }
+        if (any(fill_tech)) {
+          tmp_tech <- as.character(old_group$TechnicalReplicate[row_idx])
+          tmp_tech[fill_tech] <- inc_tech[fill_tech]
+          old_group$TechnicalReplicate[row_idx] <- tmp_tech
+        }
+        # Preserve source mapping for rows introduced by the incoming platemap
+        # so curve concatenation can remap wells consistently.
+        if (".SourceLabel" %in% names(old_group) && ".SourceLabel" %in% names(inc_group)) {
+          old_src_label <- as.character(old_group$.SourceLabel[row_idx])
+          inc_src_label <- as.character(inc_group$.SourceLabel[row_idx])
+          fill_src_label <- ((row_idx > old_n_raw) | is.na(old_src_label) | !nzchar(trimws(old_src_label))) &
+            (!is.na(inc_src_label) & nzchar(trimws(inc_src_label)))
+          if (any(fill_src_label)) {
+            tmp_src_label <- as.character(old_group$.SourceLabel[row_idx])
+            tmp_src_label[fill_src_label] <- inc_src_label[fill_src_label]
+            old_group$.SourceLabel[row_idx] <- tmp_src_label
+          }
+        }
+        if (".SourceWell" %in% names(old_group) && ".SourceWell" %in% names(inc_group)) {
+          old_src_well <- as.character(old_group$.SourceWell[row_idx])
+          inc_src_well <- as.character(inc_group$.SourceWell[row_idx])
+          fill_src_well <- ((row_idx > old_n_raw) | is.na(old_src_well) | !nzchar(trimws(old_src_well))) &
+            (!is.na(inc_src_well) & nzchar(trimws(inc_src_well)))
+          if (any(fill_src_well)) {
+            tmp_src_well <- as.character(old_group$.SourceWell[row_idx])
+            tmp_src_well[fill_src_well] <- inc_src_well[fill_src_well]
+            old_group$.SourceWell[row_idx] <- tmp_src_well
+          }
+        }
+        if (".SourceRow" %in% names(old_group) && ".SourceRow" %in% names(inc_group)) {
+          old_src_row <- suppressWarnings(as.integer(old_group$.SourceRow[row_idx]))
+          inc_src_row <- suppressWarnings(as.integer(inc_group$.SourceRow[row_idx]))
+          fill_src_row <- ((row_idx > old_n_raw) | is.na(old_src_row)) & !is.na(inc_src_row)
+          if (any(fill_src_row)) {
+            tmp_src_row <- suppressWarnings(as.integer(old_group$.SourceRow[row_idx]))
+            tmp_src_row[fill_src_row] <- inc_src_row[fill_src_row]
+            old_group$.SourceRow[row_idx] <- tmp_src_row
+          }
+        }
+        if (".SourceIndex" %in% names(old_group) && ".SourceIndex" %in% names(inc_group)) {
+          old_src_idx <- suppressWarnings(as.integer(old_group$.SourceIndex[row_idx]))
+          inc_src_idx <- suppressWarnings(as.integer(inc_group$.SourceIndex[row_idx]))
+          fill_src_idx <- ((row_idx > old_n_raw) | is.na(old_src_idx)) & !is.na(inc_src_idx)
+          if (any(fill_src_idx)) {
+            tmp_src_idx <- suppressWarnings(as.integer(old_group$.SourceIndex[row_idx]))
+            tmp_src_idx[fill_src_idx] <- inc_src_idx[fill_src_idx]
+            old_group$.SourceIndex[row_idx] <- tmp_src_idx
+          }
+        }
+        old_group$Orden <- group_order[[kk]]
+
+        group_list[[kk]] <- old_group
+        group_params[[kk]] <- union(already_present_params, inc_params)
+        append_source_map(inc_group, kk, seq_len(nrow(inc_group)))
+      }
+    }
+  }
+
+  group_sequence <- unique(group_sequence)
+  merged_df <- dplyr::bind_rows(group_list[group_sequence], .id = ".GroupKey")
+
+  if (!nrow(merged_df)) {
+    stop("Merged platemap has no rows.")
+  }
+
+  merged_df <- merged_df %>%
+    dplyr::group_by(.GroupKey) %>%
+    dplyr::mutate(.RowWithinGroup = dplyr::row_number()) %>%
+    dplyr::ungroup()
+
+  merged_df$.GroupKey <- factor(merged_df$.GroupKey, levels = group_sequence)
+  merged_df <- merged_df %>%
+    dplyr::arrange(.GroupKey, .RowWithinGroup)
+
+  merged_df <- merge_finalize_group_replicates(merged_df)
+
+  if (!"TechnicalReplicate" %in% names(merged_df)) {
+    merged_df$TechnicalReplicate <- "A"
+  } else {
+    tech_blank <- is.na(merged_df$TechnicalReplicate) | !nzchar(trimws(as.character(merged_df$TechnicalReplicate)))
+    merged_df$TechnicalReplicate[tech_blank] <- "A"
+  }
+
+  if (!length(all_param_cols)) {
+    all_param_cols <- "Parametro_dummy"
+    merged_df[[all_param_cols]] <- NA_real_
+  }
+
+  merged_df$Well <- merge_make_plate_wells(nrow(merged_df), ncol = plate_ncol)
+  well_map <- data.frame(
+    SourceIndex = integer(0),
+    SourceLabel = character(0),
+    SourceWell = character(0),
+    SourceRow = integer(0),
+    TargetWell = character(0),
+    TargetRow = integer(0),
+    stringsAsFactors = FALSE
+  )
+  well_map_from_merged <- merged_df %>%
+    dplyr::mutate(
+      SourceIndex = suppressWarnings(as.integer(.SourceIndex)),
+      SourceLabel = as.character(.SourceLabel),
+      SourceWell = as.character(.SourceWell),
+      SourceRow = suppressWarnings(as.integer(.SourceRow)),
+      TargetWell = as.character(Well),
+      TargetRow = dplyr::row_number()
+    ) %>%
+    dplyr::select(SourceIndex, SourceLabel, SourceWell, SourceRow, TargetWell, TargetRow) %>%
+    dplyr::filter(
+      !is.na(SourceIndex),
+      !is.na(SourceLabel), nzchar(SourceLabel),
+      !is.na(SourceWell), nzchar(SourceWell),
+      !is.na(TargetWell), nzchar(TargetWell)
+    ) %>%
+    dplyr::arrange(SourceIndex, SourceRow, TargetRow) %>%
+    dplyr::distinct(SourceIndex, SourceLabel, SourceWell, SourceRow, .keep_all = TRUE)
+  if (length(source_map_records)) {
+    map_raw <- dplyr::bind_rows(source_map_records)
+    map_lookup <- merged_df %>%
+      dplyr::mutate(
+        .GroupKey = as.character(.GroupKey),
+        .RowWithinGroup = as.integer(.RowWithinGroup),
+        TargetWell = as.character(Well),
+        TargetRow = dplyr::row_number()
+      ) %>%
+      dplyr::select(.GroupKey, .RowWithinGroup, TargetWell, TargetRow)
+
+    well_map_from_records <- map_raw %>%
+      dplyr::mutate(
+        .GroupKey = as.character(.GroupKey),
+        .RowWithinGroup = as.integer(.RowWithinGroup),
+        SourceLabel = as.character(SourceLabel),
+        SourceWell = as.character(SourceWell),
+        SourceRow = suppressWarnings(as.integer(SourceRow)),
+        SourceIndex = suppressWarnings(as.integer(SourceIndex))
+      ) %>%
+      dplyr::left_join(map_lookup, by = c(".GroupKey", ".RowWithinGroup")) %>%
+      dplyr::filter(
+        !is.na(SourceIndex),
+        !is.na(SourceLabel), nzchar(SourceLabel),
+        !is.na(SourceWell), nzchar(SourceWell),
+        !is.na(TargetWell), nzchar(TargetWell)
+      ) %>%
+      dplyr::arrange(SourceIndex, SourceRow, TargetRow) %>%
+      dplyr::distinct(SourceIndex, SourceLabel, SourceWell, SourceRow, .keep_all = TRUE) %>%
+      dplyr::select(SourceIndex, SourceLabel, SourceWell, SourceRow, TargetWell, TargetRow)
+    if (nrow(well_map_from_records)) {
+      well_map <- well_map_from_records
+    } else {
+      well_map <- well_map_from_merged
+    }
+  } else {
+    well_map <- well_map_from_merged
+  }
+  merged_df <- merged_df[, c(meta_cols, all_param_cols), drop = FALSE]
+
+  merged_df$Orden <- suppressWarnings(as.integer(to_numeric(merged_df$Orden)))
+  merged_df$Replicate <- suppressWarnings(as.integer(to_numeric(merged_df$Replicate)))
+  merged_df$BiologicalReplicate <- suppressWarnings(as.integer(to_numeric(merged_df$BiologicalReplicate)))
+  merged_df$TechnicalReplicate <- as.character(merged_df$TechnicalReplicate)
+  for (p in all_param_cols) {
+    merged_df[[p]] <- to_numeric(merged_df[[p]])
+  }
+
+  plot_list <- lapply(plate_list, function(x) x$plot)
+  plot_list <- plot_list[sapply(plot_list, function(x) !is.null(x) && nrow(x) > 0)]
+
+  if (length(plot_list) > 0) {
+    plot_merged <- dplyr::bind_rows(plot_list)
+    if ("Parameter" %in% names(plot_merged)) {
+      plot_merged$Parameter <- trimws(as.character(plot_merged$Parameter))
+      plot_merged <- plot_merged[!is.na(plot_merged$Parameter) & nzchar(plot_merged$Parameter), , drop = FALSE]
+      if (nrow(plot_merged)) {
+        plot_merged <- dplyr::distinct(plot_merged, Parameter, .keep_all = TRUE)
+      }
+    } else {
+      plot_merged <- dplyr::distinct(plot_merged)
+      plot_merged$Parameter <- character(nrow(plot_merged))
+    }
+  } else {
+    plot_merged <- data.frame(Parameter = character(0), stringsAsFactors = FALSE)
+  }
+
+  if (!"Parameter" %in% names(plot_merged)) {
+    plot_merged$Parameter <- character(nrow(plot_merged))
+  }
+
+  missing_plot_params <- setdiff(all_param_cols, plot_merged$Parameter)
+  if (length(missing_plot_params)) {
+    add_rows <- as.data.frame(
+      matrix(NA, nrow = length(missing_plot_params), ncol = ncol(plot_merged)),
+      stringsAsFactors = FALSE
+    )
+    names(add_rows) <- names(plot_merged)
+    add_rows$Parameter <- missing_plot_params
+    plot_merged <- dplyr::bind_rows(plot_merged, add_rows)
+  }
+
+  if (!"Y_Max" %in% names(plot_merged)) plot_merged$Y_Max <- NA_real_
+  if (!"Interval" %in% names(plot_merged)) plot_merged$Interval <- NA_real_
+  if (!"Y_Title" %in% names(plot_merged)) plot_merged$Y_Title <- NA_character_
+
+  plot_merged$Y_Max <- to_numeric(plot_merged$Y_Max)
+  plot_merged$Interval <- to_numeric(plot_merged$Interval)
+  plot_merged$Y_Title <- as.character(plot_merged$Y_Title)
+
+  for (param_name in all_param_cols) {
+    idx <- which(plot_merged$Parameter == param_name)
+    if (!length(idx)) next
+    y_max <- suppressWarnings(as.numeric(plot_merged$Y_Max[idx[1]]))
+    if (!is.finite(y_max)) {
+      vals <- suppressWarnings(as.numeric(merged_df[[param_name]]))
+      vals <- vals[is.finite(vals)]
+      if (length(vals)) {
+        y_max <- round_up_sig(max(vals), digits = 2)
+        plot_merged$Y_Max[idx[1]] <- y_max
+      }
+    }
+    interval <- suppressWarnings(as.numeric(plot_merged$Interval[idx[1]]))
+    if (!is.finite(interval) || interval <= 0) {
+      plot_merged$Interval[idx[1]] <- if (is.finite(y_max) && y_max != 0) y_max / 5 else NA_real_
+    }
+    y_title <- plot_merged$Y_Title[idx[1]]
+    if (is.na(y_title) || !nzchar(trimws(y_title))) {
+      plot_merged$Y_Title[idx[1]] <- param_name
+    }
+  }
+
+  rank_vec <- match(plot_merged$Parameter, all_param_cols)
+  rank_vec[is.na(rank_vec)] <- length(all_param_cols) + seq_len(sum(is.na(rank_vec)))
+  plot_merged <- plot_merged[order(rank_vec), , drop = FALSE]
+
+  base_keys <- unique(plate_list[[1]]$datos$.merge_key)
+  add_keys <- unique(unlist(lapply(plate_list[-1], function(item) unique(item$datos$.merge_key))))
+  overlap_groups <- length(intersect(base_keys, add_keys))
+
+  list(
+    Datos = merged_df,
+    PlotSettings = plot_merged,
+    Labels = plate_list[[1]]$labels,
+    WellMap = well_map,
+    Info = list(
+      rows_total = nrow(merged_df),
+      groups_total = length(unique(platemap_merge_key(merged_df$Strain, merged_df$Media))),
+      parameters_total = length(all_param_cols),
+      overlap_groups = overlap_groups,
+      base_file = basename(base_file),
+      extra_files = basename(additional_files),
+      source_labels = labels
+    )
+  )
+}
+
 find_sheet_alias <- function(sheets, aliases) {
   if (is.null(sheets) || !length(sheets)) return(NULL)
   sh_norm <- normalize_header_key(sheets)
@@ -869,18 +1802,18 @@ fill_missing_order <- function(df_groups, order_col = "Orden") {
   out
 }
 
-build_platemap_from_mean_sd <- function(file) {
-  sheets <- readxl::excel_sheets(file)
-  sh <- find_sheet_alias(
-    sheets,
-    c("Parameters_Summary", "Parametros_Summary", "Summary_Parameters", "Resumen_Parametros")
-  )
-  if (is.null(sh)) return(NULL)
+build_platemap_from_mean_sd_data <- function(
+  raw,
+  col_labels = list(Strain = NULL, Media = NULL),
+  default_profile = c("excel", "csv")
+) {
+  default_profile <- match.arg(default_profile)
+  csv_profile <- identical(default_profile, "csv")
 
-  raw <- read_excel_tmp(file, sheet = sh)
   mapped <- apply_column_aliases(raw, allow_media_alias = TRUE)
   df <- mapped$datos
-  col_labels <- mapped$labels
+  if (is.null(col_labels$Strain)) col_labels$Strain <- mapped$labels$Strain
+  if (is.null(col_labels$Media)) col_labels$Media <- mapped$labels$Media
 
   df <- rename_columns_by_alias(
     df,
@@ -996,22 +1929,34 @@ build_platemap_from_mean_sd <- function(file) {
     ) %>%
     dplyr::relocate(dplyr::any_of(param_cols), .after = TechnicalReplicate)
 
-  y_max <- vapply(param_cols, function(pm) {
+  y_max_raw <- vapply(param_cols, function(pm) {
     vals <- suppressWarnings(as.numeric(wide_df[[pm]]))
     sd_col <- paste0("SD_", pm)
     sds <- if (sd_col %in% names(wide_df)) suppressWarnings(as.numeric(wide_df[[sd_col]])) else rep(0, length(vals))
     mx <- suppressWarnings(max(vals + ifelse(is.finite(sds), sds, 0), na.rm = TRUE))
     if (!is.finite(mx)) mx <- suppressWarnings(max(vals, na.rm = TRUE))
     if (!is.finite(mx)) mx <- NA_real_
-    round_up_sig(mx, digits = 2)
+    mx
   }, numeric(1))
-  interval <- ifelse(is.na(y_max) | y_max == 0, NA_real_, y_max / 5)
+
+  if (isTRUE(csv_profile)) {
+    y_max <- y_max_raw
+    interval <- vapply(y_max, function(mx) {
+      if (!is.finite(mx) || is.na(mx) || mx <= 0) return(NA_real_)
+      max(1, round(mx / 5))
+    }, numeric(1))
+    y_titles <- rep("", length(param_cols))
+  } else {
+    y_max <- vapply(y_max_raw, round_up_sig, numeric(1), digits = 2)
+    interval <- ifelse(is.na(y_max) | y_max == 0, NA_real_, y_max / 5)
+    y_titles <- param_cols
+  }
 
   plot_settings <- tibble::tibble(
     Parameter = param_cols,
     Y_Max = y_max,
     Interval = interval,
-    Y_Title = param_cols
+    Y_Title = y_titles
   )
 
   list(
@@ -1022,15 +1967,24 @@ build_platemap_from_mean_sd <- function(file) {
   )
 }
 
-build_curve_from_mean_sd <- function(file) {
+build_platemap_from_mean_sd <- function(file) {
   sheets <- readxl::excel_sheets(file)
   sh <- find_sheet_alias(
     sheets,
-    c("Curves_Summary", "Curvas_Summary", "Summary_Curves", "Resumen_Curvas")
+    c("Parameters_Summary", "Parametros_Summary", "Summary_Parameters", "Resumen_Parametros")
   )
   if (is.null(sh)) return(NULL)
 
   raw <- read_excel_tmp(file, sheet = sh)
+  build_platemap_from_mean_sd_data(
+    raw = raw,
+    default_profile = "excel"
+  )
+}
+
+build_curve_from_mean_sd_data <- function(raw, defaults_profile = c("excel", "csv")) {
+  defaults_profile <- match.arg(defaults_profile)
+  csv_profile <- identical(defaults_profile, "csv")
   mapped <- apply_column_aliases(raw, allow_media_alias = TRUE)
   df <- mapped$datos
   df <- rename_columns_by_alias(
@@ -1103,10 +2057,12 @@ build_curve_from_mean_sd <- function(file) {
   if (!is.finite(x_max) || x_max <= 0) x_max <- 1
   if (!is.finite(y_max) || y_max <= 0) y_max <- suppressWarnings(max(long$Mean, na.rm = TRUE))
   if (!is.finite(y_max) || y_max <= 0) y_max <- 1
-  x_break <- x_max / 3
-  y_break <- y_max / 3
+  x_break <- x_max / if (isTRUE(csv_profile)) 4 else 3
+  y_break <- y_max / if (isTRUE(csv_profile)) 4 else 3
   if (!is.finite(x_break) || x_break <= 0) x_break <- 1
   if (!is.finite(y_break) || y_break <= 0) y_break <- 1
+  x_title_default <- if (isTRUE(csv_profile)) "" else "Time"
+  y_title_default <- if (isTRUE(csv_profile)) "" else "Signal"
 
   sheet2 <- group_map %>%
     dplyr::transmute(
@@ -1114,8 +2070,8 @@ build_curve_from_mean_sd <- function(file) {
       Interval_X = x_break,
       Y_Max = y_max,
       Interval_Y = y_break,
-      X_Title = "Time",
-      Y_Title = "Signal",
+      X_Title = x_title_default,
+      Y_Title = y_title_default,
       Well = Well,
       BiologicalReplicate = 1L
     )
@@ -1151,66 +2107,151 @@ build_curve_from_mean_sd <- function(file) {
   )
 }
 
-load_curve_workbook <- function(file) {
-  sheets <- tryCatch(readxl::excel_sheets(file), error = function(e) character(0))
-  summary_aliases <- c(
-    "Curves_Summary", "Curvas_Summary", "Summary_Curves", "Resumen_Curvas"
+build_curve_from_mean_sd <- function(file) {
+  sheets <- readxl::excel_sheets(file)
+  sh <- find_sheet_alias(
+    sheets,
+    c("Curves_Summary", "Curvas_Summary", "Summary_Curves", "Resumen_Curvas")
   )
-  has_sheet1 <- "Sheet1" %in% sheets
-  has_summary_sheet <- !is.null(find_sheet_alias(sheets, summary_aliases))
+  if (is.null(sh)) return(NULL)
 
-  d <- tryCatch(read_excel_tmp(file, sheet = "Sheet1"), error = function(e) NULL)
+  raw <- read_excel_tmp(file, sheet = sh)
+  build_curve_from_mean_sd_data(raw, defaults_profile = "excel")
+}
+
+load_curve_workbook <- function(file, file_name = NULL) {
+  file_chr <- as.character(file %||% "")
+  if (!length(file_chr) || is.na(file_chr[[1]]) || !nzchar(file_chr[[1]])) file_chr <- ""
+  name_chr <- as.character(file_name %||% "")
+  if (!length(name_chr) || is.na(name_chr[[1]]) || !nzchar(name_chr[[1]])) {
+    name_chr <- basename(file_chr)
+  }
+  name_chr <- if (length(name_chr)) name_chr[[1]] else ""
+  ext_file <- tolower(tools::file_ext(file_chr))
+  is_csv_input <- is_csv_filename(name_chr) || identical(ext_file, "csv")
+
+  curve_fail <- function(reason = "invalid", message = NULL) {
+    list(
+      ok = FALSE,
+      reason = reason,
+      message = message,
+      Sheet1 = NULL,
+      Sheet2 = NULL,
+      Meta = NULL,
+      Summary = NULL,
+      SummaryMode = FALSE
+    )
+  }
+
+  d <- NULL
   s <- NULL
   meta <- NULL
   summary_tbl <- NULL
   from_summary <- FALSE
   parse_message <- NULL
 
-  if (is.null(d) || !"Time" %in% names(d)) {
-    parsed <- tryCatch(
-      build_curve_from_mean_sd(file),
+  if (isTRUE(is_csv_input)) {
+    d <- tryCatch(
+      read_csv_tmp(file_chr),
       error = function(e) {
         parse_message <<- conditionMessage(e)
         NULL
       }
     )
-    if (is.null(parsed)) {
-      reason <- if (isTRUE(has_sheet1) || isTRUE(has_summary_sheet)) "invalid" else "not_found"
-      if (identical(reason, "invalid") && (!is.character(parse_message) || !nzchar(parse_message))) {
-        parse_message <- "Curve workbook format not recognized."
+    if (is.null(d) || !is.data.frame(d) || !nrow(d)) {
+      if (!is.character(parse_message) || !nzchar(parse_message)) {
+        parse_message <- "Curve CSV format not recognized."
       }
-      return(list(
-        ok = FALSE,
-        reason = reason,
-        message = parse_message,
-        Sheet1 = NULL,
-        Sheet2 = NULL,
-        Meta = NULL,
-        Summary = NULL,
-        SummaryMode = FALSE
-      ))
+      return(curve_fail(reason = "invalid", message = parse_message))
     }
-    d <- parsed$Sheet1
-    s <- parsed$Sheet2
-    meta <- parsed$Meta
-    summary_tbl <- parsed$Summary
-    from_summary <- TRUE
+
+    parsed <- tryCatch(
+      build_curve_from_mean_sd_data(d, defaults_profile = "csv"),
+      error = function(e) {
+        parse_message <<- conditionMessage(e)
+        NULL
+      }
+    )
+    if (!is.null(parsed)) {
+      d <- parsed$Sheet1
+      s <- parsed$Sheet2
+      meta <- parsed$Meta
+      summary_tbl <- parsed$Summary
+      from_summary <- TRUE
+    } else {
+      d <- rename_columns_by_alias(
+        d,
+        list(Time = c("Time", "Tiempo", "Minutes", "Minutos"))
+      )
+      if (!"Time" %in% names(d)) {
+        if (!is.character(parse_message) || !nzchar(parse_message)) {
+          parse_message <- "Curve CSV format not recognized."
+        }
+        return(curve_fail(reason = "invalid", message = parse_message))
+      }
+    }
   } else {
-    s <- tryCatch(read_excel_tmp(file, sheet = "Sheet2"), error = function(e) NULL)
+    sheets <- tryCatch(readxl::excel_sheets(file_chr), error = function(e) character(0))
+    summary_aliases <- c(
+      "Curves_Summary", "Curvas_Summary", "Summary_Curves", "Resumen_Curvas"
+    )
+    has_sheet1 <- "Sheet1" %in% sheets
+    has_summary_sheet <- !is.null(find_sheet_alias(sheets, summary_aliases))
+
+    d <- tryCatch(read_excel_tmp(file_chr, sheet = "Sheet1"), error = function(e) NULL)
+    if (is.null(d) || !"Time" %in% names(d)) {
+      parsed <- tryCatch(
+        build_curve_from_mean_sd(file_chr),
+        error = function(e) {
+          parse_message <<- conditionMessage(e)
+          NULL
+        }
+      )
+      if (is.null(parsed)) {
+        reason <- if (isTRUE(has_sheet1) || isTRUE(has_summary_sheet)) "invalid" else "not_found"
+        if (identical(reason, "invalid") && (!is.character(parse_message) || !nzchar(parse_message))) {
+          parse_message <- "Curve workbook format not recognized."
+        }
+        return(curve_fail(reason = reason, message = parse_message))
+      }
+      d <- parsed$Sheet1
+      s <- parsed$Sheet2
+      meta <- parsed$Meta
+      summary_tbl <- parsed$Summary
+      from_summary <- TRUE
+    } else {
+      s <- tryCatch(read_excel_tmp(file_chr, sheet = "Sheet2"), error = function(e) NULL)
+    }
   }
 
-  if (is.null(d) || !"Time" %in% names(d)) {
-    return(list(
-      ok = FALSE,
-      reason = "invalid",
-      message = "Curve workbook format not recognized.",
-      Sheet1 = NULL,
-      Sheet2 = NULL,
-      Meta = NULL,
-      Summary = NULL,
-      SummaryMode = FALSE
-    ))
+  d <- as.data.frame(d %||% data.frame(), stringsAsFactors = FALSE, check.names = FALSE)
+  d <- rename_columns_by_alias(
+    d,
+    list(Time = c("Time", "Tiempo", "Minutes", "Minutos"))
+  )
+  if (!"Time" %in% names(d)) {
+    msg <- if (isTRUE(is_csv_input)) "Curve CSV format not recognized." else "Curve workbook format not recognized."
+    return(curve_fail(reason = "invalid", message = msg))
   }
+
+  d$Time <- suppressWarnings(as.numeric(to_numeric(d$Time)))
+  d <- d[is.finite(d$Time), , drop = FALSE]
+  curve_cols <- setdiff(names(d), "Time")
+  if (!length(curve_cols)) {
+    msg <- if (isTRUE(is_csv_input)) "Curve CSV format not recognized." else "Curve workbook format not recognized."
+    return(curve_fail(reason = "invalid", message = msg))
+  }
+  for (nm in curve_cols) {
+    d[[nm]] <- suppressWarnings(as.numeric(to_numeric(d[[nm]])))
+  }
+  keep_curve_cols <- curve_cols[vapply(curve_cols, function(nm) {
+    any(is.finite(d[[nm]]))
+  }, logical(1))]
+  if (!length(keep_curve_cols)) {
+    msg <- if (isTRUE(is_csv_input)) "Curve CSV format not recognized." else "Curve workbook format not recognized."
+    return(curve_fail(reason = "invalid", message = msg))
+  }
+  d <- d[, c("Time", keep_curve_cols), drop = FALSE]
 
   d_time_max <- suppressWarnings(max(as.numeric(d$Time), na.rm = TRUE))
   if (!is.finite(d_time_max)) d_time_max <- 1
@@ -1225,8 +2266,9 @@ load_curve_workbook <- function(file) {
   }
   if (!is.finite(d_val_max)) d_val_max <- 1
 
-  default_x_break <- if (is.finite(d_time_max) && d_time_max > 0) d_time_max / 3 else 1
-  default_y_break <- if (is.finite(d_val_max) && d_val_max > 0) d_val_max / 3 else 1
+  default_divisor <- if (isTRUE(is_csv_input)) 4 else 3
+  default_x_break <- if (is.finite(d_time_max) && d_time_max > 0) d_time_max / default_divisor else 1
+  default_y_break <- if (is.finite(d_val_max) && d_val_max > 0) d_val_max / default_divisor else 1
 
   required_cols <- c("X_Max", "Interval_X", "Y_Max", "Interval_Y", "X_Title", "Y_Title")
   if (is.null(s) || !all(required_cols %in% names(s))) {
@@ -1235,8 +2277,8 @@ load_curve_workbook <- function(file) {
       Interval_X = default_x_break,
       Y_Max = d_val_max,
       Interval_Y = default_y_break,
-      X_Title = "Tiempo (min)",
-      Y_Title = "OD (620 nm)",
+      X_Title = if (isTRUE(is_csv_input)) "" else "Tiempo (min)",
+      Y_Title = if (isTRUE(is_csv_input)) "" else "OD (620 nm)",
       Well = NA,
       BiologicalReplicate = NA
     )
@@ -1267,6 +2309,193 @@ load_curve_workbook <- function(file) {
     Meta = meta,
     Summary = summary_tbl,
     SummaryMode = from_summary
+  )
+}
+
+merge_curve_workbooks_by_well_map <- function(
+  base_file,
+  additional_files = character(0),
+  well_map,
+  base_name = NULL,
+  additional_names = character(0)
+) {
+  additional_files <- as.character(additional_files %||% character(0))
+  additional_files <- additional_files[!is.na(additional_files) & nzchar(additional_files)]
+  curve_files <- c(base_file, additional_files)
+  if (!length(curve_files)) {
+    stop("No curve files were provided for merge.")
+  }
+  curve_labels <- c(base_name, additional_names)
+  curve_labels <- as.character(curve_labels %||% character(0))
+  if (length(curve_labels) < length(curve_files)) {
+    curve_labels <- c(curve_labels, rep("", length(curve_files) - length(curve_labels)))
+  } else if (length(curve_labels) > length(curve_files)) {
+    curve_labels <- curve_labels[seq_len(length(curve_files))]
+  }
+  fallback_names <- basename(curve_files)
+  missing_label <- is.na(curve_labels) | !nzchar(trimws(curve_labels))
+  curve_labels[missing_label] <- fallback_names[missing_label]
+
+  map_tbl <- as.data.frame(well_map %||% data.frame(), stringsAsFactors = FALSE)
+  required_map_cols <- c("SourceIndex", "SourceLabel", "SourceWell", "SourceRow", "TargetWell", "TargetRow")
+  if (!all(required_map_cols %in% names(map_tbl))) {
+    stop("Platemap merge map is not available for curve remapping.")
+  }
+  map_tbl <- map_tbl %>%
+    dplyr::mutate(
+      SourceIndex = suppressWarnings(as.integer(SourceIndex)),
+      SourceLabel = as.character(SourceLabel),
+      SourceWell = as.character(SourceWell),
+      SourceRow = suppressWarnings(as.integer(SourceRow)),
+      TargetWell = as.character(TargetWell),
+      TargetRow = suppressWarnings(as.integer(TargetRow))
+    ) %>%
+    dplyr::filter(
+      !is.na(SourceIndex),
+      !is.na(SourceWell), nzchar(SourceWell),
+      !is.na(TargetWell), nzchar(TargetWell)
+    ) %>%
+    dplyr::arrange(SourceIndex, SourceRow, TargetRow)
+
+  if (!nrow(map_tbl)) {
+    stop("No well remapping rows were found for curve merge.")
+  }
+
+  curve_list <- lapply(seq_along(curve_files), function(i) {
+    parsed <- load_curve_workbook(curve_files[[i]], file_name = curve_labels[[i]])
+    if (!isTRUE(parsed$ok) || is.null(parsed$Sheet1) || !"Time" %in% names(parsed$Sheet1)) {
+      msg <- parsed$message
+      if (!is.character(msg) || !nzchar(msg)) {
+        msg <- sprintf("Curve file '%s' format not recognized.", curve_labels[[i]])
+      }
+      stop(msg)
+    }
+    parsed
+  })
+
+  all_times <- sort(unique(unlist(lapply(curve_list, function(item) {
+    suppressWarnings(as.numeric(item$Sheet1$Time))
+  }), use.names = FALSE)))
+  all_times <- all_times[is.finite(all_times)]
+  if (!length(all_times)) {
+    stop("Curve files do not contain valid numeric Time values.")
+  }
+
+  merged_sheet1 <- data.frame(Time = all_times, stringsAsFactors = FALSE, check.names = FALSE)
+
+  map_tbl$CurveFile <- ifelse(
+    map_tbl$SourceIndex >= 1 & map_tbl$SourceIndex <= length(curve_files),
+    curve_labels[pmax(1L, pmin(length(curve_files), map_tbl$SourceIndex))],
+    NA_character_
+  )
+  map_tbl$ColumnFound <- FALSE
+
+  for (k in seq_len(nrow(map_tbl))) {
+    src_idx <- map_tbl$SourceIndex[[k]]
+    if (!is.finite(src_idx) || src_idx < 1 || src_idx > length(curve_list)) next
+
+    src_sheet <- curve_list[[src_idx]]$Sheet1
+    src_well <- map_tbl$SourceWell[[k]]
+    tgt_well <- map_tbl$TargetWell[[k]]
+    if (!nzchar(src_well) || !nzchar(tgt_well)) next
+    if (!(src_well %in% names(src_sheet))) next
+
+    map_tbl$ColumnFound[[k]] <- TRUE
+    src_time <- suppressWarnings(as.numeric(src_sheet$Time))
+    src_vals <- suppressWarnings(as.numeric(src_sheet[[src_well]]))
+    aligned <- rep(NA_real_, length(all_times))
+    idx <- match(all_times, src_time)
+    hit <- is.finite(idx)
+    aligned[hit] <- src_vals[idx[hit]]
+
+    if (!tgt_well %in% names(merged_sheet1)) {
+      merged_sheet1[[tgt_well]] <- NA_real_
+    }
+    fill_idx <- is.na(merged_sheet1[[tgt_well]])
+    merged_sheet1[[tgt_well]][fill_idx] <- aligned[fill_idx]
+  }
+
+  target_well_order <- map_tbl %>%
+    dplyr::filter(!is.na(TargetWell) & nzchar(TargetWell)) %>%
+    dplyr::group_by(TargetWell) %>%
+    dplyr::summarise(TargetRow = suppressWarnings(min(TargetRow, na.rm = TRUE)), .groups = "drop") %>%
+    dplyr::arrange(TargetRow)
+
+  target_wells <- as.character(target_well_order$TargetWell)
+  target_wells <- target_wells[!is.na(target_wells) & nzchar(target_wells)]
+  for (ww in target_wells) {
+    if (!ww %in% names(merged_sheet1)) merged_sheet1[[ww]] <- NA_real_
+  }
+  merged_sheet1 <- merged_sheet1[, c("Time", target_wells), drop = FALSE]
+
+  cfg_base <- curve_list[[1]]$Sheet2
+  if (is.null(cfg_base) || !is.data.frame(cfg_base) || !nrow(cfg_base)) {
+    cfg_base <- data.frame(
+      X_Max = NA_real_,
+      Interval_X = NA_real_,
+      Y_Max = NA_real_,
+      Interval_Y = NA_real_,
+      X_Title = "Time",
+      Y_Title = "Signal",
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  }
+
+  first_finite_num <- function(v, fallback) {
+    num <- suppressWarnings(as.numeric(v))
+    num <- num[is.finite(num)]
+    if (length(num)) num[[1]] else fallback
+  }
+  first_text <- function(v, fallback) {
+    chr <- as.character(v)
+    chr <- chr[!is.na(chr) & nzchar(trimws(chr))]
+    if (length(chr)) chr[[1]] else fallback
+  }
+
+  x_max <- first_finite_num(cfg_base$X_Max, fallback = suppressWarnings(max(all_times, na.rm = TRUE)))
+  if (!is.finite(x_max) || x_max <= 0) x_max <- 1
+  x_break <- first_finite_num(cfg_base$Interval_X, fallback = x_max / 3)
+  if (!is.finite(x_break) || x_break <= 0) x_break <- x_max / 3
+  if (!is.finite(x_break) || x_break <= 0) x_break <- 1
+
+  curve_vals <- unlist(merged_sheet1[, setdiff(names(merged_sheet1), "Time"), drop = FALSE], use.names = FALSE)
+  curve_vals <- suppressWarnings(as.numeric(curve_vals))
+  curve_vals <- curve_vals[is.finite(curve_vals)]
+  y_max_data <- if (length(curve_vals)) max(curve_vals, na.rm = TRUE) else NA_real_
+  y_max <- first_finite_num(cfg_base$Y_Max, fallback = y_max_data)
+  if (!is.finite(y_max) || y_max <= 0) y_max <- if (is.finite(y_max_data) && y_max_data > 0) y_max_data else 1
+  y_break <- first_finite_num(cfg_base$Interval_Y, fallback = y_max / 3)
+  if (!is.finite(y_break) || y_break <= 0) y_break <- y_max / 3
+  if (!is.finite(y_break) || y_break <= 0) y_break <- 1
+
+  x_title <- first_text(cfg_base$X_Title, fallback = "Time")
+  y_title <- first_text(cfg_base$Y_Title, fallback = "Signal")
+
+  if (!length(target_wells)) target_wells <- NA_character_
+  sheet2 <- data.frame(
+    X_Max = x_max,
+    Interval_X = x_break,
+    Y_Max = y_max,
+    Interval_Y = y_break,
+    X_Title = x_title,
+    Y_Title = y_title,
+    Well = target_wells,
+    BiologicalReplicate = seq_along(target_wells),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+
+  source_map <- map_tbl %>%
+    dplyr::select(
+      SourceIndex, SourceLabel, CurveFile, SourceWell, SourceRow,
+      TargetWell, TargetRow, ColumnFound
+    )
+
+  list(
+    Sheet1 = merged_sheet1,
+    Sheet2 = sheet2,
+    SourceMap = source_map
   )
 }
 
@@ -1487,7 +2716,9 @@ is_empty_value <- function(x) {
 #───────────────────────────────────────────────────────────────────────────────
 # Helper: asegura que existan PlotSettings y columnas de parámetros
 #───────────────────────────────────────────────────────────────────────────────
-prepare_platemap <- function(df_datos, cfg) {
+prepare_platemap <- function(df_datos, cfg, defaults_profile = c("excel", "csv")) {
+  defaults_profile <- match.arg(defaults_profile)
+  csv_profile <- identical(defaults_profile, "csv")
   normalize_text <- function(x) {
     if (is.null(x)) return(x)
     out <- as.character(x)
@@ -1496,12 +2727,56 @@ prepare_platemap <- function(df_datos, cfg) {
     out[out == ""] <- NA_character_
     out
   }
-  safe_num <- function(x) {
-    if (is.numeric(x)) return(x)
-    num <- to_numeric(x)
-    if (all(is.na(num))) return(x)
+  is_numeric_like <- function(x) {
+    x <- normalize_text(x)
+    x <- x[!is.na(x)]
+    if (!length(x)) return(FALSE)
+    all(grepl("^[-+]?[0-9]+([\\.,][0-9]+)?$", x))
+  }
+  safe_num <- function(x, keep_text_when_all_na = TRUE, strict_numeric = FALSE) {
+    if (is.numeric(x)) return(as.numeric(x))
+    txt <- normalize_text(x)
+    if (isTRUE(strict_numeric) && !is_numeric_like(txt)) return(txt)
+    num <- to_numeric(txt)
+    if (all(is.na(num))) {
+      if (isTRUE(keep_text_when_all_na)) return(txt)
+      return(num)
+    }
     num
   }
+  build_default_cfg <- function(df, params) {
+    params <- unique(as.character(params %||% character(0)))
+    params <- params[!is.na(params) & nzchar(params)]
+    if (!length(params)) {
+      return(tibble::tibble(
+        Parameter = character(0),
+        Y_Max = numeric(0),
+        Interval = numeric(0),
+        Y_Title = character(0)
+      ))
+    }
+    col_max <- function(v) if (all(is.na(v))) NA_real_ else max(v, na.rm = TRUE)
+    raw_max <- vapply(params, function(nm) col_max(df[[nm]]), numeric(1))
+    if (isTRUE(csv_profile)) {
+      y_max <- raw_max
+      interval <- vapply(y_max, function(mx) {
+        if (!is.finite(mx) || is.na(mx) || mx <= 0) return(NA_real_)
+        max(1, round(mx / 5))
+      }, numeric(1))
+      y_title <- rep("", length(params))
+    } else {
+      y_max <- vapply(params, function(nm) round_up_sig(raw_max[[nm]], digits = 2), numeric(1))
+      interval <- ifelse(is.na(y_max) | y_max == 0, NA_real_, y_max / 5)
+      y_title <- rep("", length(params))
+    }
+    tibble::tibble(
+      Parameter = params,
+      Y_Max = y_max,
+      Interval = interval,
+      Y_Title = y_title
+    )
+  }
+  id_cols <- c("Strain", "Media", "Orden", "BiologicalReplicate", "TechnicalReplicate", "Well", "Replicate")
 
   if (!is.null(df_datos) && !is.null(names(df_datos))) {
     names(df_datos) <- normalize_text(names(df_datos))
@@ -1510,10 +2785,19 @@ prepare_platemap <- function(df_datos, cfg) {
         df_datos[[col]] <- normalize_text(df_datos[[col]])
       }
     }
-    for (col in c("Orden", "BiologicalReplicate")) {
-      if (col %in% names(df_datos)) {
-        df_datos[[col]] <- safe_num(df_datos[[col]])
-      }
+    if ("BiologicalReplicate" %in% names(df_datos)) {
+      df_datos[["BiologicalReplicate"]] <- safe_num(
+        df_datos[["BiologicalReplicate"]],
+        keep_text_when_all_na = TRUE,
+        strict_numeric = TRUE
+      )
+    }
+    if ("Orden" %in% names(df_datos)) {
+      df_datos[["Orden"]] <- safe_num(
+        df_datos[["Orden"]],
+        keep_text_when_all_na = FALSE,
+        strict_numeric = FALSE
+      )
     }
   }
   if (!is.null(cfg) && !is.null(names(cfg))) {
@@ -1531,24 +2815,20 @@ prepare_platemap <- function(df_datos, cfg) {
       cfg$Y_Title <- normalize_text(cfg$Y_Title)
     }
   }
+  data_param_cols <- setdiff(names(df_datos), id_cols)
+  data_param_cols <- data_param_cols[!is.na(data_param_cols) & nzchar(data_param_cols)]
+  if (length(data_param_cols)) {
+    df_datos[data_param_cols] <- lapply(df_datos[data_param_cols], to_numeric)
+  }
 
   # ─ 1. PlotSettings inexistente o vacío ────────────────────────────────────
   if (is.null(cfg) || nrow(cfg) == 0 || !"Parameter" %in% names(cfg)) {
-    message("⚠️  PlotSettings no encontrado: se genera configuración mínima")
-    # Identificamos columnas numéricas >> posibles parámetros
-    param_cols <- setdiff(names(df_datos),
-                          c("Strain","Media","Orden",
-                            "BiologicalReplicate","TechnicalReplicate","Well"))
-    if (length(param_cols) == 0) {
-      param_cols <- "Parametro_dummy"
-      df_datos[[param_cols]] <- NA_real_
+    # Identificamos columnas de parámetros desde Datos.
+    if (length(data_param_cols) == 0) {
+      data_param_cols <- "Parametro_dummy"
+      df_datos[[data_param_cols]] <- NA_real_
     }
-    cfg <- tibble::tibble(
-      Parameter = param_cols,
-      Y_Max     = 1,
-      Interval  = 1,
-      Y_Title   = param_cols
-    )
+    cfg <- build_default_cfg(df_datos, data_param_cols)
   }
   
   # ─ 2. Limpiar parametros vacios y quedarnos solo con los que tienen datos ─
@@ -1558,29 +2838,50 @@ prepare_platemap <- function(df_datos, cfg) {
   }
   
   if (nrow(cfg) > 0) {
-    faltantes <- setdiff(cfg$Parameter, names(df_datos))
-    if (length(faltantes)) {
-      df_datos[ faltantes ] <- NA_real_
+    if (!"Y_Max" %in% names(cfg)) cfg$Y_Max <- NA_real_
+    if (!"Interval" %in% names(cfg)) cfg$Interval <- NA_real_
+    if (!"Y_Title" %in% names(cfg)) {
+      cfg$Y_Title <- rep("", nrow(cfg))
     }
-    
-    present <- intersect(cfg$Parameter, names(df_datos))
-    if (length(present)) {
-      df_datos[present] <- lapply(df_datos[present], to_numeric)
-      has_data <- vapply(present, function(p) {
-        col <- df_datos[[p]]
-        if (is.numeric(col)) {
-          any(is.finite(col))
-        } else if (is.character(col) || is.factor(col)) {
-          vals <- trimws(as.character(col))
-          any(nzchar(vals))
-        } else {
-          any(!is.na(col))
-        }
-      }, logical(1))
-      cfg <- cfg[cfg$Parameter %in% present[has_data], , drop = FALSE]
-    } else {
-      cfg <- cfg[0, , drop = FALSE]
+
+    # Keep compatibility by materializing declared parameters even when missing
+    # in Datos, but do not force them into UI if they have no real data column.
+    missing_declared <- setdiff(cfg$Parameter, names(df_datos))
+    if (length(missing_declared)) {
+      df_datos[missing_declared] <- NA_real_
     }
+
+    cfg_present <- cfg[cfg$Parameter %in% data_param_cols, , drop = FALSE]
+    extra_data_params <- setdiff(data_param_cols, cfg_present$Parameter)
+    if (length(extra_data_params)) {
+      cfg_extra <- build_default_cfg(df_datos, extra_data_params)
+      cfg_present <- dplyr::bind_rows(cfg_present, cfg_extra)
+    }
+
+    cfg <- cfg_present
+    if (!nrow(cfg) && length(data_param_cols)) {
+      cfg <- build_default_cfg(df_datos, data_param_cols)
+    }
+  } else if (length(data_param_cols)) {
+    cfg <- build_default_cfg(df_datos, data_param_cols)
+  } else {
+    cfg <- tibble::tibble(
+      Parameter = "Parametro_dummy",
+      Y_Max = NA_real_,
+      Interval = NA_real_,
+      Y_Title = ""
+    )
+    if (!"Parametro_dummy" %in% names(df_datos)) {
+      df_datos[["Parametro_dummy"]] <- NA_real_
+    }
+  }
+
+  if (nrow(cfg)) {
+    cfg$Y_Max <- to_numeric(cfg$Y_Max)
+    cfg$Interval <- to_numeric(cfg$Interval)
+    cfg$Y_Title <- normalize_text(cfg$Y_Title)
+    idx_title_empty <- is.na(cfg$Y_Title) | !nzchar(cfg$Y_Title)
+    cfg$Y_Title[idx_title_empty] <- ""
   }
   
   list(datos = df_datos, cfg = cfg)

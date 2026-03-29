@@ -8,9 +8,37 @@ app_title,Graphics and Analysis Center
 tab_plots,Plots and Stats
 tab_growth,Growth Parameter Extraction
 tab_composition,Composition Panel
-file_data,Load Data (.xlsx):
-file_curves,Load Curves (.xlsx)
+file_data,Load Data (.xlsx/.xls/.csv):
+file_curves,Load Curves (.xlsx/.xls/.csv)
 file_meta,Load design metadata (.xlsx)
+merge_title,Platemap Merge
+merge_help,"Use the loaded data file as base, add more platemaps, then merge and load."
+merge_files,Additional platemaps (.xlsx)
+merge_open,Open platemap merge
+merge_run,Merge platemaps
+merge_download,Download merged platemap
+merge_close,Close
+merge_status_idle,No merged platemap generated yet.
+merge_need_base,Load a base data file first.
+merge_need_files,Add at least one platemap to merge.
+merge_status_ready,"Merged file ready: %s rows, %s parameters, %s groups (%s overlapping groups)."
+merge_loaded,Merged platemap loaded into Plots and Stats.
+merge_failed,"Could not merge platemaps: %s"
+merge_no_file,No merged file is available for download.
+curve_merge_title,Curve Merge
+curve_merge_help,"Use the current curves file as base, add more curves files, then merge and load."
+curve_merge_files,Additional curves (.xlsx/.xls/.csv)
+curve_merge_open,Open curve merge
+curve_merge_run,Merge curves
+curve_merge_download,Download merged curves
+curve_merge_status_idle,No merged curves file generated yet.
+curve_merge_need_map,Generate a merged platemap first to map wells.
+curve_merge_need_base,Load a base curves file first.
+curve_merge_need_files,Add at least one curves file to merge.
+curve_merge_status_ready,"Merged curves ready: %s wells, %s time points."
+curve_merge_loaded,Merged curves loaded into Curves.
+curve_merge_failed,"Could not merge curves: %s"
+curve_merge_no_file,No merged curves file is available for download.
 file_meta_help,Files must be named metadata_Type.xlsx (for example metadata_Boxplot.xlsx)
 manual_download,Instructions (download)
 download_refs,Reference input files (download)
@@ -55,6 +83,9 @@ norm_groups_insufficient,Not enough groups to run the test.
 sig_insufficient_obs,Groups with insufficient observations: %s
 sig_test_error_prefix,Test error:
 corr_min_points,Need at least 3 points to compute correlation.
+corr_no_overlap_points,"No overlapping values for '%s' (X) and '%s' (Y) in the current selection. Groups with X: %s, with Y: %s, with both: %s."
+corr_overlap_groups_hint,"Groups with both values include: %s"
+corr_not_enough_overlap_points,"Only %s overlapping point(s) for '%s' vs '%s'. Need at least 3."
 plot_pdf_failed,Could not generate the plot PDF.
 metadata_capture_failed,Could not capture metadata.
 metadata_invalid_sheet,Invalid structure in %s: could not read sheet 'Metadata'.
@@ -71,7 +102,7 @@ curve_embedded_invalid,Embedded curves were detected but could not be read: %s
 curve_embedded_missing,No embedded curves were found in this grouped or summary workbook. Add a Curves_Summary sheet to enable Curves plots.
 data_file_invalid,Invalid data file: %s
 add_to_panel,Add to panel
-comments_label,Comments and suggestions to 
+comments_label,Comments and suggestions:
 missing_params_warning,These parameters are missing in the data and were omitted: %s
 corr_select_two_params,Select two parameters.
 no_data_normality,No data available for normality.
@@ -93,11 +124,14 @@ growth_files,Load growth curves (.xlsx)
 growth_max_time,Max time
 growth_interval,Interval (by)
 growth_run,Calculate parameters
+growth_stop,Stop process
 growth_download,Download results
 growth_import,Import to Plots and Stats
 growth_progress_files,Processing files...
 growth_progress_curves,Processing curves for %s
 growth_progress_file_done,File %s completed
+growth_stop_requested,Stop requested. Cancelling current processing...
+growth_stopped,Growth parameter extraction stopped.
 size_section,Size and Font
 base_size,Base size (pts)
 title_size,Title size:
@@ -270,23 +304,71 @@ combo_select_plots,Select the plots you want to combine:
 combo_order_label,Change order:
 combo_move_up,Move up
 combo_move_down,Move down
+combo_move_top,Move to top
+combo_move_bottom,Move to bottom
+combo_remove_current,Remove current plot
+combo_remove_selected,Remove selected plots
+combo_remove_none,No selected plots to remove.
+combo_removed_count,Removed %d plot(s) from composition.
 combo_show_legend,Show legend
+combo_title,Composition title
 combo_rows,Rows
 combo_cols,Columns
 combo_width,Width px
 combo_height,Height px
 combo_base_size,Base size (pts)
 combo_title_size,Title size (pts)
+combo_comp_title_size,Composition title size (pts)
+combo_plot_title_size,Plot title size (pts)
 combo_axis_titles,Axis titles
 combo_axis_ticks,Axis ticks
+combo_axis_line_size,Axis line thickness
 combo_legend_text,Legend text
 combo_palette_label,Color palette:
 combo_preview,Update / Preview
+combo_preview_optional,Refresh preview (optional)
 combo_download_png,Download PNG
 combo_download_pptx,Download PPTX
 combo_download_pdf,Download PDF
 combo_download_meta,Download metadata
 combo_upload_meta,Upload composition metadata (.xlsx)
+combo_selected_plots,Selected in composition
+combo_override_targets,Override targets
+combo_override_targets_placeholder,Choose one or more plots
+combo_section_selection,1) Plot Selection
+combo_section_layout,2) Layout & Canvas
+combo_section_style,3) Visual Style
+combo_section_richtext,4) Rich Text Boxes
+combo_section_overrides,5) Parallel Overrides
+combo_section_actions,6) Preview & Export
+combo_layout_grid,Custom layout grid (optional)
+combo_col_widths,Column widths (comma-separated)
+combo_row_heights,Row heights (comma-separated)
+combo_layout_hint,Use numbers from the selected order (0 = empty). Example: 1 1 2 / 3 4 4
+combo_layout_map_empty,No layout map available.
+combo_font_family,Font family
+combo_sync_text,Sync text style across plots
+combo_apply_paper_theme,Apply paper-style base theme
+combo_style_live_hint,Global style controls apply live to all plots in the composition.
+combo_override_apply_hint,Use the button below only for per-plot overrides (all / type / selected plots).
+combo_actions_hint,Use this button only if you want to force a redraw. Most style and layout changes update automatically.
+combo_legend_scope,Legend mode
+combo_legend_scope_all,Legend in each plot
+combo_legend_scope_type,One legend per plot type
+combo_legend_scope_collect,Single collected legend
+combo_legend_side,Legend side
+combo_legend_side_right,Right
+combo_legend_side_left,Left
+combo_rich_enable,Add rich text box (ggtext)
+combo_rich_text,Rich text (Markdown/HTML)
+combo_rich_x,Text box X (0-1)
+combo_rich_y,Text box Y (0-1)
+combo_rich_box_w,Text box width (0-1)
+combo_rich_box_h,Text box height (0-1)
+combo_rich_size,Text size
+combo_rich_color,Text color
+combo_rich_fill,Text box fill
+combo_richtext_missing,ggtext is not installed. Using plain text box fallback.
 override_apply_to,Apply to:
 override_all,All
 override_title,Title (override)
@@ -303,10 +385,13 @@ override_point_size,Point size
 override_point_jitter,Point jitter
 override_sig_linewidth,Significance bar thickness
 override_sig_textsize,Significance text size
-override_apply_all,Apply changes to ALL
+override_apply_all,Apply override now
 no_data_plot,No data to plot
-norm_failed_generic,Normalization could not be applied; showing raw values.
-norm_fallback_ctrl,"Normalization could not use control ""%s""; showing raw values."
+loading_plot_data,Loading data from file...
+norm_failed_generic,Normalization could not be applied for the current selection.
+norm_fallback_ctrl,"Normalization could not use control ""%s""."
+norm_unavailable_ctrl,"Normalization could not use control ""%s"" for the current selection; only parameters with valid normalized values are available."
+norm_unavailable_ctrl_noctrl,Normalization could not run for the current selection; only parameters with valid normalized values are available.
 plot_raincloud,Raincloud
 plot_estimation,Estimation
 plot_heatmap,Heatmap
@@ -320,18 +405,25 @@ corr_method_kendall,Kendall
 corr_matrix_settings,Correlation Matrix Settings
 corr_matrix_params,Parameters for matrix:
 corr_matrix_show_sig,Show only significant correlations
+corr_matrix_order_profile,Order parameters by correlation profile similarity
 heatmap_settings,Heatmap Settings
 heatmap_params,Parameters for heatmap:
+heatmap_select_all_params,Select all parameters
+heatmap_clear_all_params,Deselect all parameters
+heatmap_show_param_labels,Show parameter names
+heatmap_orientation,Heatmap orientation:
+heatmap_orientation_params_rows,Rows: parameters
+heatmap_orientation_params_cols,Columns: parameters
 heatmap_scale_mode,Normalization:
 heatmap_scale_none,None
 heatmap_scale_row,By row (parameter)
 heatmap_scale_col,By column (group)
-heatmap_cluster_method,Clustering method:
+heatmap_cluster_method,Pattern ordering method:
 heatmap_dendro_rows,Show side dendrogram (rows)
 heatmap_dendro_cols,Show top dendrogram (columns)
 heatmap_zscore,Z-score normalize by parameter
-heatmap_cluster_rows,Cluster rows (groups)
-heatmap_cluster_cols,Cluster columns (parameters)
+heatmap_cluster_rows,Order/cluster rows by expression pattern
+heatmap_cluster_cols,Order/cluster columns by expression pattern
 heatmap_show_values,Show values in cells
 estimation_settings,Estimation Settings
 estimation_boot_n,Bootstrap iterations:
@@ -394,6 +486,31 @@ qc_outlier_topn_error,Could not rank replicates by reproducibility for the curre
 qc_outlier_topn_no_change,No replicate selection changes were needed.
 qc_outlier_topn_done,Replicate limit applied. Replicates kept: %s. By group: %s
 qc_sample_help,Summarizes sample size and biological replicate coverage per group.
+qc_tech_title,Technical replicate QC
+qc_tech_help,Review and refine technical replicate selection within each biological replicate.
+qc_tech_select_all_button,Select all technical replicates
+qc_tech_deselect_all_button,Deselect all technical replicates
+qc_tech_selector_help,Select the technical replicates to keep inside each biological replicate.
+qc_tech_selector_label,Technical replicates
+qc_tech_biorep_panel,Biological replicate: %s
+qc_tech_outlier_table,Technical replicate outliers
+qc_tech_outlier_iqr_multiplier_label,Technical outlier strictness (IQR multiplier)
+qc_tech_outlier_iqr_multiplier_help,Lower values are stricter and detect more technical replicate outliers within each biological replicate. Higher values are more permissive. Default: 1.5 (Tukey rule).
+qc_tech_outlier_apply_button,Deselect detected technical replicate outliers
+qc_tech_keep_n_label,Technical replicates to keep per biological replicate
+qc_tech_keep_n_help,Keeps the N most reproducible technical replicates within each biological replicate using distance to the subgroup median across parameters.
+qc_tech_apply_topn_button,Apply technical replicate limit
+qc_tech_no_matches,No technical replicate outliers were detected with the current settings.
+qc_tech_apply_error,Could not evaluate technical replicate outliers for the current data selection.
+qc_tech_not_enough_data,Not enough valid technical replicate data to apply this automatic selection.
+qc_tech_apply_done,Technical replicate exclusion applied. Replicates deselected: %s. By subgroup: %s
+qc_tech_topn_invalid,Enter a technical replicate count greater than 0.
+qc_tech_topn_error,Could not rank technical replicates by reproducibility for the current data selection.
+qc_tech_topn_no_change,No technical replicate selection changes were needed.
+qc_tech_topn_done,Technical replicate limit applied. Replicates kept: %s. By subgroup: %s
+qc_tech_sample_column,Technical replicates
+qc_tech_sample_each,%s each
+qc_tech_sample_exception,%s: %s
 sig_auto_title,Auto-generate from test
 sig_auto_help,Build significance bars directly from the latest significance test output.
 sig_auto_include,Include comparisons:
@@ -413,9 +530,68 @@ corr_ci_style,Confidence interval style:
 corr_ci_band,Shaded band
 corr_ci_dashed,Dashed bounds
 corr_ci_level,Confidence level:
+corr_adv_title,Advanced Correlation
+corr_adv_hint_click,Click a row to load that pair in the main correlation plot.
+corr_adv_anchor,Anchor parameter:
+corr_adv_data_mode,Data mode:
+corr_adv_data_raw,Raw for both axes
+corr_adv_data_norm_both,Normalized for both axes
+corr_adv_data_norm_x,Normalize X only
+corr_adv_data_norm_y,Normalize Y only
+corr_adv_sig_only,Show only significant results
+corr_adv_pvalue_max,Max p-value:
+corr_adv_direction,Correlation direction:
+corr_adv_direction_all,All
+corr_adv_direction_pos,Positive
+corr_adv_direction_neg,Negative
+corr_adv_direction_zero,Zero
+corr_adv_r_filter,r filter range:
+corr_adv_run,Run advanced correlation
+corr_adv_press_run,Select settings and click "Run advanced correlation".
+corr_adv_running,Running...
+corr_adv_loading,Running advanced correlation. Please wait...
+corr_adv_download_all,Download all results (Excel)
+corr_adv_download_run_first,Run advanced correlation before downloading.
+corr_adv_summary_title,Significant correlation summary
+corr_adv_summary_sig_total,Significant with anchor
+corr_adv_summary_sig_pos,Significant positive
+corr_adv_summary_sig_neg,Significant negative
+corr_adv_summary_excluded,Excluded (non-finite / not testable)
+corr_adv_results,Correlation results
+corr_adv_col_anchor,Anchor
+corr_adv_col_parameter,Parameter
+corr_adv_col_r,r
+corr_adv_col_pvalue,p-value
+corr_adv_col_n,n
+corr_adv_col_significant,Significant
+corr_adv_col_direction,Direction
+corr_adv_no_results,No correlation results available for this selection.
+corr_adv_no_filtered_results,No rows match the current filters.
+corr_adv_opened_plot,Loaded correlation plot: %s vs %s.
 mobile_go_charts_summary,Go to charts and summary
 mobile_back_controls,Back to controls
 mobile_go_results_table,Go to results table
 mobile_switch_panel,Switch panel
 mobile_switch_view_graphics,View charts
 mobile_switch_config_panel,Configuration panel
+guided_setup,Plot setup
+guided_toggle_setup,Toggle plot setup panel
+guided_chart_options,Options
+guided_appearance,Appearance
+guided_filters,Filters and replicates
+guided_analysis,Analysis and quality control
+guided_export,Export and output
+quick_options_title,Quick options
+quick_setup,Plot setup
+quick_plot_type,Plot type
+quick_normalization,Normalization
+quick_chart_options,Options
+quick_appearance,Appearance
+quick_filters,Filters
+quick_analysis,Analysis
+quick_export,Export
+quick_top,Back to setup
+heatmap_row_clusters_n,Number of row clusters
+heatmap_col_clusters_n,Number of column clusters
+heatmap_download_clusters,Download heatmap clusters (.xlsx)
+heatmap_enable_row_clusters,Enable row clustering to export parameter clusters.

@@ -103,3 +103,18 @@ test_that("calculate_growth_rates_robust tolerates flat growth curves", {
     expect_true(is.na(res$AUC))
   })
 })
+
+test_that("growth calculations can be cancelled safely", {
+  skip_if_not_installed("gcplyr")
+  with_parallel_disabled({
+    df <- rbind(make_growth("A"), make_growth("B"))
+    expect_error(
+      calculate_growth_rates_robust(df, should_abort = function() TRUE),
+      class = "bioszen_growth_cancelled"
+    )
+    expect_error(
+      calculate_growth_rates_permissive(df, should_abort = function() TRUE),
+      class = "bioszen_growth_cancelled"
+    )
+  })
+})

@@ -77,3 +77,60 @@ test_that("correlation_matrix_with_p returns square matrices and tidy table", {
   expect_s3_class(res$tidy, "data.frame")
   expect_true(nrow(res$tidy) == 9)
 })
+
+test_that("correlation_matrix_with_p can abort when requested", {
+  df <- data.frame(
+    A = 1:12,
+    B = (1:12) * 2,
+    C = rev(1:12)
+  )
+
+  expect_error(
+    correlation_matrix_with_p(
+      df = df,
+      params = c("A", "B", "C"),
+      method = "spearman",
+      adjust_method = "holm",
+      should_abort = function() TRUE
+    ),
+    "cancelled because the session is closing"
+  )
+})
+
+test_that("correlation_pair_with_p guards small/constant inputs", {
+  small <- correlation_pair_with_p(c(1, 2), c(1, 2), method = "pearson", min_points = 3L)
+  expect_true(is.na(small$r))
+  expect_true(is.na(small$p.value))
+  expect_equal(small$n, 2)
+
+  constant <- correlation_pair_with_p(c(1, 1, 1, 1), c(2, 3, 4, 5), method = "spearman")
+  expect_true(is.na(constant$r))
+  expect_true(is.na(constant$p.value))
+  expect_equal(constant$n, 4)
+})
+
+test_that("correlation_one_vs_all_with_p computes anchor-vs-others table", {
+  set.seed(123)
+  df <- data.frame(
+    Anchor = 1:15,
+    Pos = (1:15) * 3 + rnorm(15, sd = 0.01),
+    Neg = rev(1:15) + rnorm(15, sd = 0.01),
+    Noise = rnorm(15)
+  )
+
+  out <- correlation_one_vs_all_with_p(
+    df = df,
+    anchor = "Anchor",
+    params = c("Anchor", "Pos", "Neg", "Noise"),
+    method = "pearson",
+    adjust_method = "none"
+  )
+
+  expect_s3_class(out, "tbl_df")
+  expect_equal(sort(out$param_other), sort(c("Pos", "Neg", "Noise")))
+  expect_true(all(c("param_anchor", "param_other", "r", "p.value", "p.adj", "n") %in% names(out)))
+  expect_true(all(out$param_anchor == "Anchor"))
+  expect_true(all(is.finite(out$n)))
+  expect_true(any(out$r > 0.9, na.rm = TRUE))
+  expect_true(any(out$r < -0.9, na.rm = TRUE))
+})

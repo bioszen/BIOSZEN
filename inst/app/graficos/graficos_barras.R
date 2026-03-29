@@ -175,6 +175,300 @@ get_palette <- function(n) {
          safe_hue(n))
 }
 
+build_barras_plot_impl <- function(ctx) {
+  with(ctx, {
+    if (scope == "Combinado") {
+      df_raw <- scope_df %>%
+        filter(is.finite(.data[[param_sel]]))
+      df_labels <- df_raw %>% distinct(Label, Strain, Media)
+
+      if (isTRUE(input$x_wrap)) {
+        df_raw$Label <- wrap_label(df_raw$Label, lines = input$x_wrap_lines)
+        df_labels$Label <- wrap_label(df_labels$Label, lines = input$x_wrap_lines)
+      }
+      if (nrow(df_raw) == 0) {
+        return(
+          ggplot() +
+            theme_void() +
+            annotate("text", 0, 0, label = msg_no_data_sel)
+        )
+      }
+
+      summary_mode_active <- isTRUE(is_summary_mode())
+      sd_col <- resolve_prefixed_param_col(df_raw, "SD_", param_sel)
+      resumen <- df_raw %>%
+        group_by(Label) %>%
+        summarise(
+          Mean = mean(.data[[param_sel]], na.rm = TRUE),
+          SD = if (!is.null(sd_col) && sd_col %in% names(df_raw)) {
+            mean(.data[[sd_col]], na.rm = TRUE)
+          } else {
+            sd(.data[[param_sel]], na.rm = TRUE)
+          },
+          .groups = "drop"
+        ) %>%
+        mutate(SD = ifelse(is.finite(SD), pmax(SD, 0), 0))
+
+      if (is.factor(resumen$Label)) {
+        resumen$Label <- droplevels(resumen$Label)
+      } else {
+        resumen$Label <- factor(as.character(resumen$Label), levels = unique(as.character(resumen$Label)))
+      }
+
+      x_ang <- get_x_angle(
+        n = nlevels(resumen$Label),
+        angle_input = input$x_angle
+      )
+      b_mar <- get_bottom_margin(x_ang, input$x_wrap, input$x_wrap_lines)
+      df_labels$Label <- factor(df_labels$Label, levels = levels(resumen$Label))
+      pal <- palette_for_labels(df_labels, levels(resumen$Label))
+
+      show_legend <- legend_right_enabled(input$colorMode)
+
+      if (input$colorMode == "Blanco y Negro") {
+        p <- ggplot(resumen, aes(Label, Mean)) +
+          geom_col(
+            fill = "white",
+            colour = "black",
+            width = 0.65,
+            linewidth = 0.6,
+            alpha = 0.95,
+            show.legend = show_legend
+          )
+        if (!summary_mode_active) {
+          p <- p +
+            geom_point(
+              data = df_raw,
+              inherit.aes = FALSE,
+              aes(x = Label, y = .data[[param_sel]]),
+              position = position_jitter(width = input$pt_jit, height = 0),
+              shape = 21,
+              fill = "white",
+              colour = "black",
+              stroke = 0.4,
+              size = input$pt_size,
+              show.legend = FALSE
+            )
+        }
+      } else {
+        p <- ggplot(resumen, aes(Label, Mean, fill = Label)) +
+          geom_col(
+            width = 0.65,
+            colour = "black",
+            linewidth = 0.6,
+            alpha = 0.7,
+            show.legend = show_legend
+          ) +
+          scale_fill_manual(values = pal)
+        if (!summary_mode_active) {
+          p <- p +
+            geom_point(
+              data = df_raw,
+              inherit.aes = FALSE,
+              aes(x = Label, y = .data[[param_sel]], fill = Label),
+              position = position_jitter(width = input$pt_jit, height = 0),
+              shape = 21,
+              colour = "black",
+              stroke = 0.5,
+              size = input$pt_size,
+              show.legend = FALSE
+            )
+        }
+      }
+
+      p <- add_black_t_errorbar(
+        p,
+        resumen,
+        x_col = "Label",
+        lw = input$errbar_size %||% 0.8
+      )
+
+      base_margin <- margin_adj(12, 18, b_mar, 28)
+      p <- p +
+        labs(title = input$plotTitle, y = ylab, x = NULL) +
+        scale_y_continuous(
+          limits = c(0, ymax),
+          breaks = seq(0, ymax, by = ybreak),
+          expand = c(0, 0),
+          oob = scales::oob_keep
+        ) +
+        theme_classic(base_size = input$base_size, base_family = "Helvetica") +
+        coord_cartesian(clip = "off") +
+        theme(
+          plot.margin = base_margin,
+          plot.title = element_text(size = fs_title, face = "bold", colour = "black"),
+          axis.title.y = element_text(size = fs_axis, face = "bold", colour = "black"),
+          axis.text.x = element_text(
+            size = fs_axis,
+            angle = x_ang,
+            hjust = ifelse(x_ang == 0, .5, 1),
+            colour = "black"
+          ),
+          axis.text.y = element_text(size = fs_axis, colour = "black"),
+          axis.line = element_line(linewidth = axis_size, colour = "black"),
+          axis.ticks = element_line(linewidth = axis_size, colour = "black"),
+          axis.ticks.length = unit(4, "pt"),
+          panel.grid = element_blank(),
+          panel.background = element_rect(fill = "white", colour = NA),
+          legend.position = "none"
+        )
+
+      if (isTRUE(input$labelMode)) {
+        p <- p + scale_x_discrete(labels = function(x) sub("-.*$", "", x))
+      }
+
+      sig_tops <- resumen %>%
+        mutate(y_top = Mean + ifelse(is.na(SD) | !is.finite(SD), 0, SD)) %>%
+        transmute(group = Label, y_top = y_top)
+      p <- apply_sig_layers(
+        p,
+        group_tops = sig_tops,
+        margin_base = base_margin,
+        plot_height = input$plot_h
+      )
+      if (show_legend) {
+        p <- apply_square_legend_right(p)
+      }
+
+      return(p)
+    }
+
+    df_raw <- scope_df %>%
+      filter(is.finite(.data[[param_sel]]))
+
+    if (isTRUE(input$x_wrap)) {
+      df_raw$Media <- wrap_label(df_raw$Media, lines = input$x_wrap_lines)
+    }
+    if (nrow(df_raw) == 0) {
+      return(
+        ggplot() + theme_void() +
+          annotate("text", x = 0, y = 0, label = msg_no_data_sel)
+      )
+    }
+    x_ang <- get_x_angle(
+      n = nlevels(factor(df_raw$Media)),
+      angle_input = input$x_angle
+    )
+    b_mar <- get_bottom_margin(x_ang, input$x_wrap, input$x_wrap_lines)
+    summary_mode_active <- isTRUE(is_summary_mode())
+    sd_col <- resolve_prefixed_param_col(df_raw, "SD_", param_sel)
+    resumen <- df_raw %>%
+      group_by(Media) %>%
+      summarise(
+        Mean = mean(.data[[param_sel]], na.rm = TRUE),
+        SD = if (!is.null(sd_col) && sd_col %in% names(df_raw)) {
+          mean(.data[[sd_col]], na.rm = TRUE)
+        } else {
+          sd(.data[[param_sel]], na.rm = TRUE)
+        },
+        .groups = "drop"
+      ) %>%
+      mutate(SD = ifelse(is.finite(SD), pmax(SD, 0), 0))
+    media_levels <- if (is.factor(resumen$Media)) levels(resumen$Media) else unique(as.character(resumen$Media))
+    pal <- palette_for_levels(media_levels)
+    show_legend <- legend_right_enabled(colourMode)
+    if (colourMode == "Blanco y Negro") {
+      p <- ggplot(resumen, aes(Media, Mean)) +
+        geom_col(
+          fill = "white",
+          colour = "black",
+          width = 0.65,
+          linewidth = 0.6,
+          alpha = 0.95,
+          show.legend = show_legend
+        )
+      if (!summary_mode_active) {
+        p <- p +
+          geom_point(
+            data = df_raw,
+            inherit.aes = FALSE,
+            aes(x = Media, y = .data[[param_sel]]),
+            position = position_jitter(width = input$pt_jit, height = 0),
+            shape = 21,
+            fill = "white",
+            colour = "black",
+            stroke = 0.4,
+            size = input$pt_size,
+            show.legend = FALSE
+          )
+      }
+    } else {
+      p <- ggplot(resumen, aes(Media, Mean, fill = Media)) +
+        geom_col(
+          width = 0.65,
+          colour = "black",
+          linewidth = 0.6,
+          alpha = 0.7,
+          show.legend = show_legend
+        ) +
+        scale_fill_manual(values = pal)
+      if (!summary_mode_active) {
+        p <- p +
+          geom_point(
+            data = df_raw,
+            inherit.aes = FALSE,
+            aes(x = Media, y = .data[[param_sel]], fill = Media),
+            position = position_jitter(width = input$pt_jit, height = 0),
+            shape = 21,
+            colour = "black",
+            stroke = 0.5,
+            size = input$pt_size,
+            show.legend = FALSE
+          )
+      }
+    }
+    p <- add_black_t_errorbar(
+      p,
+      resumen,
+      x_col = "Media",
+      lw = input$errbar_size %||% 0.8
+    )
+    base_margin <- margin_adj(12, 18, b_mar, 28)
+    p <- p +
+      labs(title = input$plotTitle, y = ylab, x = NULL) +
+      scale_y_continuous(
+        limits = c(0, ymax),
+        breaks = seq(0, ymax, by = ybreak),
+        expand = c(0, 0),
+        oob = scales::oob_keep
+      ) +
+      theme_classic(base_size = input$base_size, base_family = "Helvetica") +
+      coord_cartesian(clip = "off") +
+      theme(
+        plot.margin = base_margin,
+        plot.title = element_text(size = fs_title, face = "bold", colour = "black"),
+        axis.title.y = element_text(size = fs_axis, face = "bold", colour = "black"),
+        axis.text.x = element_text(
+          size = fs_axis,
+          angle = x_ang,
+          hjust = ifelse(x_ang == 0, .5, 1),
+          colour = "black"
+        ),
+        axis.text.y = element_text(size = fs_axis, colour = "black"),
+        axis.line = element_line(linewidth = axis_size, colour = "black"),
+        axis.ticks = element_line(linewidth = axis_size, colour = "black"),
+        axis.ticks.length = unit(4, "pt"),
+        panel.grid = element_blank(),
+        panel.background = element_rect(fill = "white", colour = NA),
+        legend.position = "none"
+      )
+    sig_tops <- resumen %>%
+      mutate(y_top = Mean + ifelse(is.na(SD) | !is.finite(SD), 0, SD)) %>%
+      transmute(group = Media, y_top = y_top)
+    p <- apply_sig_layers(
+      p,
+      group_tops = sig_tops,
+      margin_base = base_margin,
+      plot_height = input$plot_h
+    )
+    if (show_legend) {
+      p <- apply_square_legend_right(p)
+    }
+
+    p
+  })
+}
+
 plot_barras <- function(scope, strain = NULL) {
   build_plot(scope, strain, "Barras")
 }

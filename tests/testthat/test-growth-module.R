@@ -53,6 +53,7 @@ test_that("growth module generates curve and parameter workbooks", {
     params <- list.files(growth_dir, pattern = "^(Parametros|Parameters)_.*\\.xlsx$", full.names = TRUE)
     expect_length(curvas, 1)
     expect_length(params, 1)
+    expect_equal(openxlsx::getSheetNames(params[[1]]), "Resultados Combinados")
 
     res <- readxl::read_excel(params[[1]])
     expect_gt(nrow(res), 0)
@@ -131,4 +132,50 @@ test_that("growth module extracts growth parameters per well with expected field
       tolerance = 1e-6
     )
   })
+})
+
+test_that("batch growth path preserves legacy per-well results on synthetic curves", {
+  skip_if_not_installed("gcplyr")
+  skip_if_not_installed("dplyr")
+  library(dplyr)
+
+  legacy_growth_results <- function(tidy_df) {
+    wells <- unique(tidy_df$Well)
+    all_results <- vector("list", length(wells))
+    for (k in seq_along(wells)) {
+      w <- wells[k]
+      df_w <- tidy_df %>%
+        dplyr::filter(Well == w) %>%
+        dplyr::mutate(Well = factor(Well, levels = wells), Time = as.numeric(Time))
+      robust <- calculate_growth_rates_robust(df_w)
+      permissive <- calculate_growth_rates_permissive(df_w)
+      combined <- combine_growth_results(robust, permissive)
+      combined$Well <- w
+      all_results[[k]] <- combined
+    }
+    dplyr::bind_rows(all_results) %>%
+      dplyr::mutate(Well = factor(Well, levels = wells)) %>%
+      dplyr::arrange(Well) %>%
+      dplyr::select(Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time)
+  }
+
+  n_points <- 30
+  time <- rep(seq(0, n_points - 1), 2)
+  tidy_df <- data.frame(
+    Time = time,
+    Well = rep(c("W1", "W2"), each = n_points),
+    Measurements = c(
+      exp(seq(0, by = 0.12, length.out = n_points)) * (1 + 0.01 * sin(seq_len(n_points))),
+      exp(seq(0, by = 0.42, length.out = n_points)) * (1 + 0.01 * cos(seq_len(n_points)))
+    )
+  )
+
+  legacy <- legacy_growth_results(tidy_df)
+  batch <- compute_growth_results_batch(tidy_df)
+
+  expect_identical(as.character(batch$Well), as.character(legacy$Well))
+  expect_identical(names(batch), names(legacy))
+  for (col in setdiff(names(batch), "Well")) {
+    expect_equal(unname(batch[[col]]), unname(legacy[[col]]), tolerance = sqrt(.Machine$double.eps))
+  }
 })

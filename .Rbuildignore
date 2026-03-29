@@ -6,6 +6,13 @@
 ^R_libs$
 ^\.env.*$
 ^\.zenodo\.json$
+^CITATION\.cff$
 ^inst/app/rsconnect$
 ^inst/app/manifest\.json$
 ^inst/app/Rplots\.pdf$
+^inst/app/\.Rhistory$
+^R/\.Rhistory$
+^Gallery$
+^tools$
+^PRD\.md$
+^fix_buttons\.py$

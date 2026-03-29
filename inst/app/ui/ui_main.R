@@ -68,15 +68,18 @@ ui <- fluidPage(
 
       .bioszen-main-tabs {
         margin-top: 4px;
+        position: relative;
       }
 
-      .bioszen-main-tabs .nav-tabs {
+      #mainTabs > .nav-tabs {
         display: flex;
         flex-wrap: wrap;
         gap: 4px;
+        align-items: center;
+        padding-right: 280px;
       }
 
-      .bioszen-main-tabs .nav-tabs > li > a {
+      #mainTabs > .nav-tabs > li > a {
         white-space: normal;
         line-height: 1.2;
       }
@@ -87,6 +90,74 @@ ui <- fluidPage(
         border: 1px solid var(--bs-border-color, rgba(0, 0, 0, 0.12));
         border-radius: var(--bz-radius);
         padding: 16px;
+      }
+
+      .bioszen-top-quickbar {
+        position: fixed;
+        top: 92px;
+        right: 20px;
+        z-index: 1250;
+        margin: 0;
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .bioszen-top-quickbar .btn {
+        width: auto;
+        white-space: nowrap;
+      }
+
+      .bioszen-top-quickbar .bioszen-quick-fab-btn {
+        border: 0;
+        border-radius: 999px;
+        padding: 10px 20px;
+        min-height: 44px;
+        font-weight: 700;
+        color: #fff;
+        background: linear-gradient(135deg, #006bb3, #00945f);
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+      }
+
+      .bioszen-top-quickbar .bioszen-quick-fab-btn:hover,
+      .bioszen-top-quickbar .bioszen-quick-fab-btn:focus,
+      .bioszen-top-quickbar .bioszen-quick-fab-btn:active {
+        color: #fff;
+        filter: brightness(1.05);
+      }
+
+      .bioszen-top-quickbar .bioszen-quick-fab-btn .caret {
+        margin-left: 8px;
+        border-top-color: #fff;
+      }
+
+      .bioszen-top-quickbar .dropdown-menu {
+        min-width: 240px;
+        border-radius: 12px;
+        border: 1px solid var(--bs-border-color, rgba(0, 0, 0, 0.14));
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+        margin-top: 8px;
+        padding: 6px 0;
+      }
+
+      .bioszen-top-quickbar .dropdown-item {
+        white-space: normal;
+      }
+
+      .bioszen-guided-core {
+        position: static;
+        background: var(--bs-body-bg);
+        border: 1px solid var(--bs-border-color, rgba(0, 0, 0, 0.12));
+        border-radius: 12px;
+        padding: 12px;
+        margin: 8px 0 14px 0;
+      }
+
+      .bioszen-guided-core h4 {
+        margin: 0 0 8px 0;
+      }
+
+      .bioszen-guided-core .form-group:last-child {
+        margin-bottom: 0;
       }
 
       .bioszen-sidebar-content hr {
@@ -101,6 +172,32 @@ ui <- fluidPage(
         width: 100%;
         word-break: normal;
         overflow-wrap: break-word;
+      }
+
+      .bioszen-datafile-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .bioszen-datafile-main {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      .bioszen-datafile-main .form-group {
+        margin-bottom: 0;
+      }
+
+      .bioszen-datafile-arrow {
+        flex: 0 0 auto;
+        margin-top: 34px;
+      }
+
+      .bioszen-datafile-arrow .btn {
+        width: auto;
+        min-width: 52px;
+        padding: 8px 14px;
       }
 
       .bioszen-sidebar-content .dropdown > .btn {
@@ -166,6 +263,36 @@ ui <- fluidPage(
         font-size: 13px;
         color: var(--bs-secondary-color);
         margin-bottom: 8px;
+      }
+
+      .qc-tabs-layout .nav-tabs {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+        border-bottom: 0;
+        margin-bottom: 12px;
+        width: 100%;
+        min-width: 0;
+      }
+
+      .qc-tabs-layout .nav-tabs > li {
+        float: none;
+        width: 100%;
+        min-width: 0;
+        margin-bottom: 0;
+      }
+
+      .qc-tabs-layout .nav-tabs > li > a {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        white-space: normal;
+        word-break: normal;
+        overflow-wrap: break-word;
+        line-height: 1.25;
+        min-height: 3.25em;
+        padding: 10px 12px;
       }
 
       .bioszen-pane-fab {
@@ -286,6 +413,9 @@ ui <- fluidPage(
         .bundle-action-bar {
           justify-content: stretch;
         }
+        .bioszen-datafile-arrow {
+          margin-top: 30px;
+        }
       }
     "))
   ),
@@ -319,6 +449,63 @@ ui <- fluidPage(
           });
         });
       });
+    })();
+  ")),
+  tags$script(HTML("
+    (function () {
+      function ensureI18nTranslations() {
+        if (typeof window.i18n_translations === 'undefined' || window.i18n_translations === null) {
+          window.i18n_translations = [];
+        }
+      }
+
+      ensureI18nTranslations();
+      $(document).one('shiny:connected', ensureI18nTranslations);
+    })();
+  ")),
+  tags$script(HTML("
+    (function () {
+      function findSidebarScrollBox(el) {
+        if (!el) return null;
+        return el.closest('.col-sm-4[style*=\\'overflow-y\\']') ||
+               el.closest('.col-sm-3[style*=\\'overflow-y\\']') ||
+               null;
+      }
+
+      function scrollSidebarTo(targetId) {
+        if (!targetId) return;
+        var target = document.getElementById(targetId);
+        if (!target) return;
+        var scrollBox = findSidebarScrollBox(target);
+        if (!scrollBox) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+        var top = target.getBoundingClientRect().top - scrollBox.getBoundingClientRect().top + scrollBox.scrollTop - 8;
+        scrollBox.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      }
+
+      function bindQuickNav() {
+        if (window.__bioszen_quick_nav_bound) return;
+        window.__bioszen_quick_nav_bound = true;
+        document.addEventListener('click', function (ev) {
+          var btn = ev.target && ev.target.closest ? ev.target.closest('.bioszen-quick-btn') : null;
+          if (!btn) return;
+          ev.preventDefault();
+          var targetId = btn.getAttribute('data-target');
+          if (!targetId) return;
+          scrollSidebarTo(targetId);
+        });
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindQuickNav);
+      } else {
+        bindQuickNav();
+      }
+      if (window.jQuery) {
+        $(document).on('shiny:connected', bindQuickNav);
+      }
     })();
   ")),
   tags$head(
@@ -786,6 +973,111 @@ ui <- fluidPage(
       });
     });
   ")),
+  tags$script(HTML("
+    Shiny.addCustomMessageHandler('copyStaticPlotToClipboard', function(msg){
+      var elementId = msg.elementId || 'comboPreview';
+      var failId    = msg.fail    || 'combo_copy_error';
+      var successId = msg.success || 'combo_copy_success';
+      var node = document.getElementById(elementId);
+      if (!node) {
+        Shiny.setInputValue(failId, {message:'Static plot container not found', ts: Date.now()}, {priority:'event'});
+        return;
+      }
+
+      var img = null;
+      if (node.tagName && node.tagName.toLowerCase() === 'img') {
+        img = node;
+      } else {
+        img = node.querySelector('img');
+      }
+
+      if (!img || !img.src) {
+        Shiny.setInputValue(failId, {message:'Static image source not found', ts: Date.now()}, {priority:'event'});
+        return;
+      }
+
+      var src = img.src;
+      var notifySuccess = function(mode) {
+        Shiny.setInputValue(successId, {message: mode || 'copied', ts: Date.now()}, {priority:'event'});
+      };
+      var notifyFail = function(err) {
+        var message = (err && err.message) ? err.message : String(err || 'Unknown clipboard error');
+        Shiny.setInputValue(failId, {message: message, ts: Date.now()}, {priority:'event'});
+      };
+
+      fetch(src, { credentials: 'same-origin' })
+        .then(function(res){
+          if (!res.ok) throw new Error('Could not read rendered image');
+          return res.blob();
+        })
+        .then(function(blob){
+          if (navigator.clipboard && window.ClipboardItem) {
+            return navigator.clipboard.write([new ClipboardItem({ [blob.type || 'image/png']: blob })])
+              .then(function(){ notifySuccess('copied'); })
+              .catch(function(err){ notifyFail(err); });
+          }
+
+          var a = document.createElement('a');
+          a.href = src;
+          a.download = 'composition.png';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          notifySuccess('downloaded');
+        })
+        .catch(function(err){
+          notifyFail(err);
+        });
+    });
+  ")),
+  tags$head(
+    tags$style(HTML("
+      .plot-loading-wrap {
+        position: relative;
+      }
+      .plot-loading-indicator {
+        display: none;
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 25;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        border-radius: 10px;
+        background: rgba(18, 24, 32, 0.78);
+        color: #fff;
+        font-size: 12px;
+        pointer-events: none;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+      }
+      .plot-loading-wrap.is-loading .plot-loading-indicator {
+        display: inline-flex;
+      }
+    "))
+  ),
+  tags$script(HTML("
+    (function () {
+      function setPlotLoading(on) {
+        var wrap = document.getElementById('plot-loading-wrap');
+        if (!wrap) return;
+        if (on) wrap.classList.add('is-loading');
+        else wrap.classList.remove('is-loading');
+      }
+
+      $(document).on('shiny:outputinvalidated', function (ev) {
+        if ((ev && ev.name) === 'plotInteractivo') setPlotLoading(true);
+      });
+
+      $(document).on('shiny:value shiny:error', function (ev) {
+        if ((ev && ev.name) === 'plotInteractivo') setPlotLoading(false);
+      });
+
+      $(document).on('shiny:disconnected', function () {
+        setPlotLoading(false);
+      });
+    })();
+  ")),
 
   uiOutput("app_announcement"),
   tags$div(
@@ -807,6 +1099,33 @@ ui <- fluidPage(
              #  Layout principal: barra lateral + área de trazado/tablas
              # --------------------------------------------------------------------------
              tags$div(
+               class = "bioszen-top-quickbar",
+               tags$div(
+                 class = "dropdown",
+                  actionButton(
+                    "quick_options_btn",
+                    tr("quick_options_title"),
+                    class = "btn bioszen-quick-fab-btn dropdown-toggle",
+                    `data-bs-toggle` = "dropdown",
+                    `aria-expanded` = "false"
+                  ),
+                 tags$ul(
+                   class = "dropdown-menu dropdown-menu-end",
+                   tags$li(tags$a(href = "#", class = "dropdown-item bioszen-quick-btn", `data-target` = "plot_setup_core", tr("quick_setup"))),
+                   tags$li(tags$a(href = "#", class = "dropdown-item bioszen-quick-btn", `data-target` = "quick_target_plot_type", tr("quick_plot_type"))),
+                   tags$li(tags$a(href = "#", class = "dropdown-item bioszen-quick-btn", `data-target` = "quick_target_normalization", tr("quick_normalization"))),
+                   tags$li(tags$hr(class = "dropdown-divider")),
+                   tags$li(tags$a(href = "#", class = "dropdown-item bioszen-quick-btn", `data-target` = "section_chart_options", tr("quick_chart_options"))),
+                   tags$li(tags$a(href = "#", class = "dropdown-item bioszen-quick-btn", `data-target` = "section_appearance", tr("quick_appearance"))),
+                   tags$li(tags$a(href = "#", class = "dropdown-item bioszen-quick-btn", `data-target` = "section_filters", tr("quick_filters"))),
+                   tags$li(tags$a(href = "#", class = "dropdown-item bioszen-quick-btn", `data-target` = "section_analysis", tr("quick_analysis"))),
+                   tags$li(tags$a(href = "#", class = "dropdown-item bioszen-quick-btn", `data-target` = "section_export", tr("quick_export"))),
+                   tags$li(tags$hr(class = "dropdown-divider")),
+                   tags$li(tags$a(href = "#", class = "dropdown-item bioszen-quick-btn", `data-target` = "plot_setup_core", tr("quick_top")))
+                 )
+               )
+             ),
+             tags$div(
                class = "bioszen-scroll-layout show-sidebar",
                sidebarLayout(
                
@@ -818,12 +1137,41 @@ ui <- fluidPage(
                 style = "position:sticky; top:86px; height:calc(100vh - 98px); overflow-y:auto;",
                 tags$div(
                   class = "bioszen-sidebar-content",
-                  fileInput('dataFile',  tr("file_data"), accept = '.xlsx'),
-                tags$div(
-                  id = "curve_upload_section",
-                  fileInput('curveFile', tr("file_curves"), accept = '.xlsx')
-                ),
-                fileInput('metaFiles', tr("file_meta"),    accept = '.xlsx', multiple = TRUE),
+                  tags$div(
+                    class = "bioszen-datafile-row",
+                    tags$div(
+                      class = "bioszen-datafile-main",
+                      fileInput('dataFile',  tr("file_data"), accept = c('.xlsx', '.xls', '.csv'))
+                    ),
+                    tags$div(
+                      class = "bioszen-datafile-arrow",
+                      actionButton(
+                        "openMergeModal",
+                        label = NULL,
+                        icon = icon("chevron-right"),
+                        class = "btn btn-outline-secondary",
+                        title = tr("merge_open"),
+                        `aria-label` = as.character(tr("merge_open"))
+                      )
+                    )
+                  ),
+                 tags$div(
+                   id = "curve_upload_section",
+                   tags$div(
+                     class = "bioszen-datafile-row",
+                     tags$div(
+                       class = "bioszen-datafile-main",
+                       fileInput('curveFile', tr("file_curves"), accept = c('.xlsx', '.xls', '.csv'))
+                     ),
+                     tags$div(
+                       class = "bioszen-datafile-arrow",
+                       uiOutput("curveMergeArrowUI")
+                     )
+                   ),
+                   uiOutput("mergedCurveDownloadUI")
+                 ),
+                 fileInput('metaFiles', tr("file_meta"),    accept = '.xlsx', multiple = TRUE),
+                 uiOutput("mergedPlatemapDownloadUI"),
 
                  # ---- Botones de descarga de ejemplos ----------------------------------
                  tags$div(
@@ -837,67 +1185,106 @@ ui <- fluidPage(
                    downloadButton('download_refs', tr("download_refs"), class = 'btn btn-secondary')
                  ),
                  hr(),
-                 
-                 # ---- Controles principales -------------------------------------------
-                 radioButtons(
-                   "scope",
-                   tr("scope_label"),
-                  choices = named_choices(
-                    c("Por Cepa", "Combinado"),
-                    list(tr("scope_by_strain"), tr("scope_combined"))
-                  ),
-                   selected = "Por Cepa"
-                 ),
-                 conditionalPanel(
-                   condition = "input.scope=='Por Cepa'",
-                   selectInput("strain", tr("strain_label"), choices = NULL)
-                 ),
-                 uiOutput("paramSel"),
-                 
-                 radioButtons(
-                   "tipo",
-                   tr("plot_type_label"),
-                   choices = named_choices(
-                     c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion"),
-                     list(
-                       tr("plot_boxplot"),
-                       tr("plot_bars"),
-                       tr("plot_violin"),
-                       tr("plot_curves"),
-                       tr("plot_stacked"),
-                       tr("plot_correlation")
+
+                 # ---- Guided Core Setup ------------------------------------------------
+                 tags$div(
+                   id = "plot_setup_core",
+                   class = "bioszen-guided-core",
+                   h4(tr("guided_setup")),
+                   radioButtons(
+                     "scope",
+                     tr("scope_label"),
+                     choices = named_choices(
+                       c("Por Cepa", "Combinado"),
+                       list(tr("scope_by_strain"), tr("scope_combined"))
+                     ),
+                     selected = "Por Cepa"
+                   ),
+                   conditionalPanel(
+                     condition = "input.scope=='Por Cepa'",
+                     selectizeInput("strain", tr("strain_label"), choices = NULL, selected = NULL)
+                   ),
+                   uiOutput("paramSel"),
+                   tags$div(
+                     id = "quick_target_plot_type",
+                     radioButtons(
+                       "tipo",
+                       tr("plot_type_label"),
+                        choices = named_choices(
+                          c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion", "Heatmap", "MatrizCorrelacion"),
+                          list(
+                            tr("plot_boxplot"),
+                            tr("plot_bars"),
+                            tr("plot_violin"),
+                            tr("plot_curves"),
+                            tr("plot_stacked"),
+                            tr("plot_correlation"),
+                            tr("plot_heatmap"),
+                            tr("plot_corr_matrix")
+                          )
+                        ),
+                       selected = "Boxplot"
                      )
                    ),
-                   selected = "Boxplot"
+                   tags$div(
+                     id = "quick_target_normalization",
+                     checkboxInput('doNorm', tr("norm_by_control"), FALSE),
+                     uiOutput('ctrlSelUI'),
+                     conditionalPanel(
+                       condition = "input.tipo == 'Correlacion' && input.doNorm",
+                       radioButtons(
+                         "corr_norm_target", tr("corr_norm_target"),
+                         choices = named_choices(
+                           c("both", "x_only", "y_only"),
+                           tr_text(c("corr_norm_both", "corr_norm_x", "corr_norm_y"), i18n_lang)
+                         ),
+                         selected = "both", inline = TRUE
+                       )
+                     )
+                   )
                  ),
-                 
+                  
+                 hr(), tags$div(id = "section_chart_options", h4(tr("guided_chart_options"))),
                  # ---------- SECCION "Apiladas" ----------------------------------------
-                 conditionalPanel(
-                   condition = "input.tipo == 'Apiladas'",
-                   h4(tr("stack_settings")),
-                   checkboxGroupInput("stackParams", tr("stack_params"),
-                                      choices = NULL, selected = NULL),
-                   textInput("orderStack", tr("stack_order"), ""),
-                   checkboxInput("showErrBars", tr("stack_show_errbars"), TRUE),
-                   checkboxInput("errbar_param_color", tr("stack_errbar_param_color"), FALSE),
-                   checkboxInput("stack_outline_only", tr("stack_outline_only"), FALSE),
-                   numericInput("errbar_size", tr("errbar_size"),
-                                value = 0.6, min = 0.1, step = 0.1)
+                  conditionalPanel(
+                    condition = "input.tipo == 'Apiladas'",
+                    h4(tr("stack_settings")),
+                    uiOutput("stackParamsUI"),
+                    textInput("orderStack", tr("stack_order"), ""),
+                    checkboxInput("showErrBars", tr("stack_show_errbars"), TRUE),
+                    checkboxInput("errbar_param_color", tr("stack_errbar_param_color"), FALSE),
+                    checkboxInput("stack_outline_only", tr("stack_outline_only"), FALSE)
                  ),
                  
                  # ---------- SECCION "Correlacion" -------------------------------------
                  conditionalPanel(
                    condition = "input.tipo == 'Correlacion'",
                    h4(tr("corr_settings")),
-                   fluidRow(
-                     column(6, selectInput("corr_param_x", tr("corr_param_x"), choices = NULL)),
-                     column(6, selectInput("corr_param_y", tr("corr_param_y"), choices = NULL))
-                   ),
+                    fluidRow(
+                      column(
+                        6,
+                        selectizeInput(
+                          "corr_param_x",
+                          tr("corr_param_x"),
+                          choices = NULL,
+                          selected = NULL
+                        )
+                      ),
+                      column(
+                        6,
+                        selectizeInput(
+                          "corr_param_y",
+                          tr("corr_param_y"),
+                          choices = NULL,
+                          selected = NULL
+                        )
+                      )
+                    ),
                    radioButtons(
                      "corr_method", tr("corr_method_label"),
                     choices = named_choices(
-                      c("pearson", "spearman"),
-                      list(tr("corr_method_pearson"), tr("corr_method_spearman"))
+                      c("pearson", "spearman", "kendall"),
+                      list(tr("corr_method_pearson"), tr("corr_method_spearman"), tr("corr_method_kendall"))
                     ),
                      selected = "pearson", inline = TRUE
                    ),
@@ -925,22 +1312,111 @@ ui <- fluidPage(
                      step = 0.01
                    ),
                    
-                   textInput("corr_xlab", tr("corr_xlab"), value = ""),
-                   textInput("corr_ylab", tr("corr_ylab"), value = ""),
-                   
-                   fluidRow(
-                     column(6, numericInput("xmin_corr", tr("corr_xmin"), value = 0,  min = 0)),
-                     column(6, numericInput("xmax_corr", tr("corr_xmax"), value = 0,  min = 0))
-                   ),
-                   fluidRow(
-                     column(6, numericInput("xbreak_corr", tr("corr_xbreak"), value = 1,  min = 0.001)),
-                     column(6, numericInput("ybreak_corr", tr("corr_ybreak"), value = 1,  min = 0.001))
-                   ),
+                    textInput("corr_xlab", tr("corr_xlab"), value = ""),
+                    textInput("corr_ylab", tr("corr_ylab"), value = ""),
+                    
                     fluidRow(
-                      column(6, numericInput("ymin_corr", tr("corr_ymin"), value = 0,  min = 0)),
-                      column(6, numericInput("ymax_corr", tr("corr_ymax"), value = 0,  min = 0)),
+                      column(6, numericInput("xmin_corr", tr("corr_xmin"), value = 0)),
+                      column(6, numericInput("xmax_corr", tr("corr_xmax"), value = 0))
+                    ),
+                    fluidRow(
+                      column(6, numericInput("xbreak_corr", tr("corr_xbreak"), value = 1,  min = 0.001)),
+                      column(6, numericInput("ybreak_corr", tr("corr_ybreak"), value = 1,  min = 0.001))
+                    ),
+                    fluidRow(
+                      column(6, numericInput("ymin_corr", tr("corr_ymin"), value = 0)),
+                      column(6, numericInput("ymax_corr", tr("corr_ymax"), value = 0)),
                       column(6, numericInput("corr_label_size",
                                              tr("corr_label_size"), value = 4, min = 1))
+                    ),
+                    accordion(
+                      id = "corrAdvancedPanel",
+                      open = FALSE,
+                      multiple = TRUE,
+                      accordion_panel_safe(
+                        tr("corr_adv_title"),
+                        tags$p(class = "qc-help", tr("corr_adv_hint_click")),
+                        selectizeInput(
+                          "corr_adv_anchor",
+                          tr("corr_adv_anchor"),
+                          choices = NULL,
+                          selected = NULL
+                        ),
+                        radioButtons(
+                          "corr_adv_method",
+                          tr("corr_method_label"),
+                          choices = named_choices(
+                            c("pearson", "spearman", "kendall"),
+                            list(tr("corr_method_pearson"), tr("corr_method_spearman"), tr("corr_method_kendall"))
+                          ),
+                          selected = "pearson",
+                          inline = TRUE
+                        ),
+                        radioButtons(
+                          "corr_adv_data_mode",
+                          tr("corr_adv_data_mode"),
+                          choices = named_choices(
+                            c("raw", "norm_both", "norm_x", "norm_y"),
+                            list(
+                              tr("corr_adv_data_raw"),
+                              tr("corr_adv_data_norm_both"),
+                              tr("corr_adv_data_norm_x"),
+                              tr("corr_adv_data_norm_y")
+                            )
+                          ),
+                          selected = "raw",
+                          inline = TRUE
+                        ),
+                        checkboxInput("corr_adv_sig_only", tr("corr_adv_sig_only"), FALSE),
+                        numericInput(
+                          "corr_adv_pvalue_max",
+                          tr("corr_adv_pvalue_max"),
+                          value = 0.05,
+                          min = 0,
+                          max = 1,
+                          step = 0.001
+                        ),
+                        selectInput(
+                          "corr_adv_direction",
+                          tr("corr_adv_direction"),
+                          choices = named_choices(
+                            c("all", "positive", "negative"),
+                            list(
+                              tr("corr_adv_direction_all"),
+                              tr("corr_adv_direction_pos"),
+                              tr("corr_adv_direction_neg")
+                            )
+                          ),
+                          selected = "all"
+                        ),
+                        sliderInput(
+                          "corr_adv_r_filter",
+                          tr("corr_adv_r_filter"),
+                          min = -1,
+                          max = 1,
+                          value = c(-1, 1),
+                          step = 0.01
+                        ),
+                        actionButton(
+                          "corr_adv_run",
+                          tr("corr_adv_run"),
+                          class = "btn btn-primary w-100"
+                        ),
+                        br(),
+                        uiOutput("corr_adv_summary"),
+                        conditionalPanel(
+                          condition = "output.corrAdvDownloadReady == 'true'",
+                          downloadButton(
+                            "download_corr_adv",
+                            tr("corr_adv_download_all"),
+                            class = "btn btn-default w-100"
+                          )
+                        ),
+                        br(), br(),
+                        tags$strong(tr("corr_adv_results")),
+                        DTOutput("corr_adv_table"),
+                        style = "info"
+                      )
                     )
                   ),
 
@@ -978,66 +1454,17 @@ ui <- fluidPage(
                          tr("multitest_none")
                        )
                      ),
-                     selected = "holm",
+                    selected = "none",
                      inline = TRUE
                    ),
-                   checkboxInput("corrm_show_sig", tr("corr_matrix_show_sig"), TRUE)
+                   checkboxInput("corrm_show_sig", tr("corr_matrix_show_sig"), TRUE),
+                   checkboxInput("corrm_order_profile", tr("corr_matrix_order_profile"), FALSE)
                  ),
 
                  # ---------- SECCION "Heatmap" -----------------------------------------
-                 conditionalPanel(
-                   condition = "input.tipo == 'Heatmap'",
-                   h4(tr("heatmap_settings")),
-                   selectizeInput(
-                     "heat_params",
-                     tr("heatmap_params"),
-                     choices = NULL,
-                     selected = NULL,
-                     multiple = TRUE,
-                     options = list(plugins = list("remove_button"))
-                   ),
-                   radioButtons(
-                     "heat_scale_mode",
-                     tr("heatmap_scale_mode"),
-                     choices = named_choices(
-                       c("none", "row", "column"),
-                       list(
-                         tr("heatmap_scale_none"),
-                         tr("heatmap_scale_row"),
-                         tr("heatmap_scale_col")
-                       )
-                     ),
-                     selected = "none",
-                     inline = TRUE
-                   ),
-                   selectInput(
-                     "heat_hclust_method",
-                     tr("heatmap_cluster_method"),
-                     choices = c("ward.D2", "ward.D", "complete", "average", "single", "mcquitty", "median", "centroid"),
-                     selected = "ward.D2"
-                   ),
-                   checkboxInput("heat_cluster_rows", tr("heatmap_dendro_rows"), FALSE),
-                   checkboxInput("heat_cluster_cols", tr("heatmap_dendro_cols"), FALSE),
-                   checkboxInput("heat_show_values", tr("heatmap_show_values"), FALSE)
-                 ),
+                 heatmap_controls_ui(),
                  
                 
-                # ---------- Controles comunes -----------------------------------------
-                checkboxInput('doNorm', tr("norm_by_control"), FALSE),
-                uiOutput('ctrlSelUI'),
-                  conditionalPanel(
-                  condition = "input.tipo == 'Correlacion' && input.doNorm",
-                  radioButtons(
-                    "corr_norm_target", tr("corr_norm_target"),
-                    choices = named_choices(
-                      c("both", "x_only", "y_only"),
-                      tr_text(c("corr_norm_both", "corr_norm_x", "corr_norm_y"), i18n_lang)
-                    ),
-                    selected = "both", inline = TRUE
-                  )
-                ),
-                 
-                 
                  # ---------- Eje Y para Boxplot/Barras ---------------------------------
                  conditionalPanel(
                    condition = "['Boxplot','Barras','Violin','Apiladas'].indexOf(input.tipo) >= 0",
@@ -1114,6 +1541,7 @@ ui <- fluidPage(
                    "input.tipo == 'Curvas'",
                    uiOutput("repSelCurvas")
                  ),
+                hr(), tags$div(id = "section_appearance", h4(tr("guided_appearance"))),
                 # ---------- Paleta de color -------------------------------------------
                 selectInput(
                   'colorMode',
@@ -1245,16 +1673,30 @@ ui <- fluidPage(
                  conditionalPanel(
                    condition = "input.tipo == 'Boxplot'",
                    numericInput("box_w",   tr("box_width"),     value = 0.8,
-                                min = 0.1, max = 1.5, step = 0.05),
+                                min = 0.1, max = 1.5, step = 0.05)
+                 ),
+
+                 conditionalPanel(
+                   condition = "['Boxplot','Barras','Violin'].indexOf(input.tipo) >= 0",
                    numericInput("pt_jit",  tr("point_jitter"), value = 0.1,
                                 min = 0,   max = 0.5, step = 0.01)
                  ),
-                 
+
+                 conditionalPanel(
+                   condition = "input.tipo == 'Violin'",
+                   numericInput("violin_width", tr("violin_width"), value = 0.45,
+                                min = 0.1, max = 1.5, step = 0.05),
+                   numericInput("violin_linewidth", tr("violin_linewidth"), value = 0.6,
+                                min = 0.1, max = 2.5, step = 0.1)
+                 ),
+                  
                  ## ─── Boxplot *y* Barras (tamaño de puntos) ────────────────
                  conditionalPanel(
                    condition = "['Boxplot','Barras','Violin','Apiladas'].indexOf(input.tipo) >= 0",
                    numericInput("pt_size", tr("point_size"), value = 3,
                                 min = 0.5, max = 20,  step = 0.5),
+                   numericInput("errbar_size", tr("errbar_size"),
+                                value = 0.6, min = 0.1, step = 0.1),
                    # ─── Ángulo de las etiquetas del eje X ──────────────────────────────────
                    numericInput(
                      "x_angle",                     # <-- NUEVO input
@@ -1304,6 +1746,7 @@ ui <- fluidPage(
                 
                 textInput('plotTitle', tr("plot_title"), ''),
                 
+                hr(), tags$div(id = "section_filters", h4(tr("guided_filters"))),
                 uiOutput('rmRepsGlobalUI'),
                 
                 
@@ -1340,6 +1783,7 @@ ui <- fluidPage(
                  ),
                  
                  
+                 hr(), tags$div(id = "section_analysis", h4(tr("guided_analysis"))),
                  # ---------- Estadística para Boxplot/Barras ---------------------------
                  conditionalPanel(
                    condition = "['Boxplot','Barras','Violin'].indexOf(input.tipo) >= 0",
@@ -1399,7 +1843,7 @@ ui <- fluidPage(
                                  tr("multitest_none")
                                )
                              ),
-                             selected = "holm"
+                            selected = "none"
                            ),
                            conditionalPanel(
                              condition = "input.compMode=='control'",
@@ -1467,59 +1911,66 @@ ui <- fluidPage(
                        tags$span(" "),
                        tr("qc_what_is_desc")
                      ),
-                     tabsetPanel(
-                       tabPanel(
-                         title = tr("qc_missing_table"),
-                         tags$p(class = "qc-help", tr("qc_missing_help")),
-                         DTOutput("qcMissingTable")
-                       ),
-                        tabPanel(
-                          title = tr("qc_outlier_table"),
-                          tags$p(class = "qc-help", tr("qc_outlier_help")),
-                          numericInput(
-                            "qc_outlier_iqr_mult",
-                            tr("qc_outlier_iqr_multiplier_label"),
-                            value = 1.5,
-                            min = 0.1,
-                            step = 0.1
+                       tags$div(
+                        class = "qc-tabs-layout",
+                        tabsetPanel(
+                          id = "qcTabs",
+                          tabPanel(
+                            value = "qc_missing",
+                            title = tr("qc_missing_table"),
+                            tags$p(class = "qc-help", tr("qc_missing_help")),
+                            DTOutput("qcMissingTable")
                           ),
-                          tags$p(class = "qc-help", tr("qc_outlier_iqr_multiplier_help")),
-                          actionButton(
-                            "qc_apply_outlier_exclusion",
-                            tr("qc_outlier_apply_button"),
-                            class = "btn btn-outline-primary w-100",
-                            style = "white-space: normal;"
+                          tabPanel(
+                            value = "qc_outliers",
+                            title = tr("qc_outlier_table"),
+                            tags$p(class = "qc-help", tr("qc_outlier_help")),
+                            numericInput(
+                              "qc_outlier_iqr_mult",
+                              tr("qc_outlier_iqr_multiplier_label"),
+                              value = 1.5,
+                              min = 0.1,
+                              step = 0.1
+                            ),
+                            tags$p(class = "qc-help", tr("qc_outlier_iqr_multiplier_help")),
+                            actionButton(
+                              "qc_apply_outlier_exclusion",
+                              tr("qc_outlier_apply_button"),
+                              class = "btn btn-outline-primary w-100",
+                              style = "white-space: normal;"
+                            ),
+                            br(),
+                            numericInput(
+                              "qc_keep_top_n",
+                              tr("qc_outlier_keep_n_label"),
+                              value = 3,
+                              min = 1,
+                              step = 1
+                            ),
+                            tags$p(class = "qc-help", tr("qc_outlier_keep_n_help")),
+                            actionButton(
+                              "qc_apply_top_n",
+                              tr("qc_outlier_apply_topn_button"),
+                              class = "btn btn-outline-secondary w-100",
+                              style = "white-space: normal;"
+                            ),
+                            br(), br(),
+                            DTOutput("qcOutlierTable"),
+                            tags$hr(),
+                            tags$h5(tr("qc_outlier_group_counts")),
+                            tags$p(class = "qc-help", tr("qc_outlier_group_counts_help")),
+                            DTOutput("qcOutlierGroupTable")
                           ),
-                          br(),
-                          numericInput(
-                            "qc_keep_top_n",
-                            tr("qc_outlier_keep_n_label"),
-                            value = 3,
-                            min = 1,
-                            step = 1
-                          ),
-                          tags$p(class = "qc-help", tr("qc_outlier_keep_n_help")),
-                          actionButton(
-                            "qc_apply_top_n",
-                            tr("qc_outlier_apply_topn_button"),
-                            class = "btn btn-outline-secondary w-100",
-                            style = "white-space: normal;"
-                          ),
-                          br(), br(),
-                          DTOutput("qcOutlierTable"),
-                          tags$hr(),
-                          tags$h5(tr("qc_outlier_group_counts")),
-                          tags$p(class = "qc-help", tr("qc_outlier_group_counts_help")),
-                          DTOutput("qcOutlierGroupTable")
-                        ),
-                       tabPanel(
-                         title = tr("qc_sample_table"),
-                         tags$p(class = "qc-help", tr("qc_sample_help")),
-                         DTOutput("qcSampleTable")
-                       )
-                     ),
+                          tabPanel(
+                            value = "qc_sample",
+                            title = tr("qc_sample_table"),
+                            tags$p(class = "qc-help", tr("qc_sample_help")),
+                            DTOutput("qcSampleTable")
+                          )
+                        )
+                      ),
                      style = "secondary"
-                   )
+                    )
                  ),
                  conditionalPanel(
                    condition = "['Boxplot','Barras','Violin','Apiladas'].indexOf(input.tipo) >= 0",
@@ -1534,7 +1985,12 @@ ui <- fluidPage(
                     condition = "input.sig_mode == 'labels'",
                     conditionalPanel(
                       condition = "input.tipo == 'Apiladas'",
-                      selectInput('sig_param', tr("sig_param_label"), choices = NULL),
+                      selectizeInput(
+                        'sig_param',
+                        tr("sig_param_label"),
+                        choices = NULL,
+                        selected = NULL
+                      ),
                       checkboxInput('sig_label_param_color',
                                     tr("sig_label_param_color"), FALSE)
                     )
@@ -1628,7 +2084,7 @@ ui <- fluidPage(
                    ),
                   checkboxInput('sig_hide_caps', tr("sig_hide_caps"), FALSE)
                  ),
-                 hr(),
+                 hr(), tags$div(id = "section_export", h4(tr("guided_export"))),
                  fluidRow(
                    column(6, numericInput('plot_w', tr("plot_width"), 1000, min = 100)),
                    column(6, numericInput('plot_h', tr("plot_height"),  700, min = 100))
@@ -1777,12 +2233,69 @@ ui <- fluidPage(
                     tr("growth_run"),
                     class = "btn btn-primary"
                   ),
+                  br(),
+                  shinyjs::disabled(
+                    actionButton(
+                      "stopGrowth",
+                      tr("growth_stop"),
+                      class = "btn btn-warning"
+                    )
+                  ),
                   br(), br(),
                   downloadButton(
                     "downloadGrowthZip",
                     tr("growth_download"),
                     class = "btn btn-success"
                   ),
+                  tags$div(
+                    style = "margin-top: 10px; font-size: 13px; color: #444;",
+                    textOutput("growthStatus")
+                  ),
+                  tags$script(HTML("
+                    (function () {
+                      if (window.__bioszen_growth_close_hook_installed) return;
+                      window.__bioszen_growth_close_hook_installed = true;
+                      window.__bioszen_growth_running = false;
+
+                      function clearGrowthFileInput() {
+                        var input = document.getElementById('growthFiles');
+                        if (!input) return;
+                        input.value = '';
+                        var label = input.closest('.shiny-input-container');
+                        if (!label) return;
+                        var text = label.querySelector('.control-label');
+                        var files = label.querySelector('.btn-file + input');
+                        if (files) files.value = '';
+                        var nameNode = label.querySelector('.shiny-file-input-progress, .shiny-file-input-name');
+                        if (nameNode) nameNode.textContent = '';
+                      }
+
+                      function registerGrowthHandlers() {
+                        if (!window.Shiny || typeof Shiny.addCustomMessageHandler !== 'function') return false;
+                        Shiny.addCustomMessageHandler('bioszen-clear-growth-files', function (payload) {
+                          clearGrowthFileInput();
+                        });
+                        Shiny.addCustomMessageHandler('bioszen-growth-running', function (payload) {
+                          window.__bioszen_growth_running = !!(payload && payload.running);
+                        });
+                        return true;
+                      }
+
+                      if (!registerGrowthHandlers()) {
+                        $(document).one('shiny:connected', function () {
+                          registerGrowthHandlers();
+                        });
+                      }
+
+                      $(document).on('click', '.shiny-notification .close, .shiny-notification .btn-close', function () {
+                        var box = $(this).closest('.shiny-notification');
+                        var hasProgress = box.find('.progress, .shiny-progress').length > 0;
+                        if (hasProgress && window.__bioszen_growth_running && window.Shiny && typeof Shiny.setInputValue === 'function') {
+                          Shiny.setInputValue('growth_progress_closed', Date.now(), {priority: 'event'});
+                        }
+                      });
+                    })();
+                  ")),
                   # solo mostramos cuando el usuario haya subido exactamente 1 archivo
                   uiOutput("showImportBtn")
                  )

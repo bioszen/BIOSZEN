@@ -8,9 +8,37 @@ app_title,Centro de Gráficos y Análisis
 tab_plots,Gráficos y Estadísticas
 tab_growth,Obtención de Parámetros de Crecimiento
 tab_composition,Panel de Composición
-file_data,Cargar Datos (.xlsx):
-file_curves,Cargar Curvas (.xlsx)
+file_data,Cargar Datos (.xlsx/.xls/.csv):
+file_curves,Cargar Curvas (.xlsx/.xls/.csv)
 file_meta,Cargar metadata diseño (.xlsx)
+merge_title,Concatenar Platemaps
+merge_help,"Usa el archivo de datos cargado como base, agrega más platemaps y luego concatena y carga."
+merge_files,Platemaps adicionales (.xlsx)
+merge_open,Abrir concatenación de platemaps
+merge_run,Concatenar platemaps
+merge_download,Descargar platemap concatenado
+merge_close,Cerrar
+merge_status_idle,Aún no se ha generado un platemap concatenado.
+merge_need_base,Primero carga un archivo de datos base.
+merge_need_files,Agrega al menos un platemap para concatenar.
+merge_status_ready,"Archivo concatenado listo: %s filas, %s parámetros, %s grupos (%s grupos superpuestos)."
+merge_loaded,Platemap concatenado cargado en Gráficos y Estadísticas.
+merge_failed,"No se pudieron concatenar los platemaps: %s"
+merge_no_file,No hay un archivo concatenado disponible para descargar.
+curve_merge_title,Concatenar Curvas
+curve_merge_help,"Usa el archivo de curvas actual como base, agrega más archivos de curvas y luego concatena y carga."
+curve_merge_files,Curvas adicionales (.xlsx/.xls/.csv)
+curve_merge_open,Abrir concatenación de curvas
+curve_merge_run,Concatenar curvas
+curve_merge_download,Descargar curvas concatenadas
+curve_merge_status_idle,Aún no se ha generado un archivo de curvas concatenadas.
+curve_merge_need_map,Primero genera un platemap concatenado para mapear wells.
+curve_merge_need_base,Primero carga un archivo base de curvas.
+curve_merge_need_files,Agrega al menos un archivo de curvas para concatenar.
+curve_merge_status_ready,"Curvas concatenadas listas: %s wells, %s puntos de tiempo."
+curve_merge_loaded,Curvas concatenadas cargadas en Curvas.
+curve_merge_failed,"No se pudieron concatenar las curvas: %s"
+curve_merge_no_file,No hay un archivo de curvas concatenadas disponible para descargar.
 file_meta_help,Los archivos deben llamarse metadata_Tipo.xlsx por ejemplo metadata_Boxplot.xlsx
 manual_download,Instrucciones (descargar)
 download_refs,Archivos de entrada de referencia (descargar)
@@ -55,6 +83,9 @@ norm_groups_insufficient,No hay grupos suficientes para realizar el test.
 sig_insufficient_obs,Grupos con observaciones insuficientes: %s
 sig_test_error_prefix,Error en test:
 corr_min_points,Se necesitan ≥3 puntos para calcular la correlación.
+corr_no_overlap_points,"No hay valores superpuestos para '%s' (X) y '%s' (Y) en la selección actual. Grupos con X: %s, con Y: %s, con ambos: %s."
+corr_overlap_groups_hint,"Grupos con ambos valores incluyen: %s"
+corr_not_enough_overlap_points,"Solo hay %s punto(s) superpuesto(s) para '%s' vs '%s'. Se necesitan al menos 3."
 plot_pdf_failed,No se pudo generar el PDF del gráfico.
 metadata_capture_failed,No se pudo capturar la metadata.
 metadata_invalid_sheet,Estructura inválida en %s: no se pudo leer la hoja 'Metadata'.
@@ -71,7 +102,7 @@ curve_embedded_invalid,Se detectaron curvas embebidas pero no se pudieron leer: 
 curve_embedded_missing,No se encontraron curvas embebidas en este archivo agrupado o resumido. Agrega una hoja Curves_Summary para habilitar el gráfico de Curvas.
 data_file_invalid,Archivo de datos inválido: %s
 add_to_panel,Añadir al panel
-comments_label,Comentarios y sugerencias a 
+comments_label,Comentarios y sugerencias:
 missing_params_warning,Estos parámetros no existen en los datos y fueron omitidos: %s
 corr_select_two_params,Selecciona dos parámetros.
 no_data_normality,No hay datos para normalidad.
@@ -93,11 +124,14 @@ growth_files,Cargar curvas de crecimiento (.xlsx)
 growth_max_time,Tiempo máximo
 growth_interval,Intervalo (by)
 growth_run,Calcular parámetros
+growth_stop,Detener proceso
 growth_download,Descargar resultados
 growth_import,Importar a Gráficos y Estadísticas
 growth_progress_files,Procesando archivos...
 growth_progress_curves,Procesando curvas de %s
 growth_progress_file_done,Archivo %s completado
+growth_stop_requested,Detención solicitada. Cancelando el procesamiento actual...
+growth_stopped,La obtención de parámetros de crecimiento fue detenida.
 size_section,Tamaño y Fuente
 base_size,Tamaño base (pts)
 title_size,Tamaño título:
@@ -118,7 +152,7 @@ corr_label_size,Tamaño etiquetas (pts):
 corr_method_label,Método de correlación:
 corr_method_pearson,Pearson
 corr_method_spearman,Spearman
-corr_norm_target,Normalizar en correlacion:
+corr_norm_target,Normalizar en correlación:
 corr_norm_both,Ambos parametros
 corr_norm_x,Eje X
 corr_norm_y,Eje Y
@@ -270,23 +304,71 @@ combo_select_plots,Selecciona los gráficos que quieres unir:
 combo_order_label,Modificar orden:
 combo_move_up,Subir
 combo_move_down,Bajar
+combo_move_top,Mover al inicio
+combo_move_bottom,Mover al final
+combo_remove_current,Quitar gráfico actual
+combo_remove_selected,Quitar gráficos seleccionados
+combo_remove_none,No hay gráficos seleccionados para quitar.
+combo_removed_count,Se quitaron %d gráfico(s) de la composición.
 combo_show_legend,Mostrar leyenda
+combo_title,Título de la composición
 combo_rows,Filas
 combo_cols,Columnas
 combo_width,Ancho px
 combo_height,Alto px
 combo_base_size,Tamaño base (pts)
 combo_title_size,Tamaño título (pts)
+combo_comp_title_size,Tamaño título composición (pts)
+combo_plot_title_size,Tamaño título de gráfico (pts)
 combo_axis_titles,Títulos de ejes
 combo_axis_ticks,Ticks de ejes
+combo_axis_line_size,Grosor línea de ejes
 combo_legend_text,Texto de leyenda
 combo_palette_label,Paleta de color:
 combo_preview,Actualiza / Previsualiza
+combo_preview_optional,Refrescar previsualización (opcional)
 combo_download_png,Descargar PNG
 combo_download_pptx,Descargar PPTX
 combo_download_pdf,Descargar PDF
 combo_download_meta,Descargar metadata
 combo_upload_meta,Cargar metadata composición (.xlsx)
+combo_selected_plots,Seleccionados en composición
+combo_override_targets,Objetivos del override
+combo_override_targets_placeholder,Elige uno o más gráficos
+combo_section_selection,1) Selección de gráficos
+combo_section_layout,2) Diseño y lienzo
+combo_section_style,3) Estilo visual
+combo_section_richtext,4) Cajas de texto enriquecido
+combo_section_overrides,5) Overrides en paralelo
+combo_section_actions,6) Previsualizar y exportar
+combo_layout_grid,Malla de diseño personalizada (opcional)
+combo_col_widths,Anchos de columna (separados por comas)
+combo_row_heights,Altos de fila (separados por comas)
+combo_layout_hint,Usa números según el orden seleccionado (0 = vacío). Ejemplo: 1 1 2 / 3 4 4
+combo_layout_map_empty,No hay mapa de diseño disponible.
+combo_font_family,Familia tipográfica
+combo_sync_text,Sincronizar estilo de texto entre gráficos
+combo_apply_paper_theme,Aplicar tema base estilo paper
+combo_style_live_hint,Los controles globales de estilo se aplican en vivo a todos los gráficos de la composición.
+combo_override_apply_hint,Usa el botón de abajo solo para overrides por gráfico (todos / por tipo / seleccionados).
+combo_actions_hint,Usa este botón solo si quieres forzar un redibujado. La mayoría de cambios de estilo y diseño se actualizan automáticamente.
+combo_legend_scope,Modo de leyenda
+combo_legend_scope_all,Leyenda en cada gráfico
+combo_legend_scope_type,Una leyenda por tipo de gráfico
+combo_legend_scope_collect,Una sola leyenda combinada
+combo_legend_side,Lado de la leyenda
+combo_legend_side_right,Derecha
+combo_legend_side_left,Izquierda
+combo_rich_enable,Agregar caja de texto enriquecido (ggtext)
+combo_rich_text,Texto enriquecido (Markdown/HTML)
+combo_rich_x,X de caja de texto (0-1)
+combo_rich_y,Y de caja de texto (0-1)
+combo_rich_box_w,Ancho de caja de texto (0-1)
+combo_rich_box_h,Alto de caja de texto (0-1)
+combo_rich_size,Tamaño del texto
+combo_rich_color,Color del texto
+combo_rich_fill,Relleno de la caja
+combo_richtext_missing,ggtext no está instalado. Se usará caja de texto simple.
 override_apply_to,Aplicar a:
 override_all,Todos
 override_title,Título (override)
@@ -303,10 +385,13 @@ override_point_size,Tamaño puntos
 override_point_jitter,Dispersión puntos
 override_sig_linewidth,Grosor barras signif.
 override_sig_textsize,Tamaño texto signif.
-override_apply_all,Aplicar cambios a TODOS
+override_apply_all,Aplicar override ahora
 no_data_plot,No hay datos para graficar
-norm_failed_generic,No fue posible normalizar; se muestran valores sin normalizar.
-norm_fallback_ctrl,"No se pudo usar el control ""%s""; se muestran valores sin normalizar."
+loading_plot_data,Cargando datos del archivo...
+norm_failed_generic,No fue posible normalizar para la selección actual.
+norm_fallback_ctrl,"No se pudo usar el control ""%s""."
+norm_unavailable_ctrl,"No se pudo usar el control ""%s"" para la selección actual; solo se muestran parámetros con valores normalizados válidos."
+norm_unavailable_ctrl_noctrl,No se pudo ejecutar la normalización para la selección actual; solo se muestran parámetros con valores normalizados válidos.
 plot_raincloud,Raincloud
 plot_estimation,Estimación
 plot_heatmap,Mapa de calor
@@ -320,18 +405,25 @@ corr_method_kendall,Kendall
 corr_matrix_settings,Ajustes matriz de correlación
 corr_matrix_params,Parámetros para la matriz:
 corr_matrix_show_sig,Mostrar solo correlaciones significativas
+corr_matrix_order_profile,Ordenar parámetros por similitud de perfil de correlación
 heatmap_settings,Ajustes mapa de calor
 heatmap_params,Parámetros para heatmap:
+heatmap_select_all_params,Seleccionar todos los parámetros
+heatmap_clear_all_params,Deseleccionar todos los parámetros
+heatmap_show_param_labels,Mostrar nombres de parámetros
+heatmap_orientation,Orientación del heatmap:
+heatmap_orientation_params_rows,Filas: parámetros
+heatmap_orientation_params_cols,Columnas: parámetros
 heatmap_scale_mode,Normalización:
 heatmap_scale_none,Ninguna
 heatmap_scale_row,Por fila (parámetro)
 heatmap_scale_col,Por columna (grupo)
-heatmap_cluster_method,Método de agrupamiento:
+heatmap_cluster_method,Método de ordenamiento por patrón:
 heatmap_dendro_rows,Mostrar dendrograma lateral (filas)
 heatmap_dendro_cols,Mostrar dendrograma superior (columnas)
 heatmap_zscore,Normalizar por z-score por parámetro
-heatmap_cluster_rows,Agrupar filas (grupos)
-heatmap_cluster_cols,Agrupar columnas (parámetros)
+heatmap_cluster_rows,Ordenar/agrupar filas por patrón de expresión
+heatmap_cluster_cols,Ordenar/agrupar columnas por patrón de expresión
 heatmap_show_values,Mostrar valores en celdas
 estimation_settings,Ajustes de estimación
 estimation_boot_n,Iteraciones bootstrap:
@@ -394,6 +486,31 @@ qc_outlier_topn_error,No fue posible ordenar réplicas por reproducibilidad para
 qc_outlier_topn_no_change,No se requirieron cambios en la selección de réplicas.
 qc_outlier_topn_done,Límite de réplicas aplicado. Réplicas conservadas: %s. Por grupo: %s
 qc_sample_help,Resume tamaño muestral y cobertura de réplicas biológicas por grupo.
+qc_tech_title,Control de calidad de réplicas técnicas
+qc_tech_help,Revisa y ajusta la selección de réplicas técnicas dentro de cada réplica biológica.
+qc_tech_select_all_button,Seleccionar todas las réplicas técnicas
+qc_tech_deselect_all_button,Deseleccionar todas las réplicas técnicas
+qc_tech_selector_help,Selecciona las réplicas técnicas que deseas conservar dentro de cada réplica biológica.
+qc_tech_selector_label,Réplicas técnicas
+qc_tech_biorep_panel,Réplica biológica: %s
+qc_tech_outlier_table,Outliers de réplicas técnicas
+qc_tech_outlier_iqr_multiplier_label,Rigor de outliers técnicos (multiplicador IQR)
+qc_tech_outlier_iqr_multiplier_help,Valores bajos son más estrictos y detectan más outliers de réplicas técnicas dentro de cada réplica biológica. Valores altos son más permisivos. Valor por defecto: 1.5 (regla de Tukey).
+qc_tech_outlier_apply_button,Deseleccionar outliers detectados de réplicas técnicas
+qc_tech_keep_n_label,Réplicas técnicas a conservar por réplica biológica
+qc_tech_keep_n_help,Conserva las N réplicas técnicas más reproducibles dentro de cada réplica biológica usando distancia a la mediana del subgrupo entre parámetros.
+qc_tech_apply_topn_button,Aplicar límite de réplicas técnicas
+qc_tech_no_matches,No se detectaron outliers de réplicas técnicas con la configuración actual.
+qc_tech_apply_error,No fue posible evaluar outliers de réplicas técnicas para la selección de datos actual.
+qc_tech_not_enough_data,No hay datos válidos suficientes de réplicas técnicas para aplicar esta selección automática.
+qc_tech_apply_done,Exclusión de réplicas técnicas aplicada. Réplicas deseleccionadas: %s. Por subgrupo: %s
+qc_tech_topn_invalid,Ingresa un número de réplicas técnicas mayor que 0.
+qc_tech_topn_error,No fue posible ordenar réplicas técnicas por reproducibilidad para la selección de datos actual.
+qc_tech_topn_no_change,No se requirieron cambios en la selección de réplicas técnicas.
+qc_tech_topn_done,Límite de réplicas técnicas aplicado. Réplicas conservadas: %s. Por subgrupo: %s
+qc_tech_sample_column,Réplicas técnicas
+qc_tech_sample_each,%s cada una
+qc_tech_sample_exception,%s: %s
 sig_auto_title,Auto-generar desde test
 sig_auto_help,Construye barras de significancia directamente desde el último resultado estadístico.
 sig_auto_include,Incluir comparaciones:
@@ -403,7 +520,7 @@ sig_auto_label_mode,Modo de etiqueta automática:
 sig_auto_label_stars,Estrellas (*, **, ***)
 sig_auto_label_p,P-value (3 decimales)
 sig_auto_replace,Reemplazar barras actuales
-sig_auto_apply,Agregar barras automático
+sig_auto_apply,Agregar barras automáticamente
 sig_update_label,Actualizar etiqueta seleccionada
 sig_update_select_one,Selecciona exactamente una barra para editar.
 sig_auto_no_matches,No hubo comparaciones que cumplan el criterio automático.
@@ -413,9 +530,68 @@ corr_ci_style,Estilo del intervalo de confianza:
 corr_ci_band,Banda sombreada
 corr_ci_dashed,Límites punteados
 corr_ci_level,Nivel de confianza:
+corr_adv_title,Correlación Avanzada
+corr_adv_hint_click,Haz clic en una fila para cargar ese par en el gráfico de correlación principal.
+corr_adv_anchor,Parámetro ancla:
+corr_adv_data_mode,Modo de datos:
+corr_adv_data_raw,Datos brutos en ambos ejes
+corr_adv_data_norm_both,Datos normalizados en ambos ejes
+corr_adv_data_norm_x,Normalizar solo eje X
+corr_adv_data_norm_y,Normalizar solo eje Y
+corr_adv_sig_only,Mostrar solo resultados significativos
+corr_adv_pvalue_max,p-value máximo:
+corr_adv_direction,Dirección de correlación:
+corr_adv_direction_all,Todas
+corr_adv_direction_pos,Positiva
+corr_adv_direction_neg,Negativa
+corr_adv_direction_zero,Cero
+corr_adv_r_filter,Rango de filtro r:
+corr_adv_run,Ejecutar correlación avanzada
+corr_adv_press_run,Selecciona la configuración y haz clic en "Ejecutar correlación avanzada".
+corr_adv_running,Ejecutando...
+corr_adv_loading,Calculando correlación avanzada. Por favor espera...
+corr_adv_download_all,Descargar todos los resultados (Excel)
+corr_adv_download_run_first,Ejecuta la correlación avanzada antes de descargar.
+corr_adv_summary_title,Resumen de correlaciones significativas
+corr_adv_summary_sig_total,Significativas con el ancla
+corr_adv_summary_sig_pos,Significativas positivas
+corr_adv_summary_sig_neg,Significativas negativas
+corr_adv_summary_excluded,Excluidas (no finitas / no testeables)
+corr_adv_results,Resultados de correlación
+corr_adv_col_anchor,Ancla
+corr_adv_col_parameter,Parámetro
+corr_adv_col_r,r
+corr_adv_col_pvalue,p-value
+corr_adv_col_n,n
+corr_adv_col_significant,Significativa
+corr_adv_col_direction,Dirección
+corr_adv_no_results,No hay resultados de correlación para esta selección.
+corr_adv_no_filtered_results,Ninguna fila coincide con los filtros actuales.
+corr_adv_opened_plot,Gráfico de correlación cargado: %s vs %s.
 mobile_go_charts_summary,Ir a gráficos y resumen
 mobile_back_controls,Volver a controles
 mobile_go_results_table,Ir a tabla de resultados
 mobile_switch_panel,Cambiar panel
 mobile_switch_view_graphics,Ver gráficos
 mobile_switch_config_panel,Panel de configuración
+guided_setup,Configuración del gráfico
+guided_toggle_setup,Mostrar u ocultar configuración del gráfico
+guided_chart_options,Opciones
+guided_appearance,Apariencia
+guided_filters,Filtros y réplicas
+guided_analysis,Análisis y control de calidad
+guided_export,Exportación y salida
+quick_options_title,Opciones rápidas
+quick_setup,Configuración del gráfico
+quick_plot_type,Tipo de gráfico
+quick_normalization,Normalización
+quick_chart_options,Opciones
+quick_appearance,Apariencia
+quick_filters,Filtros
+quick_analysis,Análisis
+quick_export,Exportación
+quick_top,Volver a configuración
+heatmap_row_clusters_n,Número de clústeres de filas
+heatmap_col_clusters_n,Número de clústeres de columnas
+heatmap_download_clusters,Descargar clústeres de heatmap (.xlsx)
+heatmap_enable_row_clusters,Activa el agrupamiento por filas para exportar los clústeres de parámetros.

@@ -403,7 +403,18 @@ mixed_model_summary <- function(df,
 correlation_matrix_with_p <- function(df,
                                       params,
                                       method = "spearman",
-                                      adjust_method = "holm") {
+                                      adjust_method = "holm",
+                                      should_abort = NULL) {
+  abort_if_requested <- function() {
+    if (!is.function(should_abort)) return(invisible(FALSE))
+    abort_now <- tryCatch(isTRUE(should_abort()), error = function(e) FALSE)
+    if (isTRUE(abort_now)) {
+      stop("Correlation matrix generation cancelled because the session is closing.", call. = FALSE)
+    }
+    invisible(FALSE)
+  }
+
+  abort_if_requested()
   if (is.null(df) || !is.data.frame(df)) {
     return(list(cor = matrix(numeric(0), 0, 0), p = matrix(numeric(0), 0, 0), tidy = tibble::tibble()))
   }
@@ -420,7 +431,9 @@ correlation_matrix_with_p <- function(df,
   pmat <- matrix(NA_real_, n, n, dimnames = list(params, params))
 
   for (i in seq_len(n)) {
+    abort_if_requested()
     for (j in seq_len(n)) {
+      if ((j %% 25L) == 0L) abort_if_requested()
       if (i == j) {
         cmat[i, j] <- 1
         pmat[i, j] <- 0
@@ -446,6 +459,7 @@ correlation_matrix_with_p <- function(df,
     }
   }
 
+  abort_if_requested()
   upper_idx <- upper.tri(pmat, diag = FALSE)
   upper_p <- pmat[upper_idx]
   adj_vals <- rep(NA_real_, length(upper_p))
@@ -458,6 +472,7 @@ correlation_matrix_with_p <- function(df,
   p_adj[lower.tri(p_adj)] <- t(p_adj)[lower.tri(p_adj)]
   diag(p_adj) <- 0
 
+  abort_if_requested()
   tidy <- expand.grid(
     param_x = params,
     param_y = params,
@@ -470,4 +485,93 @@ correlation_matrix_with_p <- function(df,
     )
 
   list(cor = cmat, p = p_adj, tidy = tidy)
+}
+
+correlation_pair_with_p <- function(x, y, method = "spearman", min_points = 3L) {
+  x_num <- suppressWarnings(as.numeric(x))
+  y_num <- suppressWarnings(as.numeric(y))
+  ok <- is.finite(x_num) & is.finite(y_num)
+  n_ok <- sum(ok)
+  if (n_ok < min_points) {
+    return(list(r = NA_real_, p.value = NA_real_, n = n_ok))
+  }
+  x_use <- x_num[ok]
+  y_use <- y_num[ok]
+  if (dplyr::n_distinct(x_use) < 2 || dplyr::n_distinct(y_use) < 2) {
+    return(list(r = NA_real_, p.value = NA_real_, n = n_ok))
+  }
+  cor_args <- list(x = x_use, y = y_use, method = method)
+  if (method %in% c("spearman", "kendall")) cor_args$exact <- FALSE
+  tst <- tryCatch(
+    suppressWarnings(do.call(stats::cor.test, cor_args)),
+    error = function(e) NULL
+  )
+  if (is.null(tst)) {
+    return(list(r = NA_real_, p.value = NA_real_, n = n_ok))
+  }
+  list(
+    r = as.numeric(unname(tst$estimate)),
+    p.value = as.numeric(tst$p.value),
+    n = n_ok
+  )
+}
+
+correlation_one_vs_all_with_p <- function(df,
+                                          anchor,
+                                          params = names(df),
+                                          method = "spearman",
+                                          adjust_method = "none",
+                                          min_points = 3L) {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) {
+    return(tibble::tibble())
+  }
+  if (is.null(anchor) || !length(anchor)) {
+    anchor <- ""
+  } else {
+    anchor <- as.character(anchor[[1]])
+  }
+  if (!nzchar(anchor) || !anchor %in% names(df)) {
+    return(tibble::tibble())
+  }
+  params <- intersect(as.character(params), names(df))
+  params <- unique(params[!is.na(params) & nzchar(params)])
+  params <- setdiff(params, anchor)
+  if (!length(params)) {
+    return(tibble::tibble())
+  }
+
+  out <- lapply(params, function(other) {
+    stat <- correlation_pair_with_p(
+      x = df[[anchor]],
+      y = df[[other]],
+      method = method,
+      min_points = min_points
+    )
+    tibble::tibble(
+      param_anchor = anchor,
+      param_other = other,
+      r = stat$r,
+      p.value = stat$p.value,
+      n = stat$n
+    )
+  })
+
+  tbl <- dplyr::bind_rows(out)
+  tbl <- tbl %>%
+    dplyr::mutate(
+      p.adj = {
+        p <- suppressWarnings(as.numeric(p.value))
+        ok <- is.finite(p)
+        out <- rep(NA_real_, length(p))
+        if (any(ok)) {
+          out[ok] <- if (identical(adjust_method, "none")) {
+            p[ok]
+          } else {
+            stats::p.adjust(p[ok], method = adjust_method)
+          }
+        }
+        out
+      }
+    )
+  tbl
 }

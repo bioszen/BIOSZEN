@@ -78,6 +78,318 @@ stack_siglines <- function(p, sigs, sep = .05,
   p
 }
 
+build_boxplot_plot_impl <- function(ctx) {
+  with(ctx, {
+    if (scope == "Combinado") {
+      df_labels <- scope_df %>% distinct(Label, Strain, Media) %>% filter(!is.na(Label))
+      names(scope_df) <- enc2utf8(names(scope_df))
+      if (!param_sel %in% names(scope_df)) {
+        return(ggplot() + theme_void() + annotate("text", 0, 0, label = msg_no_data_sel))
+      }
+      scope_df[[param_sel]] <- suppressWarnings(as.numeric(scope_df[[param_sel]]))
+      df_plot <- scope_df %>%
+        transmute(Label, Valor = .data[[param_sel]]) %>%
+        filter(is.finite(Valor), !is.na(Label))
+
+      if (nrow(df_plot) == 0) {
+        return(
+          ggplot() +
+            theme_void() +
+            annotate("text", 0, 0, label = msg_no_data_sel)
+        )
+      }
+
+      data_max <- suppressWarnings(max(df_plot$Valor, na.rm = TRUE))
+      ymax_plot <- if (is.finite(data_max) && data_max > ymax) data_max else ymax
+
+      if (isTRUE(input$x_wrap)) {
+        df_plot$Label <- wrap_label(df_plot$Label, lines = input$x_wrap_lines)
+        df_labels$Label <- wrap_label(df_labels$Label, lines = input$x_wrap_lines)
+      }
+      if (is.factor(df_plot$Label)) {
+        df_plot$Label <- droplevels(df_plot$Label)
+      } else {
+        df_plot$Label <- factor(df_plot$Label, levels = unique(df_plot$Label))
+      }
+      df_labels <- df_labels %>% filter(Label %in% levels(df_plot$Label))
+      df_labels$Label <- factor(df_labels$Label, levels = levels(df_plot$Label))
+      box_stats <- df_plot %>%
+        group_by(Label) %>%
+        summarise(
+          q1 = stats::quantile(Valor, 0.25, na.rm = TRUE, names = FALSE),
+          median = stats::median(Valor, na.rm = TRUE),
+          q3 = stats::quantile(Valor, 0.75, na.rm = TRUE, names = FALSE),
+          lower = min(Valor, na.rm = TRUE),
+          upper = max(Valor, na.rm = TRUE),
+          .groups = "drop"
+        ) %>%
+        mutate(group = as.character(Label)) %>%
+        dplyr::select(group, q1, median, q3, lower, upper)
+      pal <- palette_for_labels(df_labels, levels(df_plot$Label))
+      x_ang <- get_x_angle(
+        n = nlevels(df_plot$Label),
+        angle_input = input$x_angle
+      )
+      b_mar <- get_bottom_margin(x_ang, input$x_wrap, input$x_wrap_lines)
+      p <- ggplot(df_plot, aes(Label, Valor))
+      show_legend <- legend_right_enabled(input$colorMode)
+
+      if (input$colorMode == "Blanco y Negro") {
+        p <- p +
+          geom_boxplot(
+            fill = "white", colour = "black", width = input$box_w,
+            linewidth = input$errbar_size,
+            coef = box_coef,
+            outlier.shape = NA,
+            na.rm = TRUE,
+            show.legend = show_legend,
+            key_glyph = "rect"
+          ) +
+          geom_jitter(
+            shape = 21,
+            fill = "white",
+            colour = "black",
+            stroke = 0.4,
+            width = input$pt_jit,
+            size = input$pt_size,
+            na.rm = TRUE,
+            show.legend = FALSE
+          )
+      } else {
+        p <- p +
+          geom_boxplot(
+            aes(fill = Label), width = input$box_w, colour = "black",
+            linewidth = input$errbar_size,
+            coef = box_coef,
+            alpha = 0.5,
+            outlier.shape = NA,
+            na.rm = TRUE,
+            show.legend = show_legend,
+            key_glyph = "rect"
+          ) +
+          geom_jitter(
+            aes(fill = Label),
+            width = input$pt_jit,
+            shape = 21,
+            colour = "black",
+            stroke = 0.5,
+            size = input$pt_size,
+            alpha = 1,
+            na.rm = TRUE,
+            show.legend = FALSE
+          ) +
+          scale_fill_manual(values = pal)
+      }
+
+      base_margin <- margin_adj(5.5, 5.5, b_mar, 25)
+      p <- p +
+        labs(title = input$plotTitle, y = ylab, x = NULL) +
+        scale_y_continuous(
+          limits = c(0, ymax_plot),
+          breaks = seq(0, ymax_plot, by = ybreak),
+          expand = c(0, 0),
+          oob = scales::oob_keep
+        ) +
+        theme_minimal(base_size = input$base_size, base_family = "Helvetica") +
+        coord_cartesian(clip = "off") +
+        theme(
+          plot.margin = base_margin,
+          plot.title = element_text(size = fs_title, face = "bold"),
+          axis.title.y = element_text(size = fs_axis, face = "bold", colour = "black"),
+          axis.text.x = element_text(
+            size = fs_axis,
+            angle = x_ang,
+            hjust = ifelse(x_ang == 0, .5, 1),
+            colour = "black"
+          ),
+          axis.text.y = element_text(size = fs_axis, colour = "black"),
+          axis.line = element_line(linewidth = axis_size, colour = "black"),
+          axis.ticks = element_line(linewidth = axis_size, colour = "black"),
+          panel.grid = element_blank(),
+          legend.position = "none"
+        )
+
+      if (isTRUE(input$labelMode)) {
+        p <- p + scale_x_discrete(labels = function(x) sub("-.*$", "", x))
+      }
+      sig_tops <- df_plot %>%
+        group_by(Label) %>%
+        summarise(y_top = max(Valor, na.rm = TRUE), .groups = "drop") %>%
+        mutate(y_top = ifelse(is.finite(y_top), y_top, NA_real_)) %>%
+        rename(group = Label)
+      p <- apply_sig_layers(
+        p,
+        group_tops = sig_tops,
+        margin_base = base_margin,
+        plot_height = input$plot_h
+      )
+      if (show_legend) {
+        p <- apply_square_legend_right(p)
+      }
+      p <- add_whisker_caps(
+        p,
+        box_stats,
+        levels(df_plot$Label),
+        input$box_w,
+        input$errbar_size
+      )
+      if (!is.null(box_stats)) {
+        attr(p, "box_stats") <- box_stats
+      }
+
+      return(p)
+    }
+
+    names(scope_df) <- enc2utf8(names(scope_df))
+    if (!param_sel %in% names(scope_df)) {
+      return(ggplot() + theme_void() + annotate("text", 0, 0, label = msg_no_data_sel))
+    }
+    scope_df[[param_sel]] <- suppressWarnings(as.numeric(scope_df[[param_sel]]))
+    df <- scope_df %>%
+      filter(is.finite(.data[[param_sel]]), !is.na(Media))
+
+    if (nrow(df) == 0) {
+      return(ggplot() + theme_void() +
+        annotate("text", x = 0, y = 0, label = msg_no_data_sel))
+    }
+
+    data_max <- suppressWarnings(max(df[[param_sel]], na.rm = TRUE))
+    ymax_plot <- if (is.finite(data_max) && data_max > ymax) data_max else ymax
+    df_points <- if (isTRUE(for_interactive)) {
+      downsample_points_by_group(df, "Media", cap_total = 7000L)
+    } else {
+      df
+    }
+
+    if (isTRUE(input$x_wrap)) {
+      df$Media <- wrap_label(df$Media, lines = input$x_wrap_lines)
+    }
+    if (is.factor(df$Media)) {
+      df$Media <- droplevels(df$Media)
+    } else {
+      df$Media <- factor(df$Media, levels = unique(df$Media))
+    }
+    box_stats <- df %>%
+      group_by(Media) %>%
+      summarise(
+        q1 = stats::quantile(.data[[param_sel]], 0.25, na.rm = TRUE, names = FALSE),
+        median = stats::median(.data[[param_sel]], na.rm = TRUE),
+        q3 = stats::quantile(.data[[param_sel]], 0.75, na.rm = TRUE, names = FALSE),
+        lower = min(.data[[param_sel]], na.rm = TRUE),
+        upper = max(.data[[param_sel]], na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      mutate(group = as.character(Media)) %>%
+      dplyr::select(group, q1, median, q3, lower, upper)
+    x_ang <- get_x_angle(
+      n = nlevels(factor(df$Media)),
+      angle_input = input$x_angle
+    )
+    b_mar <- get_bottom_margin(x_ang, input$x_wrap, input$x_wrap_lines)
+    show_legend <- legend_right_enabled(colourMode)
+    if (colourMode == "Blanco y Negro") {
+      p <- ggplot(df, aes(Media, .data[[param_sel]])) +
+        geom_boxplot(
+          fill = "white", colour = "black", width = input$box_w,
+          linewidth = input$errbar_size,
+          coef = box_coef,
+          outlier.shape = NA,
+          na.rm = TRUE,
+          show.legend = show_legend,
+          key_glyph = "rect"
+        ) +
+        geom_jitter(
+          data = df_points,
+          shape = 21,
+          fill = "white",
+          colour = "black",
+          stroke = 0.4,
+          width = input$pt_jit,
+          size = input$pt_size,
+          na.rm = TRUE,
+          show.legend = FALSE
+        )
+    } else {
+      media_levels <- if (is.factor(df$Media)) levels(df$Media) else unique(as.character(df$Media))
+      pal <- palette_for_levels(media_levels)
+      p <- ggplot(df, aes(Media, .data[[param_sel]], fill = Media)) +
+        geom_boxplot(
+          width = input$box_w, colour = "black",
+          linewidth = input$errbar_size,
+          coef = box_coef,
+          alpha = 0.5,
+          outlier.shape = NA,
+          na.rm = TRUE,
+          show.legend = show_legend,
+          key_glyph = "rect"
+        ) +
+        geom_jitter(
+          data = df_points,
+          aes(fill = Media),
+          width = input$pt_jit,
+          shape = 21,
+          colour = "black",
+          stroke = 0.5,
+          size = input$pt_size,
+          alpha = 0.95,
+          na.rm = TRUE,
+          show.legend = FALSE
+        ) +
+        scale_fill_manual(values = pal)
+    }
+    base_margin <- margin_adj(5.5, 5.5, b_mar, 25)
+    p <- p +
+      labs(title = input$plotTitle, y = ylab, x = NULL) +
+      scale_y_continuous(
+        limits = c(0, ymax_plot),
+        breaks = seq(0, ymax_plot, by = ybreak),
+        expand = c(0, 0),
+        oob = scales::oob_keep
+      ) +
+      theme_minimal(base_size = input$base_size, base_family = "Helvetica") +
+      coord_cartesian(clip = "off") +
+      theme(
+        plot.margin = base_margin,
+        plot.title = element_text(size = fs_title, face = "bold"),
+        axis.title.y = element_text(size = fs_axis, face = "bold", colour = "black"),
+        axis.text.x = element_text(
+          size = fs_axis,
+          angle = x_ang,
+          hjust = ifelse(x_ang == 0, .5, 1),
+          colour = "black"
+        ),
+        axis.text.y = element_text(size = fs_axis, colour = "black"),
+        axis.line = element_line(linewidth = axis_size, colour = "black"),
+        axis.ticks = element_line(linewidth = axis_size, colour = "black"),
+        panel.grid = element_blank(),
+        legend.position = "none"
+      )
+    sig_tops <- df %>%
+      group_by(Media) %>%
+      summarise(y_top = max(.data[[param_sel]], na.rm = TRUE), .groups = "drop") %>%
+      mutate(y_top = ifelse(is.finite(y_top), y_top, NA_real_)) %>%
+      rename(group = Media)
+    p <- apply_sig_layers(
+      p,
+      group_tops = sig_tops,
+      margin_base = base_margin,
+      plot_height = input$plot_h
+    )
+    if (show_legend) {
+      p <- apply_square_legend_right(p)
+    }
+    p <- add_whisker_caps(
+      p,
+      box_stats,
+      levels(df$Media),
+      input$box_w,
+      input$errbar_size
+    )
+
+    p
+  })
+}
+
 plot_boxplot <- function(scope, strain = NULL) {
   build_plot(scope, strain, "Boxplot")
 }

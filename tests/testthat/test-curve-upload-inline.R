@@ -103,6 +103,67 @@ test_that("load_curve_workbook parses standard curves workbook and builds defaul
   expect_true(all(c("X_Max", "Interval_X", "Y_Max", "Interval_Y") %in% names(parsed$Sheet2)))
 })
 
+test_that("load_curve_workbook parses wide curve CSV input", {
+  old <- setwd(app_dir)
+  on.exit(setwd(old), add = TRUE)
+  load_app_sources()
+
+  path <- tempfile("bioszen_curve_wide_", fileext = ".csv")
+  on.exit(unlink(path), add = TRUE)
+
+  sheet1 <- data.frame(
+    Time = c(0, 30, 60, 90),
+    A1 = c(0.03, 0.08, 0.14, 0.19),
+    A2 = c(0.02, 0.07, 0.13, 0.18)
+  )
+  utils::write.csv(sheet1, file = path, row.names = FALSE)
+
+  parsed <- load_curve_workbook(path, file_name = "curves.csv")
+
+  expect_true(isTRUE(parsed$ok))
+  expect_false(isTRUE(parsed$SummaryMode))
+  expect_true(all(c("Time", "A1", "A2") %in% names(parsed$Sheet1)))
+  expect_true(all(c("X_Max", "Interval_X", "Y_Max", "Interval_Y") %in% names(parsed$Sheet2)))
+  expect_equal(parsed$Sheet2$X_Max[1], 90, tolerance = 1e-8)
+  expect_equal(parsed$Sheet2$Interval_X[1], 22.5, tolerance = 1e-8)
+  expect_equal(parsed$Sheet2$X_Title[1], "")
+  expect_equal(parsed$Sheet2$Y_Title[1], "")
+})
+
+test_that("load_curve_workbook parses summary-style curve CSV input", {
+  old <- setwd(app_dir)
+  on.exit(setwd(old), add = TRUE)
+  load_app_sources()
+
+  path <- tempfile("bioszen_curve_summary_", fileext = ".csv")
+  on.exit(unlink(path), add = TRUE)
+
+  summary_csv <- data.frame(
+    Time = c(0, 60, 120),
+    Strain = c("S1", "S1", "S1"),
+    Media = c("M1", "M1", "M1"),
+    Mean = c(0.04, 0.11, 0.18),
+    SD = c(0.01, 0.01, 0.02),
+    N = c(3, 3, 3),
+    Orden = c(1, 1, 1)
+  )
+  utils::write.csv(summary_csv, file = path, row.names = FALSE)
+
+  parsed <- load_curve_workbook(path, file_name = "curves_summary.csv")
+
+  expect_true(isTRUE(parsed$ok))
+  expect_true(isTRUE(parsed$SummaryMode))
+  expect_s3_class(parsed$Meta, "data.frame")
+  expect_true(is.data.frame(parsed$Summary))
+  expect_true(nrow(parsed$Summary) > 0)
+  expect_equal(parsed$Sheet2$X_Max[1], 120, tolerance = 1e-8)
+  expect_equal(parsed$Sheet2$Interval_X[1], 30, tolerance = 1e-8)
+  expect_equal(parsed$Sheet2$Y_Max[1], 0.2, tolerance = 1e-8)
+  expect_equal(parsed$Sheet2$Interval_Y[1], 0.05, tolerance = 1e-8)
+  expect_equal(parsed$Sheet2$X_Title[1], "")
+  expect_equal(parsed$Sheet2$Y_Title[1], "")
+})
+
 test_that("summary data workbook can carry embedded curves in same file", {
   skip_if_not_installed("writexl")
   skip_if_not_installed("readxl")

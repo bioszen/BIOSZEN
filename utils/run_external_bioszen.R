@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
-# Minimal launcher to run BIOSZEN-v1.0.0-win-App.R without opening it.
+# Minimal launcher to run BIOSZEN-v2.0.0-win-App.R without opening it.
 
-target_default <- "BIOSZEN-v1.0.0-win-App.R"
+target_default <- "BIOSZEN-v2.0.0-win-App.R"
 
 args_all <- commandArgs(trailingOnly = FALSE)
 trailing <- commandArgs(trailingOnly = TRUE)

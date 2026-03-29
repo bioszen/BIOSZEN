@@ -1,53 +1,27 @@
-# ============================================================
-# Utilidades de paralelización (sin dependencias duras)
-# ============================================================
-.bioszen_init_parallel <- function() {
-  # Forzar BLAS a 1 hilo por worker (evita ruido numérico y over-subscription)
-  Sys.setenv(
-    OMP_NUM_THREADS       = "1",
-    OPENBLAS_NUM_THREADS  = "1",
-    MKL_NUM_THREADS       = "1",
-    BLIS_NUM_THREADS      = "1",
-    VECLIB_MAXIMUM_THREADS= "1"
-  )
-  if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
-    try(RhpcBLASctl::blas_set_num_threads(1), silent = TRUE)
-    try(RhpcBLASctl::omp_set_num_threads(1),  silent = TRUE)
+.bioszen_map_wells <- function(keys, fn, should_abort = NULL, progress_callback = NULL) {
+  .bioszen_abort_if_requested(should_abort)
+  out <- vector("list", length(keys))
+  n_keys <- length(keys)
+  for (i in seq_along(keys)) {
+    .bioszen_abort_if_requested(should_abort)
+    out[[i]] <- fn(keys[[i]])
+    if (is.function(progress_callback)) {
+      try(progress_callback(done = i, total = n_keys, well = keys[[i]]), silent = TRUE)
+    }
   }
-  
-  workers <- suppressWarnings(as.integer(Sys.getenv("BIOSZEN_WORKERS", "0")))
-  if (is.na(workers) || workers <= 0) {
-    # Usa todos los vCPU disponibles (ajusta si quieres reservar alguno)
-    workers <- max(1L, parallel::detectCores(logical = TRUE))
-  }
-  workers
+  .bioszen_abort_if_requested(should_abort)
+  out
 }
 
-.bioszen_map_wells <- function(keys, fn) {
-  # Paralelizar solo si se solicita explicitamente; fallback a secuencial ante errores.
-  enable_parallel <- tolower(Sys.getenv("BIOSZEN_PARALLEL", "false")) %in% c("1", "true", "yes")
-  if (!enable_parallel || length(keys) < 2) {
-    return(lapply(keys, fn))
-  }
-  if (requireNamespace("future.apply", quietly = TRUE) &&
-      requireNamespace("future", quietly = TRUE)) {
-    workers <- .bioszen_init_parallel()
-    if (is.na(workers) || workers < 2) {
-      return(lapply(keys, fn))
-    }
-    old_plan <- future::plan()
-    on.exit(try(future::plan(old_plan), silent = TRUE), add = TRUE)
-    future::plan(future::multisession, workers = workers)
-    res <- tryCatch(
-      future.apply::future_lapply(keys, fn, future.seed = TRUE),
-      error = function(e) {
-        message("No se pudo paralelizar; usando modo secuencial. Detalle: ", conditionMessage(e))
-        NULL
-      }
-    )
-    if (!is.null(res)) return(res)
-  }
-  lapply(keys, fn)
+.bioszen_cancel_condition <- function(message = "Growth processing cancelled.") {
+  structure(list(message = message), class = c("bioszen_growth_cancelled", "error", "condition"))
+}
+
+.bioszen_abort_if_requested <- function(should_abort = NULL) {
+  if (!is.function(should_abort)) return(invisible(FALSE))
+  abort_now <- tryCatch(isTRUE(should_abort()), error = function(e) FALSE)
+  if (abort_now) stop(.bioszen_cancel_condition())
+  invisible(FALSE)
 }
 
 # ============================================================
@@ -57,7 +31,8 @@ identify_exponential_phase_robust <- function(df, time_col, measure_col,
                                               umax_lower_bound = 0.05,
                                               umax_upper_bound = 0.25,
                                               max_iterations = 10,
-                                              initial_r_squared_threshold = 0.95) {
+                                              initial_r_squared_threshold = 0.95,
+                                              should_abort = NULL) {
   
   best_model <- NULL
   best_r2    <- -Inf
@@ -83,16 +58,19 @@ identify_exponential_phase_robust <- function(df, time_col, measure_col,
   }
   
   for (i in seq_len(max_iterations)) {
+    .bioszen_abort_if_requested(should_abort)
     for (start in seq_len(nrow(df) - min_pts)) {
+      .bioszen_abort_if_requested(should_abort)
       for (end in seq(start + min_pts, nrow(df))) {
+        .bioszen_abort_if_requested(should_abort)
         if ((end - start + 1) < min_pts) next
         model <- tryCatch(
-          lm(log(df[[measure_col]][start:end]) ~ df[[time_col]][start:end]),
+          suppressWarnings(lm(log(df[[measure_col]][start:end]) ~ df[[time_col]][start:end])),
           error = function(e) NULL
         )
         if (is.null(model)) next
         
-        r2   <- summary(model)$r.squared
+        r2   <- suppressWarnings(summary(model)$r.squared)
         umax <- coef(model)[2]
         
         if (!is.na(r2) &&
@@ -133,7 +111,8 @@ identify_exponential_phase_robust <- function(df, time_col, measure_col,
 identify_exponential_phase_permissive <- function(df, time_col, measure_col,
                                                   umax_lower_bound = 0.01,
                                                   umax_upper_bound = 0.50,
-                                                  max_iterations   = 10) {
+                                                  max_iterations   = 10,
+                                                  should_abort = NULL) {
   
   best_model <- NULL
   best_r2    <- -Inf
@@ -157,15 +136,18 @@ identify_exponential_phase_permissive <- function(df, time_col, measure_col,
     return(list(start = best_start, end = best_end, model = best_model))
   }
   for (i in seq_len(max_iterations)) {
+    .bioszen_abort_if_requested(should_abort)
     for (start in seq_len(nrow(df) - min_pts)) {
+      .bioszen_abort_if_requested(should_abort)
       for (end in seq(start + min_pts, nrow(df))) {
+        .bioszen_abort_if_requested(should_abort)
         if ((end - start + 1) < min_pts) next
         model <- tryCatch(
-          lm(log(df[[measure_col]][start:end]) ~ df[[time_col]][start:end]),
+          suppressWarnings(lm(log(df[[measure_col]][start:end]) ~ df[[time_col]][start:end])),
           error = function(e) NULL
         )
         if (is.null(model)) next
-        r2 <- summary(model)$r.squared
+        r2 <- suppressWarnings(summary(model)$r.squared)
         if (!is.na(r2) && r2 > best_r2) {
           best_r2    <- r2
           best_model <- model
@@ -183,14 +165,16 @@ identify_exponential_phase_permissive <- function(df, time_col, measure_col,
 # ============================================================
 # 3) Calcular parámetros – ROBUSTO (paralelo + orden estable)
 # ============================================================
-calculate_growth_rates_robust <- function(df) {
+calculate_growth_rates_robust <- function(df, should_abort = NULL, progress_callback = NULL) {
+  .bioszen_abort_if_requested(should_abort)
   # claves en el MISMO orden que aparecen en el df
   well_order <- unique(df$Well)
   
   do_one <- function(w) {
+    .bioszen_abort_if_requested(should_abort)
     d <- df[df$Well == w, , drop = FALSE]
     phase <- identify_exponential_phase_robust(
-      d, time_col = "Time", measure_col = "Measurements"
+      d, time_col = "Time", measure_col = "Measurements", should_abort = should_abort
     )
     model <- phase$model
     start <- phase$start
@@ -222,7 +206,13 @@ calculate_growth_rates_robust <- function(df) {
     }
   }
   
-  res_list <- .bioszen_map_wells(well_order, do_one)
+  res_list <- .bioszen_map_wells(
+    well_order,
+    do_one,
+    should_abort = should_abort,
+    progress_callback = progress_callback
+  )
+  .bioszen_abort_if_requested(should_abort)
   out <- dplyr::bind_rows(res_list)
   
   # asegurar MISMO orden que en df de entrada
@@ -234,13 +224,15 @@ calculate_growth_rates_robust <- function(df) {
 # ============================================================
 # 4) Calcular parámetros – PERMISIVO (paralelo + orden estable)
 # ============================================================
-calculate_growth_rates_permissive <- function(df) {
+calculate_growth_rates_permissive <- function(df, should_abort = NULL, progress_callback = NULL) {
+  .bioszen_abort_if_requested(should_abort)
   well_order <- unique(df$Well)
   
   do_one <- function(w) {
+    .bioszen_abort_if_requested(should_abort)
     d <- df[df$Well == w, , drop = FALSE]
     phase <- identify_exponential_phase_permissive(
-      d, time_col = "Time", measure_col = "Measurements"
+      d, time_col = "Time", measure_col = "Measurements", should_abort = should_abort
     )
     model <- phase$model
     start <- phase$start
@@ -272,7 +264,13 @@ calculate_growth_rates_permissive <- function(df) {
     }
   }
   
-  res_list <- .bioszen_map_wells(well_order, do_one)
+  res_list <- .bioszen_map_wells(
+    well_order,
+    do_one,
+    should_abort = should_abort,
+    progress_callback = progress_callback
+  )
+  .bioszen_abort_if_requested(should_abort)
   out <- dplyr::bind_rows(res_list)
   
   # asegurar MISMO orden que en df de entrada

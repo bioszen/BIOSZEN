@@ -1,440 +1,291 @@
-﻿# BIOSZEN Manual
+﻿# BIOSZEN User Manual (English)
 
-BIOSZEN generates graphs, filtering views, normalization workflows, statistical analyses, and export bundles from Excel inputs.
+This manual explains how to run BIOSZEN workflows from data import to reproducible export.
 
-## 1. What You Can Do in BIOSZEN
+## 1. Prerequisites
 
-- Generate graphs from one or more Excel inputs.
-- Filter by strain, medium/group, and biological replicate.
-- Normalize data to a control medium.
-- Run normality and significance tests.
-- Add significance bars/labels manually or auto-generate them from significance results.
-- Analyze curves, correlations, heatmaps, and correlation matrices.
-- Save plot versions and export reproducibility bundles.
+- R >= 4.1 installed.
+- BIOSZEN app launched from `App.R` or `BIOSZEN::run_app()`.
+- Input files for **Load Data** can be `Excel` (`.xlsx`, `.xls`) or `CSV` (`.csv`).
+- Curve files for **Load Curves** can be `Excel` (`.xlsx`, `.xls`) or `CSV` (`.csv`).
 
-## 2. Prepare Input Files
-
-Use **Reference input files (download)** to get templates:
+Reference templates are available in the app under **Reference input files (download)**:
 
 - `Ejemplo_platemap_parametros.xlsx`
 - `Ejemplo_curvas.xlsx`
 - `Ejemplo_parametros_agrupados.xlsx`
 - `Ejemplo_input_summary_mean_sd.xlsx`
 
-### 2.1 Recommended Pack: Platemap + Curves (Best Control)
+## 2. Input Modes
 
-This is the recommended setup for the highest control and the broadest analysis options inside BIOSZEN.
-Use this two-file pack as the default workflow whenever possible.
+### 2.1 Recommended mode: Platemap + Curves
 
-Use these two files together:
+Use this mode for full functionality and strongest statistical support.
 
-- Main data workbook in **Load Data**
-- Curves workbook in **Load Curves**
+1. Upload a platemap file in **Load Data**.
+2. Upload a curves file in **Load Curves** (`.xlsx`, `.xls`, or `.csv`).
 
-#### Main data workbook (platemap)
+Platemap requirements:
 
-Workbook structure: sheets `Datos` and `PlotSettings`.
+- Sheet `Datos`: `Well`, `Strain`, `Media`, `BiologicalReplicate`, `TechnicalReplicate`, `Orden`, plus one or more parameter columns.
+- Sheet `PlotSettings`: `Parameter`, `Y_Max`, `Interval`, `Y_Title`.
 
-`Datos` required columns:
+Curves requirements:
 
-- `Well`: unique well ID (must match well IDs used in curves when curves are loaded).
-- `Strain`: biological strain/group identity (alias accepted: `Sample`; localized legacy aliases are also accepted).
-- `Media`: condition/treatment identity (aliases accepted: `Condition`, `Treatment`; localized legacy aliases are also accepted).
-- `BiologicalReplicate`: biological replicate identifier used for filtering and statistics.
-- `TechnicalReplicate`: technical replicate identifier inside each biological replicate.
-- `Orden`: ordering index used for group display on categorical axes.
-- One column per parameter (for example `Parameter 1`, `Viability`, `ROS`): raw value used for plotting/statistics.
+- In `Excel` (`.xlsx`, `.xls`):
+  `Sheet1`: first column `Time`, additional columns by well (`A1`, `A2`, etc.).
+  `Sheet2`: `X_Max`, `Interval_X`, `Y_Max`, `Interval_Y`, `X_Title`, `Y_Title`.
+- In `CSV` (`.csv`):
+  first column `Time`, additional columns by well (`A1`, `A2`, etc.).
+  This is a single-table format (no extra sheets).
+  Axis settings are auto-generated:
+  `X_Max` and `Y_Max` use observed maxima, `Interval_X` and `Interval_Y` use `max/4`.
+  `X_Title` and `Y_Title` are blank by default.
 
-Do not add `SD_<ParameterName>` or `N_<ParameterName>` in platemap mode; BIOSZEN derives variability from replicate-level data.
+### 2.2 Grouped parameters mode (parameters only)
 
-`PlotSettings` required columns:
+- Upload grouped-parameter workbook in **Load Data**.
+- Use when you only need parameter charts and stats.
+- Not valid as a curves input.
 
-- `Parameter`: parameter name exactly as written in `Datos`.
-- `Y_Max`: y-axis upper bound for that parameter.
-- `Interval`: y-axis tick spacing for that parameter.
-- `Y_Title`: y-axis title text for that parameter.
+### 2.3 Single-file summary mode (Mean/SD/N)
 
-These values define y-axis limits, spacing, and label text; they can be adjusted in the app.
+- Upload summary workbook in **Load Data**.
+- Parameters and curves can be detected from dedicated summary sheets.
+- Useful when raw replicate rows are unavailable.
 
-#### Curves workbook (2-sheet format)
+### 2.4 CSV mode (high-volume datasets)
 
-Workbook structure: `Sheet1` and `Sheet2`.
+- **Load Data** supports `.csv` files.
+- Recommended for larger datasets because it is a lighter format.
+- BIOSZEN auto-detects common delimiters (`,`, `;`, tab, or `|`).
+- If CSV structure is not already platemap-ready, BIOSZEN attempts conversion to a compatible working profile.
+- **Load Curves** also supports `.csv` for well-based trajectories (`Time` + well columns).
+- Metadata files remain `.xlsx`.
 
-`Sheet1` columns:
+## 3. Standard Workflow
 
-- First column `Time`: x-axis time coordinate for each measurement row.
-- Remaining columns are curve series by `Well` (A1, A2, ...): y-values over time for each well.
-
-`Sheet2` columns:
-
-- `X_Max`: x-axis upper bound for curve plots.
-- `Interval_X`: spacing between x-axis ticks.
-- `Y_Max`: y-axis upper bound for curve plots.
-- `Interval_Y`: spacing between y-axis ticks.
-- `X_Title`: x-axis title.
-- `Y_Title`: y-axis title.
-
-These values define curve-axis limits, spacing, and labels; they can be modified in the app.
-
-### 2.2 Grouped-Parameter Workbook (Parameters Only)
-
-This format is for parameter values only. It is not a curves input format.
-
-- Use this workbook in **Load Data**.
-- Do not use it as a curves file in **Load Curves**.
-- If you need curve plots, load a proper curves workbook (`Sheet1` + `Sheet2`) or use the summary file mode described below.
-
-Structure:
-
-- One sheet per parameter.
-- Each sheet contains grouped values by strain/group and replicate.
-
-BIOSZEN converts this into internal plotting structures for parameter plots and statistics.
-
-### 2.3 Single-File Summary Mode (Mean/SD/N in Different Sheets)
-
-In this mode, Mean/SD/N summaries for parameters and curves are uploaded in one workbook, using different sheets.
-
-- Upload this workbook in **Load Data**.
-- If it also includes a curves-summary sheet, BIOSZEN can detect curves from the same file.
-- You may also upload the same workbook in **Load Curves** if you want to force the curves import path.
-
-#### Parameter summary sheet
-
-Accepted sheet names: `Parameters_Summary` or `Summary_Parameters`.
-Localized legacy summary sheet names are also accepted.
-
-Required columns:
-
-- `Strain`: group identity.
-- `Media`: condition identity.
-- `Parameter`: parameter name to be plotted/analyzed.
-- `Mean`: summarized central value used to draw the bar/line point.
-
-Optional columns:
-
-- `SD`: summarized variability used to compute error representation and tests in summary mode.
-- `N`: sample size used in summary-mode uncertainty/statistics.
-- `Orden`: group ordering index.
-
-#### Curves summary sheet
-
-Accepted sheet names: `Curves_Summary` or `Summary_Curves`.
-Localized legacy summary sheet names are also accepted.
-
-Required columns:
-
-- `Time`: x-axis time coordinate.
-- `Strain`: group identity.
-- `Media`: condition identity.
-- `Mean`: summarized curve value at each timepoint.
-
-Optional columns:
-
-- `SD`: summarized variability at each timepoint.
-- `N`: sample size at each timepoint.
-- `Orden`: ordering index for grouped displays.
-
-## 3. App Workflow
-
-1. Load your main data workbook.
-2. Optionally load curves workbook (or use single-file summary mode).
-3. Optionally load metadata workbooks.
+1. Load primary data file.
+2. Optionally load/merge curves.
+3. Optionally load metadata file.
 4. Choose scope (`By Strain` or `Combined`).
-5. Choose graph type and settings.
-6. Apply filters and normalization.
-7. Run statistics.
-8. Add significance annotations.
-9. Export outputs.
+5. Choose plot type.
+6. Apply filters and replicate selections.
+7. Optionally normalize by control.
+8. Run statistical analysis.
+9. Add significance annotations.
+10. Export plots, tables, metadata, and bundle.
 
-## 4. Graph Types and Availability
+## 4. Plot Types and How to Use Them
 
-| Graph type | Platemap / Grouped | Summary Mean/SD/N |
-|---|---|---|
-| Boxplot | Yes | No |
-| Barplot | Yes | Yes |
-| Violin | Yes | No |
-| Curves | Yes | Yes |
-| Stacked | Yes | Yes |
-| Correlation | Yes | Yes |
-| Heatmap | Yes | Yes |
-| Correlation Matrix | Yes | Yes |
+### Boxplot
 
-Notes:
+- Best for raw replicate distributions.
+- Control spread with jitter, box width, and point size.
+- Add significance bars or labels after stats.
 
-- Boxplot and Violin are disabled in summary mode.
-- Translation keys exist for `Raincloud` and `Estimation`, but these graph types are not currently exposed in the graph selector.
+### Barplot
 
-## 5. Global Controls
+- Best for summarized comparison by group.
+- Supports mean with error bars and optional raw points (raw mode).
+- Supports manual and automatic significance annotations.
 
-- Graph size: `Width px`, `Height px`
-- Typography: `Base size`, `Title size`, `Axis size`, `Legend size`
-- Axis styling: `Axis line thickness`
-- X-axis readability: `X label angle`, `Wrap X labels`, `Max lines`
-- Color palette + advanced palette controls
-- Custom color overrides per group
+### Violin
 
-## 6. Graph-Specific Settings
+- Best for distribution shape with replicate overlays.
+- Supports same annotation workflow as boxplot/barplot.
 
-### 6.1 Boxplot
+### Stacked
 
-- Box width
-- Point jitter and point size
-- Significance bars/labels
-- Legend-right option (non B/W mode)
+- Use parameter selector and parameter order controls.
+- Configure deviation bars and parameter color behavior.
+- Supports label or bracket significance mode.
 
-### 6.2 Barplot
+### Correlation
 
-- Mean bar + error bars
-- Raw point overlay (raw mode)
-- In summary mode, bars/errors are rendered without raw replicate dots
-- Significance bars/labels
+- Select X and Y parameters.
+- Choose Pearson, Spearman, or Kendall.
+- Optional overlays: regression line, r, p, R2, equation.
+- Advanced panel supports anchor-based one-vs-all screening and Excel export.
 
-### 6.3 Violin
+### Heatmap
 
-- Violin body + point overlay
-- Shared axis/point controls
-- Significance bars
+- Select parameter subset.
+- Scale mode: none, by row, or by column.
+- Optional row/column clustering and dendrograms.
+- Optional in-cell value labels.
+- Cluster exports available when row clustering is enabled.
 
-### 6.4 Stacked
+### Correlation Matrix
 
-- Included parameters selector
-- Parameter order (CSV, bottom-to-top)
-- Deviation bars on/off
-- Error-bar color by parameter
-- Black outline only for total bar
-- Significance mode: bracket bars or labels
-- Label mode supports parameter targeting and parameter-color labels
+- Multi-select parameters.
+- Choose correlation method.
+- Apply multiple-testing correction (Holm, FDR, Bonferroni, none).
+- Optionally display only significant labels.
 
-### 6.5 Correlation
+### Curves
 
-- X/Y parameter selection
-- Methods: Pearson, Spearman, Kendall
-- Optional overlays: regression line, r, p, R^2, equation, labels
-- Confidence interval style:
-  - Shaded band
-  - Dashed bounds
-- Adjustable confidence level
-- Axis min/max/interval controls
-- Custom axis labels
-- Correlation normalization target:
-  - both axes
-  - X only
-  - Y only
+- Configure axis limits, labels, and line width.
+- Choose line geometry and confidence interval style.
+- Optional replicate trajectory display in raw mode.
 
-### 6.6 Heatmap
+### Composition Panel (multi-plot layouts)
 
-- Parameter subset selection
-- Scale mode:
-  - None
-  - By row (parameter)
-  - By column (group)
-- Clustering method: `ward.D2`, `ward.D`, `complete`, `average`, `single`, `mcquitty`, `median`, `centroid`
-- Row/column dendrogram toggles
-- Cell-value labels toggle
+Recommended flow:
 
-### 6.7 Correlation Matrix
+1. From each individual chart, click **Add to panel**.
+2. Open the **Composition Panel** tab.
+3. In **1) Plot Selection**, choose plots to combine and adjust order (move up/down, move to top/bottom, or remove).
+4. In **2) Layout & Canvas**, define rows/columns, optional custom grid, column/row sizes, and final output size in px.
+5. In **3) Visual Style**, configure legend mode/side, fonts, global text sizes, and palette.
+6. Optional: add rich text boxes and per-plot overrides.
+7. Preview and export to `PNG`, `PPTX`, or `PDF`.
 
-- Multi-parameter selection
-- Methods: Pearson, Spearman, Kendall
-- Multiple-testing correction: Holm, FDR, Bonferroni, None
-- Option to show only significant correlations in labels
+Composition metadata:
 
-### 6.8 Curves
+- **Download metadata** stores panel layout and styling.
+- **Upload composition metadata (.xlsx)** restores a composition in a new session.
 
-- Axis limits and intervals (`X_Max`, `Y_Max`, breaks)
-- Custom axis labels
-- Curve line width
-- Geometry:
-  - Line + points
-  - Line only
-- Color mode:
-  - By group palette
-  - Single color
-- Confidence interval style:
-  - Ribbon
-  - Error bars
-- Replicate trajectories toggle (raw-curve mode only) + transparency control
+## 5. Normalization
 
-## 7. Filters and Replicate Selection
+Enable **Normalize by control** and choose a control medium.
 
-### By Strain
+- BIOSZEN computes normalized columns with `_Norm` suffix.
+- Correlation supports axis-specific normalization (`both`, `X only`, `Y only`).
+- If strict control pairing is not possible, BIOSZEN applies fallback logic.
 
-- Strain selector
-- Media filter (toggle all)
-- Replicate filters per medium
-- Global replicate exclusion
+## 6. Statistics
 
-### Combined
+### Normality tests
 
-- Visible group filter (`Strain-Media`)
-- Replicate filters per group
-- Optional strain-only labels
-- Global replicate exclusion
+- Shapiro-Wilk
+- Kolmogorov-Smirnov
+- Anderson-Darling
 
-## 8. Normalize by Control
+### Significance tests
 
-Enable normalization and choose a control medium.
-
-- Replicate-aware normalization is used whenever possible.
-- If strict control matching is unavailable, BIOSZEN applies fallback logic and reports it.
-- Normalized columns are stored internally with `_Norm` suffix.
-- Correlation can normalize both axes or only one axis.
-
-## 9. Statistical Analysis
-
-### 9.1 Normality
-
-- Shapiro-Wilk (`stats::shapiro.test`)
-- Kolmogorov-Smirnov (`stats::ks.test`)
-- Anderson-Darling (`nortest::ad.test`)
-
-### 9.2 Significance
-
-Main tests:
-
-- ANOVA (`stats::aov`; post-hoc workflows include `rstatix` and `DescTools`)
-- Kruskal-Wallis (`stats::kruskal.test`)
-- Independent t-test (`rstatix::t_test`)
-- Independent Wilcoxon (`rstatix::wilcox_test`)
+- ANOVA
+- Kruskal-Wallis
+- t-test
+- Wilcoxon
 
 Comparison modes:
 
-- All vs All
-- Control vs All
+- All vs all
+- Control vs all
 - Pair
 
 Multiple-testing correction:
 
-- Holm (`stats::p.adjust`, method `"holm"`)
-- FDR (Benjamini-Hochberg; `stats::p.adjust`, method `"fdr"`)
-- Bonferroni (`stats::p.adjust`, method `"bonferroni"`)
+- Holm
+- FDR
+- Bonferroni
 - None
 
-Post-hoc options are dynamic by main test.
+Summary mode notes:
 
-### 9.3 Summary Mode Behavior (Mean/SD/N)
+- Normality may be unavailable (`NA`).
+- Some non-parametric paths requiring raw observations are disabled.
 
-- Normality is not computable from summary-only input; normality values are `NA`.
-- Kruskal-Wallis and Wilcoxon are disabled (raw observations required).
-- Significance uses Welch-style pairwise comparisons derived from Mean/SD/N.
+## 7. Significance Annotation Workflow
 
-## 10. Significance Annotations
+### Manual
 
-Annotation modes for Boxplot/Barplot/Violin/Stacked:
+1. Select Group 1 and Group 2.
+2. Enter annotation label (for example `*`, `**`, `***`, `ns`).
+3. Add, reorder, edit, or remove annotations.
 
-- Bracket bars
-- Direct labels
+### Automatic
 
-### Manual flow
+1. Run significance tests.
+2. Open auto-annotation options.
+3. Choose inclusion (`significant only` or `all`).
+4. Choose label mode (`stars` or `p-value`).
+5. Replace or append existing annotations.
 
-1. Choose Group 1 and Group 2.
-2. Enter label text (`*`, `**`, `***`, `ns`, or custom).
-3. Add item.
-4. Reorder items.
-5. Edit selected item.
-6. Remove selected items or clear all.
+## 8. QC and Replicate Management
 
-### Auto-generate from significance tests
+Use QC panels to review:
 
-1. Open auto-generation from the significance panel.
-2. Choose inclusion mode:
-   - only significant
-   - all comparisons
-3. Choose label mode:
-   - stars
-   - p-value (3 decimals)
-4. Choose replace or append behavior.
-5. Apply auto-generation.
+- Missing values.
+- Outliers by group.
+- Sample size and replicate coverage.
 
-After auto-generation, you can still edit, reorder, and remove individual items.
+### Biological replicates
 
-If bars/labels already exist:
+- Manual include/exclude controls.
+- Automatic IQR-based filtering.
+- Keep-N reproducibility-oriented selection.
 
-- If `Replace current bars` is enabled, existing items are replaced by the new auto-generated set.
-- If `Replace current bars` is disabled, existing items are kept and new items are appended.
-- In append mode, duplicate comparisons are skipped automatically (same group pair; and same parameter context for stacked-label mode).
+Keep-N automatic selection:
 
-### Annotation layout controls
+- Ranks replicates by reproducibility (distance to the group median across parameters).
+- Keeps the closest replicates to that center (lowest score).
+- Combine it with IQR outlier filtering when you want stricter replicate selection.
 
-- Line width
-- Offset from data
-- Vertical spacing between bars
-- Text padding
-- Text size
-- Hide caps
+### Technical replicates (inside each biological replicate)
 
-## 11. Curve Statistics Panel
+- Dedicated **Technical replicate QC** tab (shown when valid technical replicates exist).
+- Group and biological-replicate selectors to view and manually deselect technical replicates.
+- Global buttons to select all or deselect all technical replicates.
+- Automatic technical outlier detection with IQR.
+- Technical Keep-N to keep the N most reproducible technical replicates per subgroup.
 
-Curve comparisons are available through these statistical procedures:
-Primary R packages in this panel: `stats`, `splines`, and `gcplyr`.
+## 9. Metadata, Versioning, and Reproducibility
 
-- **Global curve-shape model comparison:** weighted linear models with natural splines (`stats::lm`, `splines::ns`) compared with `stats::anova`.
-- **Point-by-point curve differences:** per-time z-style comparisons built from SD/N uncertainty, then combined with Fisher's method (`stats::pnorm`, `stats::pchisq`).
-- **End-point difference test:** z-style comparison at the last shared timepoint using propagated SE (`stats::pnorm`).
-- **Area under the curve (AUC):**
-  - AUC is computed with `gcplyr::auc`.
-  - Group normality screening uses Shapiro-Wilk (`stats::shapiro.test`).
-  - Significance tests are selected by structure:
-    - 2 groups: Welch t-test (`stats::t.test`) or Wilcoxon rank-sum (`stats::wilcox.test`).
-    - 3+ groups: ANOVA (`stats::aov`) or Kruskal-Wallis (`stats::kruskal.test`).
-  - Pairwise AUC comparisons are also reported.
-- **Multiple-testing correction in the curve table:** Holm (`stats::p.adjust`).
+Metadata workflow:
 
-Output fields include `Estimate`, `P_value`, `P_adjusted`, and `Stars`.
+- Export current UI state with **Download metadata**.
+- Re-import metadata to restore compatible settings.
 
-## 12. Data Quality Panel
+Versioning and bundle workflow:
 
-QC tables for current filters:
+- Save plot versions in-session.
+- Build reproducibility ZIP with plot assets and metadata.
+- Reopen work with consistent configuration.
 
-- Missing values by parameter
-- Outliers by parameter/group (IQR rule)
-- Sample size and biological replicate coverage by group
+## 10. Downloads
 
-Automatic biological-replicate deselection tools:
+Main outputs include:
 
-- **IQR-based outlier deselection:** detects outlier replicates per group using the selected IQR multiplier, then deselects flagged biological replicates.
-- **Keep-N replicate limit:** keeps only the N most reproducible biological replicates per group (ranked by distance to the group median across parameters).
-- **Manual keep/deselect control:** replicate selectors remain editable, so you can keep exactly the biological replicates you want after automatic steps.
+- Plot image (`PNG`, `PDF` depending on plot type).
+- Data export.
+- Metadata export.
+- Statistics export.
+- Bundle ZIP.
+- Advanced correlation table export.
+- Merged platemap/curves exports (when merge tools are used).
 
-## 13. Composition Panel
+## 11. Growth Module
 
-- Add plots to the panel
-- Reorder included plots
-- Configure rows/columns and canvas size
-- Apply style overrides globally or by graph type
-- Export as PNG, PPTX, or PDF
-- Download/upload composition metadata
+The growth tab extracts growth parameters from uploaded files:
 
-## 14. Downloads and Reproducibility
+- `uMax`
+- `max_percap_time`
+- `doub_time`
+- `lag_time`
+- `ODmax`
+- `max_time`
+- `AUC`
 
-Exports available from the main plotting tab:
+Typical use:
 
-- Plot PNG/PDF
-- Data workbook
-- Plot metadata workbook
-- Statistical results workbook
-- Full ZIP bundle with saved versions and reproducibility assets
+1. Upload one or more growth files.
+2. Set max time and interval.
+3. Run extraction.
+4. Download ZIP output.
+5. Import extracted outputs into plotting workflow when needed.
 
-## 15. Growth Parameter Extraction
+## 12. Troubleshooting
 
-In the growth module, outputs are intended for parameter extraction from microbial growth curves. You can:
+- **Upload error**: verify required sheets and column names.
+- **No plot generated**: confirm selected strain/parameter is present after filters.
+- **Normalization unavailable**: verify control medium exists in current scope.
+- **Stats disabled**: check whether your input mode supports that test path.
+- **Curve merge issues**: ensure platemap merge is loaded first for well remapping.
+- **CSV not recognized**: validate required headers and a consistent delimiter (`data .csv`: `Strain`/`Media`; `curves .csv`: `Time` + well columns).
+- **Slow performance**: reduce selected parameters, disable heavy overlays, or filter groups.
 
-- Load one or more growth workbooks
-- Set max time and interval
-- Compute:
-  - `uMax`: maximum specific growth rate (per time unit).
-  - `max_percap_time`: time at which the per-capita growth rate reaches its maximum.
-  - `doub_time`: estimated doubling time (typically `ln(2) / uMax`).
-  - `lag_time`: estimated lag-phase duration before sustained exponential growth.
-  - `ODmax`: maximum signal/optical density reached in the analyzed window.
-  - `max_time`: time at which `ODmax` is reached.
-  - `AUC`: area under the growth curve across the analyzed time range.
-- Download ZIP outputs
-- Import outputs into Plots and Stats when one file is loaded
+## 13. Support
 
-## Contact
-
-For comments or support: `bioszenf@gmail.com`
-
-© BioSzen. All rights reserved.
+For support or bug reports: `bioszenf@gmail.com`

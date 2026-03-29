@@ -9,14 +9,14 @@ convert_manuals_to_pdf <- function(force = FALSE) {
     if (nzchar(pkg_www)) root_www <- pkg_www
   }
   if (is.null(root_www) || !dir.exists(root_www)) {
-    message("No se encontró la carpeta 'inst/app/www'.")
+    message("Could not find 'inst/app/www'.")
     return(invisible(FALSE))
   }
 
   docx_files <- c(file.path(root_www, "MANUAL_ES.docx"), file.path(root_www, "MANUAL_EN.docx"))
   docx_files <- docx_files[file.exists(docx_files)]
   if (!length(docx_files)) {
-    message("No se encontraron archivos DOCX de manuales en ", root_www)
+    message("No manual DOCX files found in ", root_www)
     return(invisible(FALSE))
   }
 
@@ -24,7 +24,7 @@ convert_manuals_to_pdf <- function(force = FALSE) {
   for (docx in docx_files) {
     pdf <- sub("\\.docx$", ".pdf", docx, ignore.case = TRUE)
     if (file.exists(pdf) && !isTRUE(force)) {
-      message(basename(pdf), " ya existe; usar force = TRUE para regenerar.")
+      message(basename(pdf), " already exists; use force = TRUE to regenerate.")
       ok_any <- TRUE
       next
     }
@@ -55,10 +55,12 @@ convert_manuals_to_pdf <- function(force = FALSE) {
     }
 
     if (!ok) {
-      message("No fue posible convertir ", basename(docx), 
-              ". Asegúrate de tener LibreOffice/MS Word o LaTeX/wkhtmltopdf instalado.")
+      message(
+        "Could not convert ", basename(docx),
+        ". Ensure LibreOffice/MS Word or LaTeX/wkhtmltopdf is installed."
+      )
     } else {
-      message("Generado: ", basename(pdf))
+      message("Generated: ", basename(pdf))
       ok_any <- TRUE
     }
   }

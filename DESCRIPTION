@@ -1,13 +1,13 @@
 Package: BIOSZEN
 Type: Package
 Title: BIOSZEN
-Version: 1.0.0
+Version: 2.0.0
 Authors@R: person("Benjamín", "Szenfeld",
                   email = "bioszenf@gmail.com",
                   role  = c("aut", "cre"),
                   comment = c(ORCID = "0009-0003-4702-4149"))
 Description: App for data analysis and visualization from an Excel file. It can generate boxplot, barplot, violin plot, stacked plots, and correlation plots between parameters. It includes normality tests such as Shapiro-Wilk, Kolmogorov-Smirnov, and Anderson-Darling, and significance tests such as ANOVA, Kruskal-Wallis, t-test, and Wilcoxon. It also extracts microbial growth curve parameters (uMax, max_percap_time, doub_time, lag_time, ODmax, max_time, AUC).
-License: GPL-3
+License: GPL-3 + file LICENSE
 URL: https://github.com/bioszen/BIOSZEN
 BugReports: https://github.com/bioszen/BIOSZEN/issues
 Encoding: UTF-8
@@ -57,6 +57,10 @@ Imports:
     parallelly
 Suggests:
     knitr,
-    doconv
+    doconv,
+    testthat (>= 3.0.0),
+    shinytest2,
+    chromote
+Config/testthat/edition: 3
 RoxygenNote: 7.3.1
 NeedsCompilation: no
