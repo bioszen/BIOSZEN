@@ -54,7 +54,7 @@ jobs:
           extra-packages: |
             any::testthat
           needs: check
-          pak-version: none
+          pak-version: stable
 
       - name: Run full testthat suite (incl shiny e2e)
         if: matrix.os == 'ubuntu-latest' && matrix.r-version == 'release'
