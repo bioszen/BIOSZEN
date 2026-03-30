@@ -27,8 +27,32 @@ Use this mode for full functionality and strongest statistical support.
 
 Platemap requirements:
 
-- Sheet `Datos`: `Well`, `Strain`, `Media`, `BiologicalReplicate`, `TechnicalReplicate`, `Orden`, plus one or more parameter columns.
-- Sheet `PlotSettings`: `Parameter`, `Y_Max`, `Interval`, `Y_Title`.
+- Sheet `Datos` with metadata and parameter columns (detailed below).
+- Sheet `PlotSettings` with per-parameter axis settings (detailed below).
+
+Detailed column definitions for `Datos` (platemap) sheet:
+
+- `Well`: well identifier (for example `A1`, `B3`). This is essential to link platemap rows with the curves file.
+- `Strain`: strain or biological group name.
+- `Media`: condition or treatment (for example `Control`, `Drug A`).
+- `BiologicalReplicate`: biological replicate ID (recommended: `1`, `2`, `3`, ...). Represents independent biological cultures/samples.
+- `TechnicalReplicate`: technical replicate ID inside each biological replicate (for example `A`, `B`, `C` or `1`, `2`, `3`).
+- `Replicate` (compatibility): legacy/alternate column used in some files. When present in compatible workflows, BIOSZEN treats it as the biological replicate reference.
+- `Orden`: integer used to control display/export ordering of groups across plots and tables.
+- Parameter columns: one or more numeric columns with analytes/metrics to plot and test (for example viability, fluorescence, `uMax`, etc.).
+
+Practical structure notes:
+
+- For full replicate-aware workflows and QC, provide `BiologicalReplicate` and, when available, `TechnicalReplicate`.
+- The combination `Strain` + `Media` + `BiologicalReplicate` + `TechnicalReplicate` should consistently identify each experimental row.
+- BIOSZEN supports common header aliases for `Strain`/`Media` (for example `Cepa`/`Muestra`, `Condicion`/`Tratamiento`).
+
+Detailed `PlotSettings` columns:
+
+- `Parameter`: exact parameter column name from `Datos`.
+- `Y_Max`: initial upper Y-axis limit for that parameter.
+- `Interval`: Y-axis tick spacing.
+- `Y_Title`: Y-axis label used in the plot.
 
 Curves requirements:
 
@@ -160,33 +184,15 @@ Enable **Normalize by control** and choose a control medium.
 
 ## 6. Statistics
 
-### Normality tests
+### Statistical tests and R packages (main panel)
 
-- Shapiro-Wilk
-- Kolmogorov-Smirnov
-- Anderson-Darling
-
-### Significance tests
-
-- ANOVA
-- Kruskal-Wallis
-- t-test
-- Wilcoxon
-
-### R packages used by statistical test
-
-Normality tests:
-
-- Shapiro-Wilk: `stats::shapiro.test`
-- Kolmogorov-Smirnov: `stats::ks.test`
-- Anderson-Darling: `nortest::ad.test`
-
-Significance tests (main panel):
-
-- ANOVA: `stats::aov`
-- Kruskal-Wallis: `stats::kruskal.test`
-- t-test: `rstatix::t_test` and `rstatix::pairwise_t_test`
-- Wilcoxon: `rstatix::wilcox_test`
+- Shapiro-Wilk (normality): `stats::shapiro.test`
+- Kolmogorov-Smirnov (normality): `stats::ks.test`
+- Anderson-Darling (normality): `nortest::ad.test`
+- ANOVA (significance): `stats::aov`
+- Kruskal-Wallis (significance): `stats::kruskal.test`
+- t-test (significance): `rstatix::t_test` and `rstatix::pairwise_t_test`
+- Wilcoxon (significance): `rstatix::wilcox_test`
 - Multiple-testing correction (Holm/FDR/Bonferroni): `stats::p.adjust`
 
 Post hoc paths by selection:
@@ -300,13 +306,11 @@ Main outputs include:
 
 The growth tab extracts growth parameters from uploaded files:
 
-- `uMax`
-- `max_percap_time`
-- `doub_time`
-- `lag_time`
-- `ODmax`
-- `max_time`
-- `AUC`
+- Accepted file type in this tab: `Excel` (`.xlsx`).
+- Supported input structures (auto-detected):
+  - Raw reader/Tecan-like layout (data in `Sheet1`, typically starting on later rows with leading index columns).
+  - Processed table layout starting at cell `A1`: first column is time (for example `Time`) and each additional column is one curve/well.
+- This means parameter extraction works even when files are not in the original instrument layout, as long as the time + curves structure is respected.
 
 Definition of extracted GrowthRates parameters:
 

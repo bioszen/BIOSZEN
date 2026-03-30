@@ -27,8 +27,32 @@ Usa este modo para tener toda la funcionalidad y mejor soporte estadístico.
 
 Requisitos del platemap:
 
-- Hoja `Datos`: `Well`, `Strain`, `Media`, `BiologicalReplicate`, `TechnicalReplicate`, `Orden` y una o más columnas de parámetros.
-- Hoja `PlotSettings`: `Parameter`, `Y_Max`, `Interval`, `Y_Title`.
+- Hoja `Datos` con columnas de metadata y parámetros (detalle abajo).
+- Hoja `PlotSettings` con configuración de ejes por parámetro (detalle abajo).
+
+Detalle de columnas en hoja `Datos` (platemap):
+
+- `Well`: identificador de pocillo (por ejemplo `A1`, `B3`). Es clave para enlazar correctamente el platemap con el archivo de curvas.
+- `Strain`: cepa o grupo biológico.
+- `Media`: condición o tratamiento (por ejemplo `Control`, `Drug A`).
+- `BiologicalReplicate`: identificador de réplica biológica (recomendado: `1`, `2`, `3`, ...). Representa cultivos/muestras biológicas independientes.
+- `TechnicalReplicate`: identificador de réplica técnica dentro de cada réplica biológica (por ejemplo `A`, `B`, `C` o `1`, `2`, `3`).
+- `Replicate` (compatibilidad): columna legada/alternativa usada en algunos archivos. Cuando aplica, BIOSZEN la interpreta como referencia de réplica biológica.
+- `Orden`: entero para definir el orden de visualización/exportación de los grupos en gráficos y tablas.
+- Columnas de parámetros: una o más columnas numéricas con las variables a analizar (por ejemplo viabilidad, fluorescencia, `uMax`, etc.).
+
+Notas prácticas de estructura:
+
+- Para un flujo completo de réplicas y QC, usa explícitamente `BiologicalReplicate` y, si existe, `TechnicalReplicate`.
+- La combinación `Strain` + `Media` + `BiologicalReplicate` + `TechnicalReplicate` debe identificar de forma consistente cada fila experimental.
+- BIOSZEN reconoce alias comunes para encabezados de `Strain`/`Media` (por ejemplo `Cepa`/`Muestra`, `Condicion`/`Tratamiento`).
+
+Detalle de columnas en hoja `PlotSettings`:
+
+- `Parameter`: nombre exacto de la columna de parámetro en hoja `Datos`.
+- `Y_Max`: límite superior inicial del eje Y para ese parámetro.
+- `Interval`: separación de marcas del eje Y.
+- `Y_Title`: etiqueta de eje Y mostrada en el gráfico.
 
 Requisitos del archivo de curvas:
 
@@ -160,33 +184,15 @@ Activa **Normalizar por control** y elige un medio control.
 
 ## 6. Estadística
 
-### Pruebas de normalidad
+### Pruebas estadísticas y paquetes de R (panel principal)
 
-- Shapiro-Wilk
-- Kolmogorov-Smirnov
-- Anderson-Darling
-
-### Pruebas de significancia
-
-- ANOVA
-- Kruskal-Wallis
-- t-test
-- Wilcoxon
-
-### Paquetes de R usados por prueba estadística
-
-Pruebas de normalidad:
-
-- Shapiro-Wilk: `stats::shapiro.test`
-- Kolmogorov-Smirnov: `stats::ks.test`
-- Anderson-Darling: `nortest::ad.test`
-
-Pruebas de significancia (panel principal):
-
-- ANOVA: `stats::aov`
-- Kruskal-Wallis: `stats::kruskal.test`
-- t-test: `rstatix::t_test` y `rstatix::pairwise_t_test`
-- Wilcoxon: `rstatix::wilcox_test`
+- Shapiro-Wilk (normalidad): `stats::shapiro.test`
+- Kolmogorov-Smirnov (normalidad): `stats::ks.test`
+- Anderson-Darling (normalidad): `nortest::ad.test`
+- ANOVA (significancia): `stats::aov`
+- Kruskal-Wallis (significancia): `stats::kruskal.test`
+- t-test (significancia): `rstatix::t_test` y `rstatix::pairwise_t_test`
+- Wilcoxon (significancia): `rstatix::wilcox_test`
 - Corrección por múltiples pruebas (Holm/FDR/Bonferroni): `stats::p.adjust`
 
 Post hoc disponibles según selección:
@@ -300,13 +306,11 @@ Salidas principales:
 
 La pestaña de crecimiento extrae parámetros desde archivos cargados:
 
-- `uMax`
-- `max_percap_time`
-- `doub_time`
-- `lag_time`
-- `ODmax`
-- `max_time`
-- `AUC`
+- Formato de archivo aceptado en la pestaña: `Excel` (`.xlsx`).
+- Estructuras de entrada soportadas (auto-detección):
+  - Formato crudo tipo lector/Tecan (datos en `Sheet1`, normalmente desde filas posteriores con columnas iniciales de índice).
+  - Formato de tabla procesada desde la celda `A1`: primera columna de tiempo (por ejemplo `Time`) y cada columna siguiente como una curva/well.
+- Esto permite calcular parámetros aunque el archivo no venga en el layout original del equipo, siempre que respete la estructura de tiempo + curvas.
 
 Definición de parámetros obtenidos (GrowthRates):
 
