@@ -1,6 +1,6 @@
 library(testthat)
 
-app_root <- normalizePath(testthat::test_path("..", ".."))
+app_launch_dir <- app_test_launch_dir()
 
 skip_if_shiny_e2e_unavailable <- function() {
   skip_if_not_installed("shinytest2")
@@ -18,7 +18,7 @@ start_bioszen_driver <- function() {
   Sys.setenv(NOT_CRAN = "true")
 
   app <- shinytest2::AppDriver$new(
-    app_dir = app_root,
+    app_dir = app_launch_dir,
     load_timeout = 120000,
     timeout = 120000,
     clean_logs = FALSE
@@ -51,11 +51,58 @@ find_critical_frontend_logs <- function(log_tbl) {
   log_tbl[bad, c("location", "level", "message"), drop = FALSE]
 }
 
+normalize_js_scalar <- function(x) {
+  vals <- unlist(x, use.names = FALSE)
+  if (!length(vals)) return("")
+  as.character(vals[[1]])
+}
+
+normalize_js_bool <- function(x) {
+  if (is.logical(x) && length(x)) return(isTRUE(x[[1]]))
+  val <- tolower(trimws(normalize_js_scalar(x)))
+  val %in% c("true", "1", "t", "yes", "y")
+}
+
+wait_for_plot_idle <- function(app, timeout_sec = 25) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  while (Sys.time() < deadline) {
+    idle <- tryCatch(
+      app$get_js(
+        "(function(){
+           var wrap = document.getElementById('plot-loading-wrap');
+           if (!wrap) return true;
+           return !wrap.classList.contains('is-loading');
+         })()"
+      ),
+      error = function(e) FALSE
+    )
+    if (isTRUE(normalize_js_bool(idle))) return(TRUE)
+    Sys.sleep(0.25)
+  }
+  FALSE
+}
+
+wait_for_shiny_connected <- function(app, timeout_sec = 20) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  while (Sys.time() < deadline) {
+    connected <- tryCatch(
+      app$get_js(
+        "(function(){
+           return !!(window.Shiny && Shiny.shinyapp && Shiny.shinyapp.isConnected && Shiny.shinyapp.isConnected());
+         })()"
+      ),
+      error = function(e) FALSE
+    )
+    if (isTRUE(normalize_js_bool(connected))) return(TRUE)
+    Sys.sleep(0.25)
+  }
+  FALSE
+}
+
 test_that("browser upload flow keeps searchable selectors and no critical frontend errors", {
   skip_if_shiny_e2e_unavailable()
 
-  fixture <- file.path(
-    app_root, "inst", "app", "www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
+  fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
   )
   expect_true(file.exists(fixture))
 
@@ -90,8 +137,7 @@ test_that("heatmap metadata roundtrip preserves strict design fields", {
   skip_if_not_installed("readxl")
   skip_if_not_installed("writexl")
 
-  fixture <- file.path(
-    app_root, "inst", "app", "www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
+  fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
   )
   expect_true(file.exists(fixture))
 
@@ -179,8 +225,7 @@ test_that("metadata import does not overwrite dataset selectors", {
   skip_if_not_installed("readxl")
   skip_if_not_installed("writexl")
 
-  fixture <- file.path(
-    app_root, "inst", "app", "www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
+  fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
   )
   expect_true(file.exists(fixture))
 
@@ -244,8 +289,7 @@ test_that("heatmap cluster export download includes parameter cluster sheets", {
   skip_if_shiny_e2e_unavailable()
   skip_if_not_installed("readxl")
 
-  fixture <- file.path(
-    app_root, "inst", "app", "www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
+  fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
   )
   expect_true(file.exists(fixture))
 
@@ -276,8 +320,7 @@ test_that("heatmap cluster export download includes parameter cluster sheets", {
 test_that("heatmap and correlation-matrix flows run without critical frontend errors", {
   skip_if_shiny_e2e_unavailable()
 
-  fixture <- file.path(
-    app_root, "inst", "app", "www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
+  fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
   )
   expect_true(file.exists(fixture))
 
@@ -306,11 +349,9 @@ test_that("curve statistics download explicitly includes curve context and metri
   skip_if_shiny_e2e_unavailable()
   skip_if_not_installed("readxl")
 
-  data_fixture <- file.path(
-    app_root, "inst", "app", "www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
+  data_fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
   )
-  curve_fixture <- file.path(
-    app_root, "inst", "app", "www", "reference_files", "Ejemplo_curvas.xlsx"
+  curve_fixture <- app_test_path("www", "reference_files", "Ejemplo_curvas.xlsx"
   )
   expect_true(file.exists(data_fixture))
   expect_true(file.exists(curve_fixture))
@@ -371,8 +412,7 @@ test_that("curve statistics download explicitly includes curve context and metri
 test_that("language switch updates dynamic heatmap UI labels", {
   skip_if_shiny_e2e_unavailable()
 
-  fixture <- file.path(
-    app_root, "inst", "app", "www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
+  fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
   )
   expect_true(file.exists(fixture))
 
@@ -425,4 +465,180 @@ test_that("language switch updates dynamic heatmap UI labels", {
   if (wait_for_label("side dendrogram", side_dend_selector, timeout_sec = 6)) {
     expect_true(wait_for_label("dendrograma lateral", side_dend_selector, timeout_sec = 12))
   }
+})
+
+test_that("reactive stress: repeated parameter and replicate actions keep app responsive", {
+  skip_if_shiny_e2e_unavailable()
+
+  fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
+  )
+  expect_true(file.exists(fixture))
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(dataFile = normalizePath(fixture), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "strain", timeout = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  app$set_inputs(tipo = "Boxplot", wait_ = TRUE, timeout_ = 60000)
+
+  expect_true(wait_for_shiny_connected(app, timeout_sec = 20))
+  expect_true(wait_for_plot_idle(app, timeout_sec = 25))
+
+  param_choices_raw <- tryCatch(
+    app$get_js(
+      "(function(){
+         var el = document.getElementById('param');
+         if (!el || !el.selectize || !el.selectize.options) return [];
+         return Object.keys(el.selectize.options);
+       })()"
+    ),
+    error = function(e) character(0)
+  )
+  param_choices <- unique(as.character(unlist(param_choices_raw, use.names = FALSE)))
+  param_choices <- param_choices[!is.na(param_choices) & nzchar(param_choices)]
+  if (length(param_choices) < 2) {
+    skip("Not enough parameter choices available to run stress churn test.")
+  }
+
+  churn_values <- rep(param_choices[seq_len(min(4L, length(param_choices)))], length.out = 12L)
+  for (i in seq_along(churn_values)) {
+    app$set_inputs(param = churn_values[[i]], wait_ = TRUE, timeout_ = 90000)
+    expect_true(
+      wait_for_plot_idle(app, timeout_sec = 25),
+      info = sprintf("Plot remained in loading state after param churn iteration %d.", i)
+    )
+    expect_true(
+      wait_for_shiny_connected(app, timeout_sec = 10),
+      info = sprintf("Shiny session disconnected during param churn iteration %d.", i)
+    )
+
+    if (i %% 2L == 0L) {
+      app$set_inputs(scope = "Combinado", wait_ = TRUE, timeout_ = 60000)
+      has_grp_btn <- length(tryCatch(
+        app$get_html(selector = "#repsGrpSelectAll"),
+        error = function(e) character(0)
+      )) > 0
+      if (isTRUE(has_grp_btn)) {
+        app$set_inputs(
+          repsGrpSelectAll = "click",
+          wait_ = FALSE,
+          allow_no_input_binding_ = TRUE
+        )
+      }
+    } else {
+      app$set_inputs(scope = "Por Cepa", wait_ = TRUE, timeout_ = 60000)
+      has_str_btn <- length(tryCatch(
+        app$get_html(selector = "#repsStrainSelectAll"),
+        error = function(e) character(0)
+      )) > 0
+      if (isTRUE(has_str_btn)) {
+        app$set_inputs(
+          repsStrainSelectAll = "click",
+          wait_ = FALSE,
+          allow_no_input_binding_ = TRUE
+        )
+      }
+    }
+
+    expect_true(
+      wait_for_plot_idle(app, timeout_sec = 25),
+      info = sprintf("Plot remained in loading state after replicate action iteration %d.", i)
+    )
+    expect_true(
+      wait_for_shiny_connected(app, timeout_sec = 10),
+      info = sprintf("Shiny session disconnected after replicate action iteration %d.", i)
+    )
+  }
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("reactive stress: rapid strain switching with normalization toggles stays responsive", {
+  skip_if_shiny_e2e_unavailable()
+
+  fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
+  )
+  expect_true(file.exists(fixture))
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(dataFile = normalizePath(fixture), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "strain", timeout = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  app$set_inputs(tipo = "Boxplot", wait_ = TRUE, timeout_ = 60000)
+
+  expect_true(wait_for_shiny_connected(app, timeout_sec = 20))
+  expect_true(wait_for_plot_idle(app, timeout_sec = 25))
+
+  strain_choices_raw <- tryCatch(
+    app$get_js(
+      "(function(){
+         var el = document.getElementById('strain');
+         if (!el || !el.selectize || !el.selectize.options) return [];
+         return Object.keys(el.selectize.options);
+       })()"
+    ),
+    error = function(e) character(0)
+  )
+  strain_choices <- unique(as.character(unlist(strain_choices_raw, use.names = FALSE)))
+  strain_choices <- strain_choices[!is.na(strain_choices) & nzchar(strain_choices)]
+  if (length(strain_choices) < 2) {
+    skip("Not enough strain choices available to run normalization churn test.")
+  }
+
+  param_choices_raw <- tryCatch(
+    app$get_js(
+      "(function(){
+         var el = document.getElementById('param');
+         if (!el || !el.selectize || !el.selectize.options) return [];
+         return Object.keys(el.selectize.options);
+       })()"
+    ),
+    error = function(e) character(0)
+  )
+  param_choices <- unique(as.character(unlist(param_choices_raw, use.names = FALSE)))
+  param_choices <- param_choices[!is.na(param_choices) & nzchar(param_choices)]
+  if (!length(param_choices)) {
+    skip("No parameter choices available to run normalization churn test.")
+  }
+
+  strain_seq <- rep(strain_choices[seq_len(min(3L, length(strain_choices)))], length.out = 12L)
+  param_seq <- rep(param_choices[seq_len(min(4L, length(param_choices)))], length.out = 12L)
+
+  for (i in seq_len(length(strain_seq))) {
+    app$set_inputs(strain = strain_seq[[i]], wait_ = TRUE, timeout_ = 90000)
+    app$set_inputs(param = param_seq[[i]], wait_ = TRUE, timeout_ = 90000)
+
+    if (i %% 2L == 1L) {
+      app$set_inputs(doNorm = TRUE, wait_ = TRUE, timeout_ = 90000)
+      try(app$wait_for_value(input = "ctrlMedium", timeout = 60000), silent = TRUE)
+    } else {
+      app$set_inputs(doNorm = FALSE, wait_ = TRUE, timeout_ = 90000)
+    }
+
+    expect_true(
+      wait_for_plot_idle(app, timeout_sec = 25),
+      info = sprintf("Plot remained in loading state during normalization churn iteration %d.", i)
+    )
+    expect_true(
+      wait_for_shiny_connected(app, timeout_sec = 10),
+      info = sprintf("Shiny session disconnected during normalization churn iteration %d.", i)
+    )
+  }
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
 })

@@ -1,8 +1,8 @@
 library(testthat)
 
-root <- normalizePath(testthat::test_path("..", ".."))
-source(file.path(root, "inst", "app", "server", "growth_module.R"))
-source(file.path(root, "inst", "app", "params", "params_growth.R"))
+root <- app_test_root()
+source(app_test_path( "server", "growth_module.R"))
+source(app_test_path( "params", "params_growth.R"))
 
 make_growth_input_file <- function(path, n_points = 24, n_wells = 3) {
   wb <- openxlsx::createWorkbook()

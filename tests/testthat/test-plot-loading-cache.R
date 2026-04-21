@@ -1,6 +1,6 @@
 test_that("plot loading overlay is wired in UI and server", {
-  ui_file <- test_path("..", "..", "inst", "app", "ui", "ui_main.R")
-  server_file <- test_path("..", "..", "inst", "app", "server", "server_main.R")
+  ui_file <- app_test_path( "ui", "ui_main.R")
+  server_file <- app_test_path( "server", "server_main.R")
 
   expect_true(file.exists(ui_file))
   expect_true(file.exists(server_file))
@@ -18,7 +18,7 @@ test_that("plot loading overlay is wired in UI and server", {
 })
 
 test_that("heatmap and correlation payload cache helpers exist", {
-  server_file <- test_path("..", "..", "inst", "app", "server", "server_main.R")
+  server_file <- app_test_path( "server", "server_main.R")
   expect_true(file.exists(server_file))
   txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
 

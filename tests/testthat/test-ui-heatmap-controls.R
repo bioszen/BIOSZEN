@@ -1,7 +1,7 @@
 test_that("heatmap controls are moved to dedicated UI fragment", {
-  ui_main <- test_path("..", "..", "inst", "app", "ui", "ui_main.R")
-  ui_fragment <- test_path("..", "..", "inst", "app", "ui", "ui_heatmap_controls.R")
-  server_file <- test_path("..", "..", "inst", "app", "server", "server_main.R")
+  ui_main <- app_test_path( "ui", "ui_main.R")
+  ui_fragment <- app_test_path( "ui", "ui_heatmap_controls.R")
+  server_file <- app_test_path( "server", "server_main.R")
 
   expect_true(file.exists(ui_main))
   expect_true(file.exists(ui_fragment))

@@ -1,7 +1,7 @@
 library(testthat)
 
-root <- normalizePath(testthat::test_path("..", ".."))
-app_dir <- file.path(root, "inst", "app")
+root <- app_test_root()
+app_dir <- app_test_path()
 www_dir <- file.path(app_dir, "www")
 
 load_app_sources_for_generation <- function() {

@@ -1,213 +1,295 @@
 ﻿# Manual de Usuario BIOSZEN (Español)
 
-Este manual explica cómo ejecutar los flujos de BIOSZEN desde la importación de datos hasta la exportación reproducible.
+Guía práctica para usar BIOSZEN desde archivos crudos hasta salidas reproducibles.
 
-## 1. Requisitos Previos
+![Vista general de BIOSZEN](manual_images/01_app_home_overview.png)
 
-- R >= 4.1 instalado.
-- BIOSZEN ejecutado desde `App.R` o `BIOSZEN::run_app()`.
-- Archivos de entrada para **Cargar datos** en `Excel` (`.xlsx`, `.xls`) o `CSV` (`.csv`).
-- Archivos de curvas para **Cargar curvas** en `Excel` (`.xlsx`, `.xls`) o `CSV` (`.csv`).
+> **IMPORTANT:**
+> Si es posible, usa el modo **Platemap + Curvas**. Es el flujo con mejor soporte para estadística, control de calidad de réplicas y exportaciones completas.
 
-Las plantillas de referencia están disponibles en la app en **Archivos de entrada de referencia (descargar)**:
+> **TIP:**
+> Mantén este manual abierto mientras trabajas. Cada sección incluye acciones rápidas y referencia técnica.
 
-- `Ejemplo_platemap_parametros.xlsx`
-- `Ejemplo_curvas.xlsx`
-- `Ejemplo_parametros_agrupados.xlsx`
-- `Ejemplo_input_summary_mean_sd.xlsx`
+## Mapa del Manual
 
-## 2. Modos de Entrada
+- [1. Antes de Empezar](#1-antes-de-empezar)
+- [2. Inicio Rápido por Escenario](#2-inicio-rápido-por-escenario)
+- [3. Elegir un Modo de Entrada](#3-elegir-un-modo-de-entrada)
+- [4. Especificaciones de Entrada](#4-especificaciones-de-entrada)
+- [5. Flujo Estándar](#5-flujo-estándar)
+- [6. Tipos de Gráfico y Controles](#6-tipos-de-gráfico-y-controles)
+- [7. Normalización](#7-normalización)
+- [8. Estadística](#8-estadística)
+- [9. Anotaciones de Significancia](#9-anotaciones-de-significancia)
+- [10. Control de Calidad y Réplicas](#10-control-de-calidad-y-réplicas)
+- [11. Metadatos y Reproducibilidad](#11-metadatos-y-reproducibilidad)
+- [12. Descargas](#12-descargas)
+- [13. Módulo de Crecimiento](#13-módulo-de-crecimiento)
+- [14. Guía de Solución de Problemas](#14-guía-de-solución-de-problemas)
+- [15. Soporte](#15-soporte)
 
-### 2.1 Modo recomendado: Platemap + Curvas
+## 1. Antes de Empezar
 
-Usa este modo para tener toda la funcionalidad y mejor soporte estadístico.
+Requisitos:
 
-1. Carga un archivo de platemap en **Cargar datos**.
-2. Carga un archivo de curvas en **Cargar curvas** (`.xlsx`, `.xls` o `.csv`).
+- R >= 4.1.
+- BIOSZEN ejecutado desde `app.R` o `BIOSZEN::run_app()`.
+- Archivo de datos para **Cargar datos** en `Excel` (`.xlsx`, `.xls`) o `CSV` (`.csv`).
+- Archivo de curvas para **Cargar curvas** en `Excel` (`.xlsx`, `.xls`) o `CSV` (`.csv`) cuando las curvas no vienen embebidas en el workbook principal.
 
-Requisitos del platemap:
+Plantillas de referencia disponibles en la app (**Archivos de entrada de referencia (descargar)**) y en:
 
-- Hoja `Datos` con columnas de metadata y parámetros (detalle abajo).
-- Hoja `PlotSettings` con configuración de ejes por parámetro (detalle abajo).
+- `inst/app/www/reference_files/`
 
-Detalle de columnas en hoja `Datos` (platemap):
+Archivos de plantilla:
 
-- `Well`: identificador de pocillo (por ejemplo `A1`, `B3`). Es clave para enlazar correctamente el platemap con el archivo de curvas.
+- [Ejemplo_platemap_parametros.xlsx](reference_files/Ejemplo_platemap_parametros.xlsx)
+- [Ejemplo_curvas.xlsx](reference_files/Ejemplo_curvas.xlsx)
+- [Ejemplo_parametros_agrupados.xlsx](reference_files/Ejemplo_parametros_agrupados.xlsx)
+- [Ejemplo_input_summary_mean_sd.xlsx](reference_files/Ejemplo_input_summary_mean_sd.xlsx)
+
+> **NOTE:**
+> En la primera ejecución se pueden instalar dependencias en `R_libs`. Conserva esa carpeta para evitar reinstalaciones.
+
+## 2. Inicio Rápido por Escenario
+
+### Escenario A: Tengo datos crudos de placa y curvas (recomendado)
+
+1. Carga el platemap en **Cargar datos**.
+2. Carga el archivo de curvas en **Cargar curvas**.
+3. Selecciona alcance y tipo de gráfico.
+4. Aplica filtros y QC de réplicas.
+5. Ejecuta estadística y anotaciones.
+6. Exporta gráfico, tablas, metadatos y bundle ZIP.
+
+### Escenario B: Solo tengo datos agrupados o resumen
+
+1. Carga el archivo agrupado/resumen en **Cargar datos**.
+2. Configura gráficos y filtros.
+3. Ejecuta la estadística disponible para ese modo.
+4. Exporta gráficos y metadatos.
+
+### Escenario C: Necesito mejor rendimiento con alto volumen
+
+1. Comienza con `.csv` en **Cargar datos**.
+2. Mantén pocos parámetros seleccionados durante iteración.
+3. Activa capas avanzadas solo al final.
+
+![Configuración de gráficos y capas](manual_images/02_plot_setup_layers.png)
+
+## 3. Elegir un Modo de Entrada
+
+- **Platemap + Curvas**  
+  Ideal cuando: Necesitas el flujo más completo.  
+  Limitaciones principales: Requiere mapeo estricto de wells y estructura de hojas.
+
+- **Parámetros agrupados**  
+  Ideal cuando: Solo necesitas parámetros y estadística.  
+  Limitaciones principales: Curvas requiere hojas embebidas tipo `Curves_Summary` (o cargar un archivo aparte en **Cargar curvas**).
+
+- **Resumen (Media/SD/N)**  
+  Ideal cuando: No dispones de réplicas crudas por fila.  
+  Limitaciones principales: Algunas rutas de normalidad/no paramétrica pueden limitarse.
+
+- **Modo CSV**  
+  Ideal cuando: Tienes datasets grandes y buscas IO más liviano.  
+  Limitaciones principales: Metadatos siguen en `.xlsx`.
+
+## 4. Especificaciones de Entrada
+
+### 4.1 Workbook de platemap
+
+Hojas requeridas:
+
+- `Datos`: metadata + parámetros.
+- `PlotSettings`: configuración de ejes por parámetro.
+
+Columnas esperadas en `Datos`:
+
+- `Well`: ID de pocillo (`A1`, `B3`, etc.), clave para vincular curvas.
 - `Strain`: cepa o grupo biológico.
-- `Media`: condición o tratamiento (por ejemplo `Control`, `Drug A`).
-- `BiologicalReplicate`: identificador de réplica biológica (recomendado: `1`, `2`, `3`, ...). Representa cultivos/muestras biológicas independientes.
-- `TechnicalReplicate`: identificador de réplica técnica dentro de cada réplica biológica (por ejemplo `A`, `B`, `C` o `1`, `2`, `3`).
-- `Replicate` (compatibilidad): columna legada/alternativa usada en algunos archivos. Cuando aplica, BIOSZEN la interpreta como referencia de réplica biológica.
-- `Orden`: entero para definir el orden de visualización/exportación de los grupos en gráficos y tablas.
-- Columnas de parámetros: una o más columnas numéricas con las variables a analizar (por ejemplo viabilidad, fluorescencia, `uMax`, etc.).
+- `Media`: condición/tratamiento (`Control`, `Drug A`, etc.).
+- `BiologicalReplicate`: ID de réplica biológica (`1`, `2`, `3`, ...).
+- `TechnicalReplicate`: réplica técnica dentro de cada réplica biológica (`A`, `B`, `C` o `1`, `2`, `3`).
+- `Replicate` (compatibilidad): campo alternativo legado para réplica biológica.
+- `Orden`: entero para orden de visualización/exportación.
+- Columnas de parámetros: una o más variables numéricas.
 
-Notas prácticas de estructura:
+Regla práctica de consistencia:
 
-- Para un flujo completo de réplicas y QC, usa explícitamente `BiologicalReplicate` y, si existe, `TechnicalReplicate`.
-- La combinación `Strain` + `Media` + `BiologicalReplicate` + `TechnicalReplicate` debe identificar de forma consistente cada fila experimental.
-- BIOSZEN reconoce alias comunes para encabezados de `Strain`/`Media` (por ejemplo `Cepa`/`Muestra`, `Condicion`/`Tratamiento`).
+- `Strain` + `Media` + `BiologicalReplicate` + `TechnicalReplicate` debería identificar cada fila experimental de forma estable.
 
-Detalle de columnas en hoja `PlotSettings`:
+Columnas esperadas en `PlotSettings`:
 
-- `Parameter`: nombre exacto de la columna de parámetro en hoja `Datos`.
-- `Y_Max`: límite superior inicial del eje Y para ese parámetro.
-- `Interval`: separación de marcas del eje Y.
-- `Y_Title`: etiqueta de eje Y mostrada en el gráfico.
+- `Parameter`
+- `Y_Max`
+- `Interval`
+- `Y_Title`
 
-Requisitos del archivo de curvas:
+### 4.2 Archivo de curvas
 
-- En `Excel` (`.xlsx`, `.xls`):
-  `Sheet1`: primera columna `Time`, columnas adicionales por well (`A1`, `A2`, etc.).
-  `Sheet2`: `X_Max`, `Interval_X`, `Y_Max`, `Interval_Y`, `X_Title`, `Y_Title`.
-- En `CSV` (`.csv`):
-  primera columna `Time`, columnas adicionales por well (`A1`, `A2`, etc.).
-  Es un formato de tabla única (sin hojas adicionales).
-  La configuración de ejes se genera automáticamente:
-  `X_Max` y `Y_Max` toman el máximo observado, `Interval_X` y `Interval_Y` usan `máximo/4`.
-  `X_Title` y `Y_Title` quedan vacíos por defecto.
+Excel (`.xlsx`, `.xls`):
 
-### 2.2 Modo de parámetros agrupados (solo parámetros)
+- `Sheet1`: primera columna `Time`, columnas restantes por well (`A1`, `A2`, ...).
+- `Sheet2`: `X_Max`, `Interval_X`, `Y_Max`, `Interval_Y`, `X_Title`, `Y_Title`.
 
-- Carga el archivo de parámetros agrupados en **Cargar datos**.
-- Úsalo cuando solo necesitas gráficos y estadísticas de parámetros.
-- No es válido como archivo de curvas.
+CSV (`.csv`):
 
-### 2.3 Modo resumen en un solo archivo (Media/SD/N)
+- Primera columna `Time`, columnas restantes por well (`A1`, `A2`, ...).
+- Configuración de ejes auto-generada:
+  - `X_Max` y `Y_Max`: máximos observados.
+  - `Interval_X` y `Interval_Y`: `max/4`.
+  - `X_Title` y `Y_Title`: vacíos por defecto.
+
+> **WARNING:**
+> Los errores de merge de curvas suelen deberse a inconsistencias entre `Well` (platemap) y los encabezados de curvas.
+
+### 4.3 Modo parámetros agrupados
+
+- Carga el archivo agrupado en **Cargar datos**.
+- Diseñado para gráficos/estadística de parámetros desde hojas agrupadas (por ejemplo `Parametro_1`, `Parametro_2`, ...).
+- Soporta curvas embebidas opcionales mediante hojas de resumen de curvas en el mismo workbook.
+- Mantén el flujo en **Cargar datos** para archivos agrupados (no subirlos en **Cargar curvas**).
+
+### 4.4 Modo resumen
 
 - Carga el archivo resumen en **Cargar datos**.
-- Parámetros y curvas pueden detectarse desde hojas de resumen dedicadas.
-- Útil cuando no hay filas crudas por réplica.
+- BIOSZEN detecta resumen de parámetros con cualquiera de estos nombres de hoja:
+  - `Parameters_Summary`
+  - `Parametros_Summary`
+  - `Summary_Parameters`
+  - `Resumen_Parametros`
+- BIOSZEN detecta resumen de curvas embebidas con cualquiera de estos nombres:
+  - `Curves_Summary`
+  - `Curvas_Summary`
+  - `Summary_Curves`
+  - `Resumen_Curvas`
+- Útil cuando no existen réplicas crudas por fila.
+- El gráfico de curvas requiere un archivo válido en **Cargar curvas** o una hoja de resumen de curvas embebida.
 
-### 2.4 Modo CSV (alto volumen de datos)
+### 4.5 Modo CSV
 
-- **Cargar datos** acepta archivos `.csv`.
-- Recomendado cuando trabajas con volúmenes grandes por ser un formato más liviano.
-- BIOSZEN detecta automáticamente delimitador común (`,`, `;`, tab o `|`).
-- Si el CSV no viene en formato platemap directo, BIOSZEN intenta convertirlo al perfil de trabajo compatible.
-- **Cargar curvas** también acepta `.csv` para trayectorias por well (`Time` + columnas de well).
-- Archivos de metadatos siguen usando `.xlsx`.
+- **Cargar datos** acepta `.csv` y detecta delimitador automáticamente (`,`, `;`, tab, `|`).
+- BIOSZEN intenta convertir perfiles no platemap a un formato compatible.
+- **Cargar curvas** también acepta `.csv` (`Time` + wells).
 
-## 3. Flujo Estándar
+## 5. Flujo Estándar
 
 1. Carga el archivo principal de datos.
-2. Opcionalmente carga/concatena curvas.
-3. Opcionalmente carga archivo de metadatos.
+2. Opcionalmente carga/mergea curvas.
+3. Opcionalmente carga metadatos.
 4. Elige alcance (`Por cepa` o `Combinado`).
 5. Elige tipo de gráfico.
 6. Aplica filtros y selección de réplicas.
 7. Opcionalmente normaliza por control.
-8. Ejecuta análisis estadísticos.
+8. Ejecuta estadística.
 9. Agrega anotaciones de significancia.
-10. Exporta gráficos, tablas, metadatos y bundle.
+10. Exporta salidas.
 
-## 4. Tipos de Gráfico y Uso
+![Filtrado por media/condiciones](manual_images/03_filter_media_conditions.png)
+
+## 6. Tipos de Gráfico y Controles
 
 ### Caja
 
 - Ideal para distribución de réplicas crudas.
-- Controla dispersión con jitter, ancho de caja y tamaño de punto.
-- Agrega barras o etiquetas de significancia después de estadística.
-- Opción **Voltear orientación (horizontal)** para invertir ejes (`X`/`Y`) y mejorar legibilidad cuando hay etiquetas de grupos largas.
+- Controles: jitter, ancho de caja, tamaño de punto.
+- Soporta anotaciones manuales/automáticas.
+- `Voltear orientación (horizontal)` mejora legibilidad con etiquetas largas.
 
 ### Barras
 
 - Ideal para comparación resumida por grupo.
-- Soporta media con barras de error y puntos crudos opcionales (modo crudo).
-- Soporta anotaciones manuales y automáticas de significancia.
-- Opción **Voltear orientación (horizontal)** para presentar barras horizontales y facilitar comparaciones por categoría.
+- Soporta barras de error y puntos crudos opcionales.
+- Orientación horizontal disponible.
 
 ### Violín
 
-- Ideal para forma de distribución con superposición de réplicas.
-- Usa el mismo flujo de anotaciones que caja/barras.
-- Opción **Voltear orientación (horizontal)** para intercambiar ejes y priorizar lectura de nombres de grupo.
+- Ideal para forma de distribución + réplica superpuesta.
+- Comparte flujo de anotaciones con Caja/Barras.
+- Orientación horizontal disponible.
 
 ### Apilado
 
-- Usa selector de parámetros y control de orden de parámetros.
-- Configura barras de desviación y comportamiento de color por parámetro.
-- Soporta modo de significancia con barras o etiquetas.
-- Opción **Voltear orientación (horizontal)** para mostrar apilados en horizontal cuando conviene priorizar etiquetas/categorías.
+- Selector y orden de parámetros.
+- Configuración de barras de desviación y colores.
+- Anotación por etiquetas/barras.
+- Orientación horizontal disponible.
 
 ### Correlación
 
-- Selecciona parámetros X e Y.
-- Elige Pearson, Spearman o Kendall.
-- Capas opcionales: recta de regresión, r, p, R2, ecuación.
-- El panel avanzado permite cribado uno-contra-todos y exportación a Excel.
+- Selección de parámetros X/Y.
+- Métodos: Pearson, Spearman, Kendall.
+- Capas opcionales: recta, `r`, `p`, `R2`, ecuación.
+- Panel avanzado con cribado uno-contra-todos y exportación Excel.
 
 ### Mapa de calor
 
-- Selecciona subconjunto de parámetros.
-- Modo de escala: ninguno, por fila o por columna.
-- Clustering opcional por filas/columnas con dendrogramas.
-- Etiquetas de valores en celdas opcionales.
-- Exportación de clusters disponible cuando se activa clustering por filas.
+- Selección de subconjunto de parámetros.
+- Escalado: ninguno, por fila o columna.
+- Clustering/dendrogramas opcionales.
+- Etiquetas de valor en celdas opcionales.
 
 ### Matriz de correlación
 
 - Selección múltiple de parámetros.
-- Elige método de correlación.
-- Corrección por múltiples pruebas (Holm, FDR, Bonferroni, ninguna).
-- Opción para mostrar solo etiquetas significativas.
+- Método de correlación + corrección de p-values.
+- Opción de mostrar solo etiquetas significativas.
 
 ### Curvas
 
-- Configura límites de ejes, etiquetas y grosor de línea.
-- Elige geometría de línea y estilo de intervalo de confianza.
-- Opción de trayectorias de réplica en modo crudo.
+- Configura ejes, etiquetas y grosor.
+- Elige geometría de línea e intervalo de confianza.
+- Opción de mostrar trayectorias crudas de réplicas.
 
-### Panel de Composición (múltiples gráficos)
+### Panel de Composición
 
-Flujo recomendado:
+Pasos recomendados:
 
-1. En cada gráfico individual usa **Añadir al panel**.
-2. Abre la pestaña **Panel de Composición**.
-3. En **1) Selección de gráficos**, elige qué gráficos combinar y ajusta el orden (subir, bajar, mover al inicio/final o quitar).
-4. En **2) Diseño y lienzo**, define filas/columnas, malla personalizada (opcional), anchos/altos de columna/fila y tamaño final en px.
-5. En **3) Estilo visual**, ajusta leyenda (modo y lado), tipografía, tamaños globales y paleta.
-6. Opcional: agrega cajas de texto enriquecido y overrides por gráfico.
-7. Previsualiza y exporta como `PNG`, `PPTX` o `PDF`.
+1. Desde cada gráfico, usar **Añadir al panel**.
+2. Abrir pestaña **Panel de Composición**.
+3. Seleccionar y ordenar gráficos.
+4. Configurar layout (filas/columnas, malla, tamaño final).
+5. Ajustar estilo (leyenda, fuentes, tamaños, paleta).
+6. Agregar texto enriquecido y overrides opcionales.
+7. Exportar a `PNG`, `PPTX`, `PDF`.
 
-Metadatos de composición:
+![Configuración de significancia y anotaciones](manual_images/10_significance_annotations.png)
 
-- **Descargar metadata** guarda diseño y estilo del panel.
-- **Cargar metadata composición (.xlsx)** restaura una composición en otra sesión.
+## 7. Normalización
 
-## 5. Normalización
+Activa **Normalizar por control** y selecciona un medio control.
 
-Activa **Normalizar por control** y elige un medio control.
+- BIOSZEN crea columnas con sufijo `_Norm`.
+- Correlación permite normalizar por eje (`ambos`, `solo X`, `solo Y`).
+- Si no hay emparejamiento estricto, se aplica lógica de respaldo.
 
-- BIOSZEN crea columnas normalizadas con sufijo `_Norm`.
-- Correlación permite normalización por eje (`ambos`, `solo X`, `solo Y`).
-- Si no existe emparejamiento estricto de control, BIOSZEN aplica lógica de respaldo.
+## 8. Estadística
 
-## 6. Estadística
+### Herramientas estadísticas principales
 
-### Pruebas estadísticas y paquetes de R (panel principal)
+- Shapiro-Wilk: `stats::shapiro.test`
+- Kolmogorov-Smirnov: `stats::ks.test`
+- Anderson-Darling: `nortest::ad.test`
+- ANOVA: `stats::aov`
+- Kruskal-Wallis: `stats::kruskal.test`
+- Rutas t-test: `rstatix::t_test`, `rstatix::pairwise_t_test`
+- Rutas Wilcoxon: `rstatix::wilcox_test`
+- Corrección múltiple: `stats::p.adjust`
 
-- Shapiro-Wilk (normalidad): `stats::shapiro.test`
-- Kolmogorov-Smirnov (normalidad): `stats::ks.test`
-- Anderson-Darling (normalidad): `nortest::ad.test`
-- ANOVA (significancia): `stats::aov`
-- Kruskal-Wallis (significancia): `stats::kruskal.test`
-- t-test (significancia): `rstatix::t_test` y `rstatix::pairwise_t_test`
-- Wilcoxon (significancia): `rstatix::wilcox_test`
-- Corrección por múltiples pruebas (Holm/FDR/Bonferroni): `stats::p.adjust`
+Rutas post hoc por selección:
 
-Post hoc disponibles según selección:
-
-- Tukey y Games-Howell: `rstatix`
+- Tukey / Games-Howell: `rstatix`
 - Dunn: `rstatix::dunn_test`
 - Dunnett: `DescTools::DunnettTest`
-- Scheffe, Conover, Nemenyi y DSCF: `PMCMRplus`
+- Scheffe, Conover, Nemenyi, DSCF: `PMCMRplus`
 
-Estadística de curvas (S1-S4):
+Estadística de curvas (`S1`-`S4`):
 
-- S1 (diferencia global de forma): `stats::lm` + `splines::ns` + `stats::anova`
-- S2 (comparación punto a punto Fisher): `stats::pnorm` + `stats::pchisq`
-- S3 (diferencia en endpoint): `stats::pnorm`
-- S4 (AUC): `gcplyr::auc`, con selección de prueba por normalidad (`stats::shapiro.test`) y comparación por `stats::t.test`, `stats::wilcox.test`, `stats::aov` o `stats::kruskal.test` según corresponda
+- `S1`: `stats::lm` + `splines::ns` + `stats::anova`
+- `S2`: `stats::pnorm` + `stats::pchisq`
+- `S3`: `stats::pnorm`
+- `S4`: `gcplyr::auc` + comparaciones guiadas por normalidad (`stats::t.test`, `stats::wilcox.test`, `stats::aov`, `stats::kruskal.test`)
 
 Modos de comparación:
 
@@ -215,37 +297,35 @@ Modos de comparación:
 - Control contra todos
 - Par
 
-Corrección por múltiples pruebas:
+Opciones de corrección p-value:
 
 - Holm
 - FDR
 - Bonferroni
 - Ninguna
 
-Notas para modo resumen:
+> **CAUTION:**
+> En modo Resumen, la normalidad puede ser `NA` y algunas rutas no paramétricas que requieren datos crudos se desactivan.
 
-- La normalidad puede no estar disponible (`NA`).
-- Algunas rutas no paramétricas que requieren observaciones crudas se desactivan.
+## 9. Anotaciones de Significancia
 
-## 7. Flujo de Anotaciones de Significancia
-
-### Manual
+Flujo manual:
 
 1. Selecciona Grupo 1 y Grupo 2.
-2. Ingresa etiqueta (por ejemplo `*`, `**`, `***`, `ns`).
-3. Agrega, reordena, edita o elimina anotaciones.
+2. Ingresa etiqueta (`*`, `**`, `***`, `ns`, texto libre).
+3. Agrega/reordena/edita/elimina anotaciones.
 
-### Automático
+Flujo automático:
 
 1. Ejecuta pruebas de significancia.
 2. Abre opciones de auto-anotación.
-3. Elige inclusión (`solo significativos` o `todos`).
-4. Elige formato de etiqueta (`estrellas` o `p-value`).
-5. Reemplaza o agrega sobre anotaciones existentes.
+3. Define inclusión (`solo significativos` o `todos`).
+4. Elige formato (`estrellas` o `p-value`).
+5. Reemplaza o agrega anotaciones.
 
-## 8. Calidad de Datos y Gestión de Réplicas
+## 10. Control de Calidad y Réplicas
 
-Usa paneles de QC para revisar:
+Paneles QC para revisar:
 
 - Valores faltantes.
 - Outliers por grupo.
@@ -253,93 +333,128 @@ Usa paneles de QC para revisar:
 
 ### Réplicas biológicas
 
-- Controles manuales de incluir/excluir.
+- Inclusión/exclusión manual.
 - Filtrado automático por IQR.
-- Selección de N réplicas más reproducibles (Keep-N).
+- Selección Keep-N por reproducibilidad.
 
-Selección automática Keep-N:
+Comportamiento Keep-N:
 
-- Ordena réplicas por reproducibilidad (distancia a la mediana del grupo entre parámetros).
-- Conserva las más cercanas a ese centro (menor score).
-- Complementa este paso con el filtro por outliers IQR cuando quieras una selección más estricta.
+- Ordena réplicas por distancia a la mediana del grupo entre parámetros.
+- Conserva las de menor puntaje (más reproducibles).
 
-### Réplicas técnicas (dentro de cada réplica biológica)
+### Réplicas técnicas
 
-- Pestaña **Control de calidad de réplicas técnicas** (aparece cuando hay réplicas técnicas válidas).
-- Selector por grupo y por réplica biológica para ver y deseleccionar réplicas técnicas manualmente.
-- Botones globales para seleccionar o deseleccionar todas las réplicas técnicas.
+Disponible cuando hay estructura técnica válida:
+
+- Pestaña dedicada de QC técnico.
+- Selectores por grupo y réplica biológica.
+- Botones globales seleccionar/deseleccionar.
 - Detección automática de outliers técnicos por IQR.
-- Keep-N técnico para conservar las N réplicas técnicas más reproducibles por subgrupo.
+- Keep-N técnico por subgrupo.
 
-## 9. Metadatos, Versionado y Reproducibilidad
+![Filtrado de réplicas biológicas](manual_images/04_filter_biological_replicates.png)
+
+## 11. Metadatos y Reproducibilidad
 
 Flujo de metadatos:
 
-- Exporta estado de UI con **Descargar metadatos**.
-- Reimporta metadatos para restaurar configuración compatible.
-- El estado de **Voltear orientación (horizontal)** se conserva en el flujo exportar/importar metadatos (roundtrip).
+- **Descargar metadatos** para guardar estado actual.
+- Reimportar metadatos en sesiones futuras.
+- El estado de orientación horizontal se conserva en roundtrip.
 
-Cobertura de regresión:
+Bundle reproducible:
 
-- Pruebas automatizadas validan que la opción de orientación aplique solo a `Boxplot`, `Barras`, `Violin` y `Apiladas`.
-- También validan persistencia de metadatos (roundtrip) y la aplicación de orientación en la construcción final del gráfico.
+- Guardar versiones de gráficos en sesión.
+- Exportar ZIP con gráficos + metadatos.
+- Reabrir análisis con configuración consistente.
 
-Flujo de versionado y bundle:
+Cobertura de regresión incluye:
 
-- Guarda versiones de gráficos en sesión.
-- Construye ZIP reproducible con gráficos y metadatos.
-- Reabre trabajo con configuración consistente.
+- Orientación horizontal solo en Caja/Barras/Violín/Apilado.
+- Persistencia de metadatos roundtrip.
+- Verificación de orientación en constructores finales.
 
-## 10. Descargas
+## 12. Descargas
 
 Salidas principales:
 
-- Imagen de gráfico (`PNG`, `PDF` según tipo).
+- Imagen de gráfico (`PNG`, `PDF`, según gráfico).
 - Exportación de datos.
 - Exportación de metadatos.
 - Exportación de estadística.
 - Bundle ZIP.
-- Exportación de tabla de correlación avanzada.
-- Exportación de platemap/curvas concatenados (cuando se usan herramientas de merge).
+- Tabla de correlación avanzada.
+- Exportación de merge platemap/curvas (si se usó merge).
 
-## 11. Módulo de Crecimiento
+## 13. Módulo de Crecimiento
 
-La pestaña de crecimiento extrae parámetros desde archivos cargados:
+Soporte de archivos en pestaña crecimiento:
 
-- Formato de archivo aceptado en la pestaña: `Excel` (`.xlsx`).
-- Estructuras de entrada soportadas (auto-detección):
-  - Formato crudo tipo lector/Tecan (datos en `Sheet1`, normalmente desde filas posteriores con columnas iniciales de índice).
-  - Formato de tabla procesada desde la celda `A1`: primera columna de tiempo (por ejemplo `Time`) y cada columna siguiente como una curva/well.
-- Esto permite calcular parámetros aunque el archivo no venga en el layout original del equipo, siempre que respete la estructura de tiempo + curvas.
+- Tipo aceptado: `Excel` (`.xlsx`).
+- Estructuras auto-detectadas:
+  - Layout crudo tipo lector/Tecan (normalmente datos desde filas posteriores en `Sheet1`).
+  - Tabla procesada desde `A1` (primera columna tiempo, siguientes columnas curvas/wells).
 
-Definición de parámetros obtenidos (GrowthRates):
+Parámetros extraídos:
 
-- `uMax`: pendiente máxima estimada en fase exponencial (tasa específica de crecimiento).
-- `max_percap_time`: tiempo promedio del tramo donde se detecta la fase exponencial máxima.
-- `doub_time`: tiempo de duplicación estimado como `ln(2) / uMax`.
-- `lag_time`: tiempo estimado de transición previo al crecimiento exponencial.
-- `ODmax`: valor máximo de señal/OD medido en la curva.
+- `uMax`: pendiente máxima en fase exponencial.
+- `max_percap_time`: ventana temporal de máximo crecimiento per-cápita.
+- `doub_time`: tiempo de duplicación (`ln(2) / uMax`).
+- `lag_time`: transición previa al crecimiento exponencial.
+- `ODmax`: señal/OD máxima medida.
 - `max_time`: tiempo en que se alcanza `ODmax`.
-- `AUC`: área bajo la curva en el intervalo temporal analizado.
+- `AUC`: área bajo la curva.
 
-Uso típico:
+Flujo típico:
 
 1. Carga uno o más archivos de crecimiento.
 2. Define tiempo máximo e intervalo.
 3. Ejecuta extracción.
-4. Descarga salida ZIP.
-5. Importa resultados al flujo de gráficos cuando corresponda.
+4. Descarga ZIP de resultados.
+5. Reusa resultados en flujos de gráficos.
 
-## 12. Solución de Problemas
+![Flujo de parámetros de crecimiento](manual_images/13_growth_parameters_workflow.png)
 
-- **Error de carga**: verifica hojas y nombres de columnas obligatorias.
-- **No aparece gráfico**: confirma que cepa/parámetro exista después de filtros.
-- **Normalización no disponible**: verifica que el medio control exista en el alcance actual.
-- **Estadística deshabilitada**: revisa si el modo de entrada soporta esa prueba.
-- **Error en merge de curvas**: primero carga merge de platemap para remapeo de wells.
-- **CSV no reconocido**: valida encabezados requeridos y delimitador consistente (`.csv` de datos: `Strain`/`Media`; `.csv` de curvas: `Time` + columnas de well).
-- **Rendimiento lento**: reduce parámetros seleccionados, desactiva capas pesadas o filtra grupos.
+## 14. Guía de Solución de Problemas
 
-## 13. Soporte
+- **Error al cargar archivo**  
+  Causa probable: Hojas/columnas obligatorias faltantes.  
+  Qué hacer: Validar estructura y encabezados exactos.
 
-Para soporte o reporte de errores: `bioszenf@gmail.com`
+- **No se genera gráfico**  
+  Causa probable: Parámetro/grupo ausente tras filtros.  
+  Qué hacer: Resetear filtros y validar disponibilidad.
+
+- **Solo aparece Curvas en el selector de tipo de gráfico**  
+  Causa probable: No se detectaron columnas de parámetros válidas en el archivo cargado.  
+  Qué hacer: Revisar estructura de hojas agrupadas/resumen y encabezados de parámetros, luego recargar.
+
+- **Normalización no disponible**  
+  Causa probable: Falta medio control en alcance activo.  
+  Qué hacer: Confirmar grupo control en el subconjunto.
+
+- **Estadística deshabilitada**  
+  Causa probable: Mismatch entre modo y prueba.  
+  Qué hacer: Cambiar prueba o usar modo con datos compatibles.
+
+- **Falla merge de curvas**  
+  Causa probable: IDs de well inconsistentes.  
+  Qué hacer: Alinear `Well` con columnas de curvas.
+
+- **El workbook agrupado/resumen carga, pero Curvas queda sin datos**  
+  Causa probable: Falta la hoja de resumen de curvas embebida.  
+  Qué hacer: Agregar `Curves_Summary` (o alias) al workbook, o cargar curvas por separado en **Cargar curvas**.
+
+- **CSV no reconocido**  
+  Causa probable: Delimitador erróneo o headers faltantes.  
+  Qué hacer: Revisar delimitador y columnas requeridas.
+
+- **Rendimiento lento**  
+  Causa probable: Demasiados parámetros/capas activas.  
+  Qué hacer: Reducir parámetros y capas pesadas.
+
+## 15. Soporte
+
+Soporte y reporte de errores: `bioszenf@gmail.com`
+
+

@@ -1,9 +1,11 @@
 library(testthat)
 
-app_root <- normalizePath(testthat::test_path("..", ".."))
-
 read_app_file <- function(...) {
-  path <- file.path(app_root, ...)
+  parts <- as.character(c(...))
+  if (length(parts) >= 2 && identical(parts[1:2], c("inst", "app"))) {
+    parts <- parts[-c(1, 2)]
+  }
+  path <- do.call(app_test_path, as.list(parts))
   paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
 }
 
@@ -120,9 +122,10 @@ test_that("distribution plot builders toggle CoordFlip only when requested", {
     )
   }
 
-  source(testthat::test_path("..", "..", "inst", "app", "graficos", "graficos_barras.R"))
-  source(testthat::test_path("..", "..", "inst", "app", "graficos", "graficos_boxplot.R"))
-  source(testthat::test_path("..", "..", "inst", "app", "graficos", "graficos_violin.R"))
+  source(app_test_path("helpers.R"))
+  source(app_test_path( "graficos", "graficos_barras.R"))
+  source(app_test_path( "graficos", "graficos_boxplot.R"))
+  source(app_test_path( "graficos", "graficos_violin.R"))
 
   p_barras_v <- build_barras_plot_impl(make_dist_ctx(flip = FALSE))
   p_barras_h <- build_barras_plot_impl(make_dist_ctx(flip = TRUE))
@@ -205,7 +208,8 @@ test_that("stacked ggplot builder toggles CoordFlip only when requested", {
     )
   }
 
-  source(testthat::test_path("..", "..", "inst", "app", "graficos", "graficos_apilados.R"))
+  source(app_test_path("helpers.R"))
+  source(app_test_path( "graficos", "graficos_apilados.R"))
 
   p_stack_v <- build_apiladas_plot_impl(make_stacked_ctx(flip = FALSE))
   p_stack_h <- build_apiladas_plot_impl(make_stacked_ctx(flip = TRUE))

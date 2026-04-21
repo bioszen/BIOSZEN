@@ -1,213 +1,295 @@
 ﻿# BIOSZEN User Manual (English)
 
-This manual explains how to run BIOSZEN workflows from data import to reproducible export.
+A practical guide to run BIOSZEN from raw files to reproducible outputs.
 
-## 1. Prerequisites
+![BIOSZEN app overview](manual_images/01_app_home_overview.png)
 
-- R >= 4.1 installed.
-- BIOSZEN app launched from `App.R` or `BIOSZEN::run_app()`.
-- Input files for **Load Data** can be `Excel` (`.xlsx`, `.xls`) or `CSV` (`.csv`).
-- Curve files for **Load Curves** can be `Excel` (`.xlsx`, `.xls`) or `CSV` (`.csv`).
+> **IMPORTANT:**
+> If possible, use **Platemap + Curves** mode. It gives the best support for statistics, replicate QC, and complete exports.
 
-Reference templates are available in the app under **Reference input files (download)**:
+> **TIP:**
+> Keep this manual open while working. Each section includes both quick actions and deeper technical reference.
 
-- `Ejemplo_platemap_parametros.xlsx`
-- `Ejemplo_curvas.xlsx`
-- `Ejemplo_parametros_agrupados.xlsx`
-- `Ejemplo_input_summary_mean_sd.xlsx`
+## Manual Map
 
-## 2. Input Modes
+- [1. Before You Start](#1-before-you-start)
+- [2. Fast Start by Scenario](#2-fast-start-by-scenario)
+- [3. Choose an Input Mode](#3-choose-an-input-mode)
+- [4. Input Specifications](#4-input-specifications)
+- [5. Standard Workflow](#5-standard-workflow)
+- [6. Plot Types and Controls](#6-plot-types-and-controls)
+- [7. Normalization](#7-normalization)
+- [8. Statistics](#8-statistics)
+- [9. Significance Annotations](#9-significance-annotations)
+- [10. QC and Replicate Management](#10-qc-and-replicate-management)
+- [11. Metadata and Reproducibility](#11-metadata-and-reproducibility)
+- [12. Downloads](#12-downloads)
+- [13. Growth Module](#13-growth-module)
+- [14. Troubleshooting Playbook](#14-troubleshooting-playbook)
+- [15. Support](#15-support)
 
-### 2.1 Recommended mode: Platemap + Curves
+## 1. Before You Start
 
-Use this mode for full functionality and strongest statistical support.
+Requirements:
 
-1. Upload a platemap file in **Load Data**.
-2. Upload a curves file in **Load Curves** (`.xlsx`, `.xls`, or `.csv`).
+- R >= 4.1.
+- BIOSZEN launched from `app.R` or `BIOSZEN::run_app()`.
+- Data file for **Load Data** in `Excel` (`.xlsx`, `.xls`) or `CSV` (`.csv`).
+- Curves file for **Load Curves** in `Excel` (`.xlsx`, `.xls`) or `CSV` (`.csv`) when curves are not embedded in the main workbook.
 
-Platemap requirements:
+Reference templates available in-app (**Reference input files (download)**) and in:
 
-- Sheet `Datos` with metadata and parameter columns (detailed below).
-- Sheet `PlotSettings` with per-parameter axis settings (detailed below).
+- `inst/app/www/reference_files/`
 
-Detailed column definitions for `Datos` (platemap) sheet:
+Template files:
 
-- `Well`: well identifier (for example `A1`, `B3`). This is essential to link platemap rows with the curves file.
-- `Strain`: strain or biological group name.
-- `Media`: condition or treatment (for example `Control`, `Drug A`).
-- `BiologicalReplicate`: biological replicate ID (recommended: `1`, `2`, `3`, ...). Represents independent biological cultures/samples.
-- `TechnicalReplicate`: technical replicate ID inside each biological replicate (for example `A`, `B`, `C` or `1`, `2`, `3`).
-- `Replicate` (compatibility): legacy/alternate column used in some files. When present in compatible workflows, BIOSZEN treats it as the biological replicate reference.
-- `Orden`: integer used to control display/export ordering of groups across plots and tables.
-- Parameter columns: one or more numeric columns with analytes/metrics to plot and test (for example viability, fluorescence, `uMax`, etc.).
+- [Ejemplo_platemap_parametros.xlsx](reference_files/Ejemplo_platemap_parametros.xlsx)
+- [Ejemplo_curvas.xlsx](reference_files/Ejemplo_curvas.xlsx)
+- [Ejemplo_parametros_agrupados.xlsx](reference_files/Ejemplo_parametros_agrupados.xlsx)
+- [Ejemplo_input_summary_mean_sd.xlsx](reference_files/Ejemplo_input_summary_mean_sd.xlsx)
 
-Practical structure notes:
+> **NOTE:**
+> First launch may install packages into local `R_libs`. Keep that folder to avoid reinstalling dependencies.
 
-- For full replicate-aware workflows and QC, provide `BiologicalReplicate` and, when available, `TechnicalReplicate`.
-- The combination `Strain` + `Media` + `BiologicalReplicate` + `TechnicalReplicate` should consistently identify each experimental row.
-- BIOSZEN supports common header aliases for `Strain`/`Media` (for example `Cepa`/`Muestra`, `Condicion`/`Tratamiento`).
+## 2. Fast Start by Scenario
 
-Detailed `PlotSettings` columns:
+### Scenario A: I have raw plate data and curves (recommended)
 
-- `Parameter`: exact parameter column name from `Datos`.
-- `Y_Max`: initial upper Y-axis limit for that parameter.
-- `Interval`: Y-axis tick spacing.
-- `Y_Title`: Y-axis label used in the plot.
+1. Load platemap in **Load Data**.
+2. Load curves file in **Load Curves**.
+3. Select scope and plot type.
+4. Apply filters and replicate QC.
+5. Run stats and annotations.
+6. Export plot, tables, metadata, and ZIP bundle.
 
-Curves requirements:
+### Scenario B: I only have grouped or summary data
 
-- In `Excel` (`.xlsx`, `.xls`):
-  `Sheet1`: first column `Time`, additional columns by well (`A1`, `A2`, etc.).
-  `Sheet2`: `X_Max`, `Interval_X`, `Y_Max`, `Interval_Y`, `X_Title`, `Y_Title`.
-- In `CSV` (`.csv`):
-  first column `Time`, additional columns by well (`A1`, `A2`, etc.).
-  This is a single-table format (no extra sheets).
-  Axis settings are auto-generated:
-  `X_Max` and `Y_Max` use observed maxima, `Interval_X` and `Interval_Y` use `max/4`.
-  `X_Title` and `Y_Title` are blank by default.
+1. Load grouped/summary workbook in **Load Data**.
+2. Configure plots and filters.
+3. Run available stats for that mode.
+4. Export plots and metadata.
 
-### 2.2 Grouped parameters mode (parameters only)
+### Scenario C: I need performance on larger datasets
 
-- Upload grouped-parameter workbook in **Load Data**.
-- Use when you only need parameter charts and stats.
-- Not valid as a curves input.
+1. Start with `.csv` in **Load Data**.
+2. Keep selected parameters small while iterating.
+3. Add overlays/advanced layers only near final export.
 
-### 2.3 Single-file summary mode (Mean/SD/N)
+![Plot setup and layers](manual_images/02_plot_setup_layers.png)
 
-- Upload summary workbook in **Load Data**.
-- Parameters and curves can be detected from dedicated summary sheets.
-- Useful when raw replicate rows are unavailable.
+## 3. Choose an Input Mode
 
-### 2.4 CSV mode (high-volume datasets)
+- **Platemap + Curves**  
+  Best when: You want full workflow depth.  
+  Main limitations: Requires strict well mapping and sheet structure.
 
-- **Load Data** supports `.csv` files.
-- Recommended for larger datasets because it is a lighter format.
-- BIOSZEN auto-detects common delimiters (`,`, `;`, tab, or `|`).
-- If CSV structure is not already platemap-ready, BIOSZEN attempts conversion to a compatible working profile.
-- **Load Curves** also supports `.csv` for well-based trajectories (`Time` + well columns).
-- Metadata files remain `.xlsx`.
+- **Grouped parameters**  
+  Best when: Parameter-only analysis.  
+  Main limitations: Curves require embedded `Curves_Summary`-type sheets (or a separate file in **Load Curves**).
 
-## 3. Standard Workflow
+- **Summary (Mean/SD/N)**  
+  Best when: Raw replicate rows are unavailable.  
+  Main limitations: Some normality/non-parametric routes may be limited.
 
-1. Load primary data file.
+- **CSV mode**  
+  Best when: High-volume data and faster IO.  
+  Main limitations: Metadata roundtrip still uses `.xlsx`.
+
+## 4. Input Specifications
+
+### 4.1 Platemap workbook
+
+Required sheets:
+
+- `Datos`: metadata + parameters.
+- `PlotSettings`: default axis settings by parameter.
+
+`Datos` expected columns:
+
+- `Well`: well ID (`A1`, `B3`, etc.), required for curves linking.
+- `Strain`: strain or biological group.
+- `Media`: condition/treatment (`Control`, `Drug A`, etc.).
+- `BiologicalReplicate`: biological replicate ID (`1`, `2`, `3`, ...).
+- `TechnicalReplicate`: technical replicate within each biological replicate (`A`, `B`, `C` or `1`, `2`, `3`).
+- `Replicate` (compatibility): legacy alternate biological replicate field.
+- `Orden`: integer used for plotting/export ordering.
+- Parameter columns: one or more numeric analytes/metrics.
+
+Practical consistency rule:
+
+- `Strain` + `Media` + `BiologicalReplicate` + `TechnicalReplicate` should identify each experimental row consistently.
+
+`PlotSettings` expected columns:
+
+- `Parameter`
+- `Y_Max`
+- `Interval`
+- `Y_Title`
+
+### 4.2 Curves file
+
+Excel (`.xlsx`, `.xls`):
+
+- `Sheet1`: first column `Time`, remaining columns by well (`A1`, `A2`, ...).
+- `Sheet2`: `X_Max`, `Interval_X`, `Y_Max`, `Interval_Y`, `X_Title`, `Y_Title`.
+
+CSV (`.csv`):
+
+- First column `Time`, remaining columns by well (`A1`, `A2`, ...).
+- Axis settings are auto-generated:
+  - `X_Max` and `Y_Max`: observed maxima.
+  - `Interval_X` and `Interval_Y`: `max/4`.
+  - `X_Title` and `Y_Title`: blank by default.
+
+> **WARNING:**
+> Curves merge failures are usually caused by inconsistent well names between platemap and curves (`Well` vs curve headers).
+
+### 4.3 Grouped parameters mode
+
+- Load grouped workbook in **Load Data**.
+- Designed for parameter plots/statistics from grouped sheets (for example `Parametro_1`, `Parametro_2`, ...).
+- Optional embedded curves are supported via summary-curve sheets in the same workbook.
+- Keep using **Load Data** for grouped workbooks (do not upload grouped files in **Load Curves**).
+
+### 4.4 Summary mode
+
+- Load summary workbook in **Load Data**.
+- BIOSZEN detects parameter summaries from any of these sheet names:
+  - `Parameters_Summary`
+  - `Parametros_Summary`
+  - `Summary_Parameters`
+  - `Resumen_Parametros`
+- BIOSZEN detects embedded curve summaries from any of these sheet names:
+  - `Curves_Summary`
+  - `Curvas_Summary`
+  - `Summary_Curves`
+  - `Resumen_Curvas`
+- Useful when row-level raw replicates are unavailable.
+- Curves plots require either a valid **Load Curves** file or an embedded curve-summary sheet.
+
+### 4.5 CSV mode
+
+- **Load Data** accepts `.csv` and auto-detects delimiter (`,`, `;`, tab, `|`).
+- BIOSZEN attempts profile conversion when CSV is not already platemap-ready.
+- **Load Curves** also accepts `.csv` (`Time` + wells).
+
+## 5. Standard Workflow
+
+1. Load main data file.
 2. Optionally load/merge curves.
-3. Optionally load metadata file.
+3. Optionally load metadata.
 4. Choose scope (`By Strain` or `Combined`).
-5. Choose plot type.
+5. Select plot type.
 6. Apply filters and replicate selections.
 7. Optionally normalize by control.
-8. Run statistical analysis.
+8. Run statistics.
 9. Add significance annotations.
-10. Export plots, tables, metadata, and bundle.
+10. Export outputs.
 
-## 4. Plot Types and How to Use Them
+![Filtering by media/conditions](manual_images/03_filter_media_conditions.png)
+
+## 6. Plot Types and Controls
 
 ### Boxplot
 
 - Best for raw replicate distributions.
-- Control spread with jitter, box width, and point size.
-- Add significance bars or labels after stats.
-- **Flip orientation (horizontal)** option swaps `X`/`Y` axes to improve readability when group labels are long.
+- Controls: jitter, box width, point size.
+- Supports manual/automatic significance annotations.
+- `Flip orientation (horizontal)` improves readability for long group labels.
 
 ### Barplot
 
-- Best for summarized comparison by group.
-- Supports mean with error bars and optional raw points (raw mode).
-- Supports manual and automatic significance annotations.
-- **Flip orientation (horizontal)** option renders horizontal bars for clearer category-to-category comparison.
+- Best for summarized group comparisons.
+- Supports error bars and optional raw points.
+- Horizontal orientation available.
 
 ### Violin
 
-- Best for distribution shape with replicate overlays.
-- Supports same annotation workflow as boxplot/barplot.
-- **Flip orientation (horizontal)** option swaps axes to prioritize readable group/category labels.
+- Best for showing distribution shape with replicate overlays.
+- Uses the same annotation workflow as Boxplot/Barplot.
+- Horizontal orientation available.
 
 ### Stacked
 
-- Use parameter selector and parameter order controls.
-- Configure deviation bars and parameter color behavior.
-- Supports label or bracket significance mode.
-- **Flip orientation (horizontal)** option is available for stacked views when a horizontal layout is easier to read.
+- Parameter selector + parameter ordering controls.
+- Configurable deviation bars and color behavior.
+- Annotation labels/brackets available.
+- Horizontal orientation available.
 
 ### Correlation
 
-- Select X and Y parameters.
-- Choose Pearson, Spearman, or Kendall.
-- Optional overlays: regression line, r, p, R2, equation.
-- Advanced panel supports anchor-based one-vs-all screening and Excel export.
+- Select X/Y parameters.
+- Methods: Pearson, Spearman, Kendall.
+- Optional overlays: regression line, `r`, `p`, `R2`, equation.
+- Advanced panel supports one-vs-all style screening and Excel export.
 
 ### Heatmap
 
-- Select parameter subset.
-- Scale mode: none, by row, or by column.
-- Optional row/column clustering and dendrograms.
+- Parameter subset selection.
+- Scale options: none, row, column.
+- Optional clustering and dendrograms.
 - Optional in-cell value labels.
-- Cluster exports available when row clustering is enabled.
 
 ### Correlation Matrix
 
 - Multi-select parameters.
-- Choose correlation method.
-- Apply multiple-testing correction (Holm, FDR, Bonferroni, none).
-- Optionally display only significant labels.
+- Correlation method + p-value correction.
+- Optional significant labels only.
 
 ### Curves
 
-- Configure axis limits, labels, and line width.
+- Configure axes, labels, line width.
 - Choose line geometry and confidence interval style.
-- Optional replicate trajectory display in raw mode.
+- Optional raw replicate trajectories.
 
-### Composition Panel (multi-plot layouts)
+### Composition Panel
 
-Recommended flow:
+Recommended steps:
 
-1. From each individual chart, click **Add to panel**.
-2. Open the **Composition Panel** tab.
-3. In **1) Plot Selection**, choose plots to combine and adjust order (move up/down, move to top/bottom, or remove).
-4. In **2) Layout & Canvas**, define rows/columns, optional custom grid, column/row sizes, and final output size in px.
-5. In **3) Visual Style**, configure legend mode/side, fonts, global text sizes, and palette.
-6. Optional: add rich text boxes and per-plot overrides.
-7. Preview and export to `PNG`, `PPTX`, or `PDF`.
+1. Click **Add to panel** from individual plots.
+2. Open **Composition Panel** tab.
+3. Select and order plots.
+4. Configure layout (rows/columns, grid, output size).
+5. Configure style (legend, fonts, text sizes, palette).
+6. Optionally add rich text and per-plot overrides.
+7. Export to `PNG`, `PPTX`, `PDF`.
 
-Composition metadata:
+![Significance and annotation setup](manual_images/10_significance_annotations.png)
 
-- **Download metadata** stores panel layout and styling.
-- **Upload composition metadata (.xlsx)** restores a composition in a new session.
+## 7. Normalization
 
-## 5. Normalization
+Enable **Normalize by control** and pick a control medium.
 
-Enable **Normalize by control** and choose a control medium.
-
-- BIOSZEN computes normalized columns with `_Norm` suffix.
+- BIOSZEN creates normalized columns with `_Norm` suffix.
 - Correlation supports axis-specific normalization (`both`, `X only`, `Y only`).
-- If strict control pairing is not possible, BIOSZEN applies fallback logic.
+- Fallback logic is applied when strict control pairing is not available.
 
-## 6. Statistics
+## 8. Statistics
 
-### Statistical tests and R packages (main panel)
+### Main statistical tools
 
-- Shapiro-Wilk (normality): `stats::shapiro.test`
-- Kolmogorov-Smirnov (normality): `stats::ks.test`
-- Anderson-Darling (normality): `nortest::ad.test`
-- ANOVA (significance): `stats::aov`
-- Kruskal-Wallis (significance): `stats::kruskal.test`
-- t-test (significance): `rstatix::t_test` and `rstatix::pairwise_t_test`
-- Wilcoxon (significance): `rstatix::wilcox_test`
-- Multiple-testing correction (Holm/FDR/Bonferroni): `stats::p.adjust`
+- Shapiro-Wilk: `stats::shapiro.test`
+- Kolmogorov-Smirnov: `stats::ks.test`
+- Anderson-Darling: `nortest::ad.test`
+- ANOVA: `stats::aov`
+- Kruskal-Wallis: `stats::kruskal.test`
+- t-test routes: `rstatix::t_test`, `rstatix::pairwise_t_test`
+- Wilcoxon routes: `rstatix::wilcox_test`
+- Multiple-testing correction: `stats::p.adjust`
 
-Post hoc paths by selection:
+Post hoc routes by selection:
 
-- Tukey and Games-Howell: `rstatix`
+- Tukey / Games-Howell: `rstatix`
 - Dunn: `rstatix::dunn_test`
 - Dunnett: `DescTools::DunnettTest`
-- Scheffe, Conover, Nemenyi, and DSCF: `PMCMRplus`
+- Scheffe, Conover, Nemenyi, DSCF: `PMCMRplus`
 
-Curve statistics (S1-S4):
+Curve statistics (`S1`-`S4`):
 
-- S1 (global shape difference): `stats::lm` + `splines::ns` + `stats::anova`
-- S2 (pointwise Fisher comparison): `stats::pnorm` + `stats::pchisq`
-- S3 (endpoint difference): `stats::pnorm`
-- S4 (AUC): `gcplyr::auc`, with normality-based method selection (`stats::shapiro.test`) and comparison via `stats::t.test`, `stats::wilcox.test`, `stats::aov`, or `stats::kruskal.test` as applicable
+- `S1`: `stats::lm` + `splines::ns` + `stats::anova`
+- `S2`: `stats::pnorm` + `stats::pchisq`
+- `S3`: `stats::pnorm`
+- `S4`: `gcplyr::auc` + normality-driven comparisons (`stats::t.test`, `stats::wilcox.test`, `stats::aov`, `stats::kruskal.test`)
 
 Comparison modes:
 
@@ -215,37 +297,35 @@ Comparison modes:
 - Control vs all
 - Pair
 
-Multiple-testing correction:
+P-value correction options:
 
 - Holm
 - FDR
 - Bonferroni
 - None
 
-Summary mode notes:
+> **CAUTION:**
+> In Summary mode, normality may be `NA` and some non-parametric paths that require raw observations are disabled.
 
-- Normality may be unavailable (`NA`).
-- Some non-parametric paths requiring raw observations are disabled.
+## 9. Significance Annotations
 
-## 7. Significance Annotation Workflow
-
-### Manual
+Manual workflow:
 
 1. Select Group 1 and Group 2.
-2. Enter annotation label (for example `*`, `**`, `***`, `ns`).
-3. Add, reorder, edit, or remove annotations.
+2. Enter label (`*`, `**`, `***`, `ns`, custom text).
+3. Add/reorder/edit/remove annotations.
 
-### Automatic
+Automatic workflow:
 
 1. Run significance tests.
 2. Open auto-annotation options.
 3. Choose inclusion (`significant only` or `all`).
 4. Choose label mode (`stars` or `p-value`).
-5. Replace or append existing annotations.
+5. Replace or append annotations.
 
-## 8. QC and Replicate Management
+## 10. QC and Replicate Management
 
-Use QC panels to review:
+Use QC panels to monitor:
 
 - Missing values.
 - Outliers by group.
@@ -254,92 +334,127 @@ Use QC panels to review:
 ### Biological replicates
 
 - Manual include/exclude controls.
-- Automatic IQR-based filtering.
-- Keep-N reproducibility-oriented selection.
+- Automatic IQR filtering.
+- Keep-N reproducibility selection.
 
-Keep-N automatic selection:
+Keep-N behavior:
 
-- Ranks replicates by reproducibility (distance to the group median across parameters).
-- Keeps the closest replicates to that center (lowest score).
-- Combine it with IQR outlier filtering when you want stricter replicate selection.
+- Ranks replicates by distance to the group median across selected parameters.
+- Keeps lowest-score (most reproducible) replicates.
 
-### Technical replicates (inside each biological replicate)
+### Technical replicates
 
-- Dedicated **Technical replicate QC** tab (shown when valid technical replicates exist).
-- Group and biological-replicate selectors to view and manually deselect technical replicates.
-- Global buttons to select all or deselect all technical replicates.
-- Automatic technical outlier detection with IQR.
-- Technical Keep-N to keep the N most reproducible technical replicates per subgroup.
+Available when technical replicates are valid:
 
-## 9. Metadata, Versioning, and Reproducibility
+- Dedicated technical QC tab.
+- Group and biological-replicate selectors.
+- Global select/deselect controls.
+- Automatic IQR technical outlier detection.
+- Technical Keep-N per subgroup.
 
-Metadata workflow:
+![Biological replicate filtering](manual_images/04_filter_biological_replicates.png)
 
-- Export current UI state with **Download metadata**.
-- Re-import metadata to restore compatible settings.
-- The **Flip orientation (horizontal)** state is preserved in metadata export/import roundtrip.
+## 11. Metadata and Reproducibility
 
-Regression coverage:
+Metadata flow:
 
-- Automated regression tests verify that orientation flip applies only to `Boxplot`, `Barras` (Barplot), `Violin`, and `Apiladas` (Stacked).
-- They also verify metadata roundtrip persistence and orientation application in final plot builders.
+- **Download metadata** to save current state.
+- Re-import metadata in future sessions.
+- Orientation flip state persists across metadata roundtrip.
 
-Versioning and bundle workflow:
+Reproducibility bundle:
 
 - Save plot versions in-session.
-- Build reproducibility ZIP with plot assets and metadata.
-- Reopen work with consistent configuration.
+- Export ZIP with plot assets + metadata.
+- Reopen workflows with consistent configuration.
 
-## 10. Downloads
+Regression coverage includes:
 
-Main outputs include:
+- Orientation flip applied only to Boxplot/Barplot/Violin/Stacked.
+- Metadata roundtrip persistence checks.
+- Final builder orientation checks.
 
-- Plot image (`PNG`, `PDF` depending on plot type).
+## 12. Downloads
+
+Main outputs:
+
+- Plot image (`PNG`, `PDF`, depending on chart).
 - Data export.
 - Metadata export.
 - Statistics export.
 - Bundle ZIP.
-- Advanced correlation table export.
-- Merged platemap/curves exports (when merge tools are used).
+- Advanced correlation tables.
+- Merged platemap/curves exports (if merge tools were used).
 
-## 11. Growth Module
+## 13. Growth Module
 
-The growth tab extracts growth parameters from uploaded files:
+Growth tab file support:
 
-- Accepted file type in this tab: `Excel` (`.xlsx`).
-- Supported input structures (auto-detected):
-  - Raw reader/Tecan-like layout (data in `Sheet1`, typically starting on later rows with leading index columns).
-  - Processed table layout starting at cell `A1`: first column is time (for example `Time`) and each additional column is one curve/well.
-- This means parameter extraction works even when files are not in the original instrument layout, as long as the time + curves structure is respected.
+- Accepted file type: `Excel` (`.xlsx`).
+- Auto-detected structures:
+  - Reader/Tecan-like raw layout (typically later-row data in `Sheet1`).
+  - Processed `A1` table layout (first column time, following columns as wells/curves).
 
-Definition of extracted GrowthRates parameters:
+Extracted parameters:
 
-- `uMax`: estimated maximum slope in the exponential phase (specific growth rate).
-- `max_percap_time`: mean time window where maximum per-capita growth is detected.
-- `doub_time`: estimated doubling time as `ln(2) / uMax`.
-- `lag_time`: estimated transition time before sustained exponential growth.
-- `ODmax`: maximum measured signal/OD value in the curve.
-- `max_time`: time at which `ODmax` is reached.
-- `AUC`: area under the curve over the analyzed time window.
+- `uMax`: maximum exponential-phase slope.
+- `max_percap_time`: time window of max per-capita growth.
+- `doub_time`: doubling time (`ln(2) / uMax`).
+- `lag_time`: pre-exponential transition time.
+- `ODmax`: maximum measured OD/signal.
+- `max_time`: time at `ODmax`.
+- `AUC`: area under the curve.
 
-Typical use:
+Typical flow:
 
 1. Upload one or more growth files.
 2. Set max time and interval.
 3. Run extraction.
-4. Download ZIP output.
-5. Import extracted outputs into plotting workflow when needed.
+4. Download ZIP outputs.
+5. Reuse extracted outputs in main plotting workflows.
 
-## 12. Troubleshooting
+![Growth workflow](manual_images/13_growth_parameters_workflow.png)
 
-- **Upload error**: verify required sheets and column names.
-- **No plot generated**: confirm selected strain/parameter is present after filters.
-- **Normalization unavailable**: verify control medium exists in current scope.
-- **Stats disabled**: check whether your input mode supports that test path.
-- **Curve merge issues**: ensure platemap merge is loaded first for well remapping.
-- **CSV not recognized**: validate required headers and a consistent delimiter (`data .csv`: `Strain`/`Media`; `curves .csv`: `Time` + well columns).
-- **Slow performance**: reduce selected parameters, disable heavy overlays, or filter groups.
+## 14. Troubleshooting Playbook
 
-## 13. Support
+- **Upload error**  
+  Likely cause: Missing sheet/column names.  
+  What to do: Validate workbook structure and exact headers.
 
-For support or bug reports: `bioszenf@gmail.com`
+- **No plot generated**  
+  Likely cause: Selected parameter/group absent after filtering.  
+  What to do: Reset filters and verify parameter availability.
+
+- **Only Curves appears in plot type selector**  
+  Likely cause: No valid parameter columns were parsed from the uploaded data file.  
+  What to do: Verify grouped/summary sheet structure and parameter headers, then re-upload.
+
+- **Normalization unavailable**  
+  Likely cause: Missing control medium in current scope.  
+  What to do: Confirm control group exists in active subset.
+
+- **Stats disabled**  
+  Likely cause: Mode/test mismatch.  
+  What to do: Switch test or use a mode with raw-compatible data.
+
+- **Curves merge fails**  
+  Likely cause: Well ID mismatch.  
+  What to do: Match platemap `Well` values to curves columns.
+
+- **Grouped/Summary workbook loads but Curves has no data**  
+  Likely cause: Missing embedded curves summary sheet.  
+  What to do: Add `Curves_Summary` (or alias) to the workbook, or upload curves separately in **Load Curves**.
+
+- **CSV not recognized**  
+  Likely cause: Wrong delimiter or missing required headers.  
+  What to do: Check delimiter consistency and required columns.
+
+- **Slow performance**  
+  Likely cause: Too many parameters/overlays at once.  
+  What to do: Reduce active parameters and heavy layers.
+
+## 15. Support
+
+For support and bug reports: `bioszenf@gmail.com`
+
+

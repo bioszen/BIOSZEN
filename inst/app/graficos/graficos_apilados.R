@@ -67,6 +67,7 @@ build_apiladas_plot_impl <- function(ctx) {
         mutate(Parametro = factor(Parametro, levels = stack_levels)) %>%
         arrange(.data[[eje_x]], Parametro)
     }
+    df_long <- sanitize_stack_summary(df_long)
 
     if (isTRUE(input$x_wrap)) {
       df_long[[eje_x]] <- wrap_label(df_long[[eje_x]], lines = input$x_wrap_lines)
@@ -257,7 +258,7 @@ build_apiladas_plot_impl <- function(ctx) {
       ) +
       scale_y_continuous(
         limits = c(0, input$ymax),
-        breaks = seq(0, input$ymax, by = input$ybreak),
+        breaks = axis_breaks_limited(input$ymax, input$ybreak),
         expand = c(0, 0)
       ) +
       theme_classic(base_size = input$base_size, base_family = "Helvetica") +

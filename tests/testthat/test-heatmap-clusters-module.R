@@ -2,7 +2,7 @@ library(testthat)
 
 root <- normalizePath(test_path("..", ".."))
 load_heatmap_cluster_sources <- function() {
-  app_dir <- file.path(root, "inst", "app")
+  app_dir <- app_test_path()
   old <- setwd(app_dir)
   on.exit(setwd(old), add = TRUE)
   source(file.path(app_dir, "global.R"))

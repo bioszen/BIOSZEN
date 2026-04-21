@@ -1,6 +1,6 @@
 test_that("correlation plot guards insufficient data without validate errors", {
-  server_file <- test_path("..", "..", "inst", "app", "server", "server_main.R")
-  corr_file <- test_path("..", "..", "inst", "app", "graficos", "graficos_correlacion.R")
+  server_file <- app_test_path( "server", "server_main.R")
+  corr_file <- app_test_path( "graficos", "graficos_correlacion.R")
   expect_true(file.exists(server_file))
   expect_true(file.exists(corr_file))
 
@@ -18,7 +18,7 @@ test_that("correlation plot guards insufficient data without validate errors", {
 })
 
 test_that("plot_base suppresses noisy notifications for transient expected states", {
-  server_file <- test_path("..", "..", "inst", "app", "server", "server_main.R")
+  server_file <- app_test_path( "server", "server_main.R")
   txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
 
   expect_true(grepl('inherits\\(e, "shiny\\.silent\\.error"\\)', txt, perl = TRUE))
@@ -27,8 +27,8 @@ test_that("plot_base suppresses noisy notifications for transient expected state
 })
 
 test_that("advanced correlation is button-driven and stats table guards empty params", {
-  server_file <- test_path("..", "..", "inst", "app", "server", "server_main.R")
-  corr_file <- test_path("..", "..", "inst", "app", "graficos", "graficos_correlacion.R")
+  server_file <- app_test_path( "server", "server_main.R")
+  corr_file <- app_test_path( "graficos", "graficos_correlacion.R")
   txt_server <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
   txt_corr <- paste(readLines(corr_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
 

@@ -1,5 +1,5 @@
 test_that("inst/app/app.R loads UI and server modules via source_dir", {
-  app_file <- test_path("..", "..", "inst", "app", "app.R")
+  app_file <- app_test_path( "app.R")
   expect_true(file.exists(app_file))
 
   txt <- paste(readLines(app_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
@@ -11,8 +11,8 @@ test_that("inst/app/app.R loads UI and server modules via source_dir", {
 })
 
 test_that("shared helpers are defined only in helpers.R", {
-  global_file <- test_path("..", "..", "inst", "app", "global.R")
-  helpers_file <- test_path("..", "..", "inst", "app", "helpers.R")
+  global_file <- app_test_path( "global.R")
+  helpers_file <- app_test_path( "helpers.R")
   expect_true(file.exists(global_file))
   expect_true(file.exists(helpers_file))
 

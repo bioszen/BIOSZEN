@@ -1,7 +1,7 @@
 library(testthat)
 
-root <- normalizePath(testthat::test_path("..", ".."))
-source(file.path(root, "inst", "app", "helpers.R"))
+root <- app_test_root()
+source(app_test_path( "helpers.R"))
 
 test_that("curve_pointwise_fisher keeps per-point underflow p-values and returns a valid result", {
   d1 <- tibble::tibble(

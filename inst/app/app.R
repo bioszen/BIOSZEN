@@ -3,17 +3,25 @@ source_dir <- function(path, envir) {
   for (f in files) sys.source(f, envir = envir)
 }
 
+configure_shiny_upload_limit <- function() {
+  # Keep file parsing unchanged: only raise Shiny's HTTP upload ceiling.
+  max_upload_mb <- suppressWarnings(as.numeric(Sys.getenv("BIOSZEN_MAX_UPLOAD_MB", "350")))
+  if (!is.finite(max_upload_mb) || max_upload_mb <= 0) {
+    max_upload_mb <- 350
+  }
+  options(shiny.maxRequestSize = max_upload_mb * 1024^2)
+}
+
 resolve_app_parent_env <- function() {
-  if ("package:BIOSZEN" %in% search()) {
-    return(as.environment("package:BIOSZEN"))
-  }
-  if (requireNamespace("BIOSZEN", quietly = TRUE)) {
-    return(asNamespace("BIOSZEN"))
-  }
+  # Use globalenv() so symbols attached by library() during app bootstrap
+  # (e.g., ggplot2::theme_update) are resolvable in sourced app files.
+  # Using a package/namespace parent can hide attached package symbols.
   globalenv()
 }
 
 app_env <- new.env(parent = resolve_app_parent_env())
+
+configure_shiny_upload_limit()
 
 sys.source("global.R", envir = app_env)          # paquetes y configuraciones generales
 

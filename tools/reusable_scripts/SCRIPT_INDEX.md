@@ -4,6 +4,58 @@ This folder contains reusable utilities created for BIOSZEN data preparation wor
 
 ## Scripts
 
+### `build_grouped_params_platemap.py`
+- Purpose: Converts a grouped-parameters workbook (one sheet per parameter, with `Strain` + `RepBiol` + media columns) into a BIOSZEN-compatible platemap workbook.
+- What it generates:
+  - `Datos`:
+    - required BIOSZEN metadata columns first (`Well`, `Strain`, `Media`, `Orden`, `Replicate`, `BiologicalReplicate`, `TechnicalReplicate`),
+    - then one parameter column per input sheet (sheet name preserved as parameter name).
+  - `PlotSettings`:
+    - one row per parameter (`Parameter`, `Y_Max`, `Interval`, `Y_Title`).
+  - `SourceMapping`:
+    - row-level key traceability (`Well`, `Strain`, `Media`, `BiologicalReplicate`, `SourceKey`).
+- Merge behavior:
+  - `intersection` mode (default): keeps only keys present in all parameter sheets to avoid missing values in the final platemap.
+  - `union` mode: keeps all keys from all sheets and allows missing values when a parameter is absent for some groups.
+- Additional behavior:
+  - Deterministic ordering by media, then strain, then biological replicate.
+  - Deterministic `Orden` assignment by strain/media grid.
+  - 96-well style sequential wells (`A1..A12`, `B1..B12`, ...).
+  - Optional `Control` relabeling (for example to `Mock`) via CLI argument.
+- Reuse without asking again when:
+  - You receive grouped parameter files (multi-sheet by parameter) and need an app-ready `platemap` file.
+  - You need to concatenate all parameters into a single `Datos` sheet while preserving BIOSZEN metadata columns first.
+  - You need a deterministic and repeatable conversion workflow for RNA-seq or phenotype parameter matrices.
+
+### `build_ergosterol_platemap_with_replicates.py`
+- Purpose: Builds a new ergosterol platemap workbook by taking a base file with biological replicate 1 and adding replicate 2 and 3 from two Results workbooks distributed by metric sheet.
+- Mapping rules implemented:
+  - `raw data` sheet -> raw sterol columns (no prefix in `Datos`).
+  - `normalized` sheet -> `NORM ...` columns.
+  - `µg per mg` sheet -> `μg/mg ...` columns.
+  - `%` sheet -> `% ...` columns.
+  - `Total sterols` is populated only for raw/NORM/μg/mg groups, never for `%`.
+- Key matching behavior:
+  - Matches rows by normalized `Media + Strain`.
+  - Treatment labels are normalized as:
+    - `mock -> Mock`
+    - `U18666A -> U18`
+    - `Rapamycin -> Rapa`
+    - `Rapamycin + U18666A (co-treatment) -> Rapa-U18`
+  - Strain labels are normalized so:
+    - `NA` maps to blank/NA strain rows in the base platemap.
+    - `BY4742 Δ...` maps to `Δ...`.
+    - `BY4742` (with/without trailing spaces) maps to `BY4742`.
+- Output behavior:
+  - Replicate 1 rows come from the base platemap values.
+  - Replicate 2/3 rows are added when the key exists in each Results source.
+  - If a sample exists only in two biological replicates, the missing replicate is skipped automatically.
+  - Wells are reassigned sequentially (`A1`, `A2`, ...), and `PlotSettings` is copied from the base file.
+- Reuse without asking again when:
+  - You need to extend an existing sterol platemap from one biological replicate to two or three replicates using Results files with the same sheet/column layout.
+  - You need the same BIOSZEN-style metadata structure (`Well`, `Strain`, `Media`, `Orden`, `Replicate`, `BiologicalReplicate`, `TechnicalReplicate`).
+  - You need safe handling of incomplete replicate coverage (for example, some keys only present in replicate 1+2).
+
 ### `build_tools2_cell_and_n_from_comparative.py`
 - Purpose: Builds one shared per-cell `Curvas_Int.xlsx` and two matching platemaps (cell-level and n-level) by combining:
   - `informe_comparativo_tools2_selector.xlsx` (`*_celula` sheets, including cumulative per-cell histogram bins),
@@ -189,3 +241,29 @@ This folder contains reusable utilities created for BIOSZEN data preparation wor
   - You need consistent width and text wrapping for key action buttons after UI label or layout changes.
   - You are validating button accessibility/responsiveness in `ui_main.R` or equivalent UI files.
   - You want a repeatable, script-based fix instead of manual edits.
+
+### `capture_manual_section_images.py`
+- Purpose: Captures high-resolution, section-focused screenshots from the live BIOSZEN app and updates manual image assets in place.
+- What it generates:
+  - `01_app_home_overview.png`
+  - `02_plot_setup_layers.png`
+  - `03_filter_media_conditions.png`
+  - `04_filter_biological_replicates.png`
+  - `10_significance_annotations.png`
+  - `13_growth_parameters_workflow.png`
+- Main inputs:
+  - `--app-dir`: BIOSZEN app root path.
+  - `--output-dir`: target image folder (default `inst/app/www/manual_images`).
+  - `--rscript`: path to `Rscript.exe`.
+  - `--data-file`: reference platemap workbook used to initialize UI state.
+  - `--curve-file`: reference curves workbook used for curve/growth-enabled states.
+  - `--window-size`: headless browser viewport (for final image resolution).
+- Main behavior:
+  - Starts the app on a random localhost port.
+  - Loads reference files to unlock data-dependent UI sections.
+  - Captures section crops from stable UI regions (not full-window screenshots).
+  - Overwrites the six manual images with refreshed captures.
+- Reuse without asking again when:
+  - You need to refresh manual screenshots after UI/layout changes.
+  - You need consistent screenshots between English and Spanish manuals.
+  - You need higher-resolution section captures while preserving existing file names and references.

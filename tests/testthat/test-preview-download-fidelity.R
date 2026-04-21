@@ -1,9 +1,9 @@
 library(testthat)
 
-app_root <- normalizePath(testthat::test_path("..", ".."))
+app_launch_dir <- app_test_launch_dir()
 
 test_that("export pipeline is wired to preview-aligned renderer", {
-  path <- file.path(app_root, "inst", "app", "server", "server_main.R")
+  path <- app_test_path("server", "server_main.R")
   txt <- paste(readLines(path, warn = FALSE), collapse = "\n")
 
   expect_match(txt, "build_current_plotly_for_export\\s*<-\\s*function")
@@ -75,7 +75,7 @@ start_bioszen_driver <- function() {
   Sys.setenv(NOT_CRAN = "true")
 
   app <- shinytest2::AppDriver$new(
-    app_dir = app_root,
+    app_dir = app_launch_dir,
     load_timeout = 90000,
     timeout = 90000,
     clean_logs = FALSE
@@ -170,11 +170,9 @@ test_that("PNG download dimensions match preview dimensions across plot types", 
   skip_if_shiny_e2e_unavailable()
   skip_if_export_backend_unavailable()
 
-  data_fixture <- file.path(
-    app_root, "inst", "app", "www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
+  data_fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
   )
-  curve_fixture <- file.path(
-    app_root, "inst", "app", "www", "reference_files", "Ejemplo_curvas.xlsx"
+  curve_fixture <- app_test_path("www", "reference_files", "Ejemplo_curvas.xlsx"
   )
   expect_true(file.exists(data_fixture))
   expect_true(file.exists(curve_fixture))

@@ -167,7 +167,7 @@ build_violin_plot_impl <- function(ctx) {
         ) +
         scale_y_continuous(
           limits = c(0, ymax),
-          breaks = seq(0, ymax, by = ybreak),
+          breaks = axis_breaks_limited(ymax, ybreak),
           expand = c(0, 0),
           oob = scales::oob_keep
         ) +
@@ -370,7 +370,7 @@ build_violin_plot_impl <- function(ctx) {
       ) +
       scale_y_continuous(
         limits = c(0, ymax),
-        breaks = seq(0, ymax, by = ybreak),
+        breaks = axis_breaks_limited(ymax, ybreak),
         expand = c(0, 0),
         oob = scales::oob_keep
       ) +

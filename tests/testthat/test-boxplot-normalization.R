@@ -4,19 +4,19 @@ test_that("boxplot build succeeds with normalized data from standard reference f
   skip_if_not_installed("ggplot2")
   skip_if_not_installed("plotly")
 
-  data_path <- testthat::test_path(
-    "..", "..", "inst", "app", "www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
+  data_path <- app_test_path(
+    "www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
   )
   expect_true(
     file.exists(data_path),
     info = "Missing standardized reference fixture: inst/app/www/reference_files/Ejemplo_platemap_parametros.xlsx"
   )
 
-  old <- setwd(testthat::test_path("..", "..", "inst", "app"))
+  old <- setwd(app_test_path())
   on.exit(setwd(old), add = TRUE)
 
-  source(testthat::test_path("..", "..", "inst", "app", "helpers.R"))
-  source(testthat::test_path("..", "..", "inst", "app", "global.R"))
+  source(app_test_path( "helpers.R"))
+  source(app_test_path( "global.R"))
 
   prep <- prepare_platemap(
     read_excel_tmp(data_path, "Datos"),

@@ -225,6 +225,7 @@ x_wrap,Ajustar etiquetas X
 x_wrap_lines,Máx. líneas:
 y_axis_settings,Ajustes Eje Y
 y_interval,Int Y
+interval_hint_general,Sugerencia: Usa intervalos mas grandes para renderizar mas rapido y con menos marcas en los ejes.
 y_max,Y max
 corr_settings,Ajustes Correlación
 corr_param_x,Parámetro eje X:

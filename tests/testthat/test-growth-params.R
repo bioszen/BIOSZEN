@@ -1,7 +1,7 @@
 library(testthat)
 
-root <- normalizePath(testthat::test_path("..", ".."))
-source(file.path(root, "inst", "app", "params", "params_growth.R"))
+root <- app_test_root()
+source(app_test_path( "params", "params_growth.R"))
 
 make_growth <- function(well, rate = 0.1, n = 20) {
   time <- seq(0, n - 1)

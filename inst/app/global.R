@@ -26,7 +26,6 @@ library(RColorBrewer)
 library(viridis)
 library(htmlwidgets)   # para saveWidget()
 library(webshot2)      # PNG desde html/plotly   (trae Chrome headless)
-library(webshot)
 library(ggrepel)        # etiquetas que no se sobre-ponen
 library(shinyjs)
 library(bslib)
@@ -481,6 +480,28 @@ read_excel_tmp <- function(path, sheet = NULL) {
   stop("El archivo subido no es un Excel válido (.xls o .xlsx)")  
 }  
 
+excel_sheets_tmp <- function(path) {
+  sig <- readBin(path, "raw", n = 8)
+
+  is_xls <- identical(sig[1:4], as.raw(c(0xD0, 0xCF, 0x11, 0xE0)))
+  is_zip <- identical(sig[1:4], as.raw(c(0x50, 0x4B, 0x03, 0x04)))
+
+  if (!isTRUE(is_xls) && !isTRUE(is_zip)) {
+    stop("El archivo subido no es un Excel válido (.xls o .xlsx)")
+  }
+
+  ext <- if (isTRUE(is_xls)) ".xls" else ".xlsx"
+  tmp <- tempfile(fileext = ext)
+  on.exit(unlink(tmp), add = TRUE)
+
+  copied <- file.copy(path, tmp, overwrite = TRUE)
+  if (!isTRUE(copied)) {
+    stop("No se pudo preparar el archivo temporal para leer las hojas de Excel.")
+  }
+
+  readxl::excel_sheets(tmp)
+}
+
 is_csv_filename <- function(name) {
   nm <- as.character(name %||% "")
   if (!length(nm) || is.na(nm[[1]]) || !nzchar(nm[[1]])) return(FALSE)
@@ -877,7 +898,7 @@ apply_column_aliases <- function(df, allow_media_alias = TRUE) {
 }
 
 platemap_from_summary_wb <- function(file) {
-  sheets <- readxl::excel_sheets(file)
+  sheets <- excel_sheets_tmp(file)
   res <- lapply(sheets, function(sh) {
     full <- readxl::read_excel(file, sheet = sh, col_names = FALSE)
 
@@ -925,10 +946,16 @@ platemap_from_summary_wb <- function(file) {
         TechnicalReplicate = 1,
         Parameter = sh
       ) |>
-      dplyr::select(
-        .data$Strain, .data$Media, .data$BiologicalReplicate,
-        .data$TechnicalReplicate, .data$Parameter, .data$Valor
-      )
+      dplyr::select(dplyr::all_of(
+        c(
+          "Strain",
+          "Media",
+          "BiologicalReplicate",
+          "TechnicalReplicate",
+          "Parameter",
+          "Valor"
+        )
+      ))
     attr(out, "col_labels") <- list(Strain = strain_label, Media = NULL)
     out
   })
@@ -1968,7 +1995,7 @@ build_platemap_from_mean_sd_data <- function(
 }
 
 build_platemap_from_mean_sd <- function(file) {
-  sheets <- readxl::excel_sheets(file)
+  sheets <- excel_sheets_tmp(file)
   sh <- find_sheet_alias(
     sheets,
     c("Parameters_Summary", "Parametros_Summary", "Summary_Parameters", "Resumen_Parametros")
@@ -2108,7 +2135,7 @@ build_curve_from_mean_sd_data <- function(raw, defaults_profile = c("excel", "cs
 }
 
 build_curve_from_mean_sd <- function(file) {
-  sheets <- readxl::excel_sheets(file)
+  sheets <- excel_sheets_tmp(file)
   sh <- find_sheet_alias(
     sheets,
     c("Curves_Summary", "Curvas_Summary", "Summary_Curves", "Resumen_Curvas")
@@ -2191,7 +2218,7 @@ load_curve_workbook <- function(file, file_name = NULL) {
       }
     }
   } else {
-    sheets <- tryCatch(readxl::excel_sheets(file_chr), error = function(e) character(0))
+    sheets <- tryCatch(excel_sheets_tmp(file_chr), error = function(e) character(0))
     summary_aliases <- c(
       "Curves_Summary", "Curvas_Summary", "Summary_Curves", "Resumen_Curvas"
     )

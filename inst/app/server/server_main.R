@@ -429,7 +429,24 @@ server <- function(input, output, session) {
   reps_group_selected <- reactiveVal(list())
   qc_tech_selected <- reactiveVal(list())
   qc_tech_selected_by_param <- reactiveVal(list())
+  last_plot_type <- reactiveVal("Boxplot")
+  last_adv_palette_name <- reactiveVal("BuGn")
+
+  observeEvent(input$tipo, {
+    current_type <- trimws(as.character(input$tipo %||% ""))
+    if (nzchar(current_type)) {
+      last_plot_type(current_type)
+    }
+  }, ignoreInit = FALSE)
+
+  observeEvent(input$adv_pal_name, {
+    current_palette <- trimws(as.character(input$adv_pal_name %||% ""))
+    if (nzchar(current_palette)) {
+      last_adv_palette_name(current_palette)
+    }
+  }, ignoreInit = FALSE)
   qc_tech_bulk_updating <- reactiveVal(FALSE)
+  replicate_bulk_updating <- reactiveVal(FALSE)
   qc_tech_tab_inserted <- reactiveVal(FALSE)
   qc_tech_tab_lang <- reactiveVal(NULL)
   heat_force_empty <- reactiveVal(FALSE)
@@ -440,6 +457,8 @@ server <- function(input, output, session) {
   merged_curve_path <- reactiveVal(NULL)
   merged_curve_name <- reactiveVal(NULL)
   curve_merge_status <- reactiveVal("")
+  missing_params_notice_key <- reactiveVal("")
+  norm_unavailable_notice_key <- reactiveVal("")
 
   ylims <- reactiveValues()
   strain_label_ui <- reactiveVal(NULL)
@@ -510,11 +529,10 @@ server <- function(input, output, session) {
     }
   }
   has_ctrl_selected <- function(ctrl_val = input$ctrlMedium) {
-    if (is.null(ctrl_val) || !length(ctrl_val)) return(FALSE)
-    raw <- ctrl_val[[1]]
-    if (is.null(raw) || is.na(raw)) return(FALSE)
-    ctrl_chr <- trimws(as.character(raw))
-    nzchar(ctrl_chr)
+    isTRUE(should_use_normalized_data(
+      do_norm = TRUE,
+      ctrl_medium = ctrl_val
+    ))
   }
 
   normalize_rep_selection <- function(values) {
@@ -654,6 +672,72 @@ server <- function(input, output, session) {
     set_default_labels(input$app_lang %||% i18n_lang, force = TRUE)
   }
   dataset_loading <- reactiveVal(FALSE)
+  axis_sync_inflight <- reactiveVal(FALSE)
+  input_update_cache <- new.env(parent = emptyenv())
+
+  normalize_update_values <- function(values) {
+    if (is.null(values)) return(character(0))
+    vals <- values
+    if (is.list(vals) && !is.data.frame(vals)) {
+      vals <- unlist(vals, use.names = FALSE)
+    }
+    vals <- as.character(vals %||% character(0))
+    vals <- vals[!is.na(vals) & nzchar(vals)]
+    unique(vals)
+  }
+
+  update_text_input_if_changed <- function(input_id, value = "") {
+    target <- as.character(value %||% "")
+    current <- as.character(isolate(input[[input_id]] %||% ""))
+    if (identical(current, target)) return(FALSE)
+    updateTextInput(session, input_id, value = target)
+    TRUE
+  }
+
+  update_checkbox_input_if_changed <- function(input_id, value = FALSE) {
+    target <- isTRUE(value)
+    current <- isTRUE(isolate(input[[input_id]]))
+    if (identical(current, target)) return(FALSE)
+    updateCheckboxInput(session, input_id, value = target)
+    TRUE
+  }
+
+  enforce_axis_break_limit <- function(break_id,
+                                       max_id,
+                                       min_id = NULL,
+                                       max_ticks = 40L) {
+    observeEvent(
+      list(input[[break_id]], input[[max_id]], if (!is.null(min_id)) input[[min_id]] else NULL),
+      {
+        br_raw <- suppressWarnings(as.numeric(input[[break_id]]))
+        if (!is.finite(br_raw) || br_raw <= 0) return()
+
+        lim <- if (is.null(min_id)) {
+          axis_interval_limited(
+            max_value = input[[max_id]],
+            interval = br_raw,
+            max_ticks = max_ticks,
+            fallback_ticks = 6L
+          )
+        } else {
+          axis_interval_limited_range(
+            min_value = input[[min_id]],
+            max_value = input[[max_id]],
+            interval = br_raw,
+            max_ticks = max_ticks,
+            fallback_ticks = 6L
+          )
+        }
+        safe_step <- suppressWarnings(as.numeric(lim$step))
+        if (!is.finite(safe_step) || safe_step <= 0) return()
+
+        tol <- max(1e-9, abs(safe_step) * 1e-6)
+        if (abs(br_raw - safe_step) <= tol) return()
+        updateNumericInput(session, break_id, value = safe_step)
+      },
+      ignoreInit = TRUE
+    )
+  }
 
   plot_payload_cache_get <- function(slot, key) {
     slot <- as.character(slot %||% "")
@@ -700,16 +784,7 @@ server <- function(input, output, session) {
   selectize_server_threshold <- 30L
   large_param_threshold <- 100L
 
-  normalize_selectize_values <- function(choices) {
-    if (is.null(choices)) return(character(0))
-    vals <- choices
-    if (is.list(vals) && !is.data.frame(vals)) {
-      vals <- unlist(vals, use.names = FALSE)
-    }
-    vals <- as.character(vals %||% character(0))
-    vals <- vals[!is.na(vals) & nzchar(vals)]
-    unique(vals)
-  }
+  normalize_selectize_values <- normalize_update_values
 
   should_use_server_selectize <- function(choices) {
     length(normalize_selectize_values(choices)) > selectize_server_threshold
@@ -720,21 +795,58 @@ server <- function(input, output, session) {
                                         selected = NULL,
                                         label = NULL,
                                         options = NULL) {
+    normalized_choices <- normalize_selectize_values(choices)
+    normalized_selected <- if (is.null(selected)) {
+      NULL
+    } else {
+      normalize_update_values(selected)
+    }
+    if (!is.null(normalized_selected) && length(normalized_choices)) {
+      normalized_selected <- intersect(normalized_selected, normalized_choices)
+    }
+    server_mode <- isTRUE(should_use_server_selectize(choices))
+
+    cache_key <- paste0("selectize::", input_id)
+    update_signature <- list(
+      choices = normalized_choices,
+      selected = normalized_selected,
+      label = if (is.null(label)) NULL else as.character(label[[1]]),
+      options = options,
+      server = server_mode
+    )
+    previous_signature <- if (exists(cache_key, envir = input_update_cache, inherits = FALSE)) {
+      get(cache_key, envir = input_update_cache, inherits = FALSE)
+    } else {
+      NULL
+    }
+    if (identical(update_signature, previous_signature)) {
+      return(invisible(FALSE))
+    }
+
     args <- list(
       session = session,
       inputId = input_id,
       choices = choices,
       selected = selected,
-      server = isTRUE(should_use_server_selectize(choices))
+      server = server_mode
     )
     if (!is.null(label)) args$label <- label
     if (!is.null(options)) args$options <- options
     do.call(updateSelectizeInput, args)
-    invisible(NULL)
+    assign(cache_key, update_signature, envir = input_update_cache)
+    invisible(TRUE)
   }
 
   # Heatmap/correlation now render synchronously to avoid async lockups.
   output$heatmapLoadingUI <- renderUI(NULL)
+
+  # Guard against tiny user-entered intervals that would create too many
+  # axis ticks and stall rendering during rapid transitions.
+  enforce_axis_break_limit("ybreak", "ymax", max_ticks = 40L)
+  enforce_axis_break_limit("xbreak_cur", "xmax_cur", max_ticks = 40L)
+  enforce_axis_break_limit("ybreak_cur", "ymax_cur", max_ticks = 40L)
+  enforce_axis_break_limit("xbreak_corr", "xmax_corr", min_id = "xmin_corr", max_ticks = 60L)
+  enforce_axis_break_limit("ybreak_corr", "ymax_corr", min_id = "ymin_corr", max_ticks = 60L)
 
   observe({
     flag <- if (isTRUE(summary_input_mode())) "true" else "false"
@@ -1075,7 +1187,7 @@ server <- function(input, output, session) {
         Campo = c("corrm_params", "corrm_method", "corrm_adjust", "corrm_show_sig"),
         Valor = c(
           paste(input$corrm_params %||% character(0), collapse = ","),
-          input$corrm_method %||% "spearman",
+          input$corrm_method %||% input$corr_method %||% "pearson",
           input$corrm_adjust %||% "none",
           as.character(input$corrm_show_sig %||% TRUE)
         )
@@ -1400,8 +1512,16 @@ server <- function(input, output, session) {
       )
       default_type <- "Boxplot"
     }
-    selected_type <- input$tipo %||% default_type
-    if (!selected_type %in% type_ids) selected_type <- default_type
+    selected_type <- input$tipo %||% isolate(last_plot_type()) %||% default_type
+    if (!selected_type %in% type_ids) {
+      sticky_type <- isolate(last_plot_type()) %||% ""
+      if (nzchar(sticky_type) && sticky_type %in% type_ids) {
+        selected_type <- sticky_type
+      } else {
+        selected_type <- default_type
+      }
+    }
+    last_plot_type(selected_type)
     updateRadioButtons(
       session,
       "tipo",
@@ -1465,7 +1585,7 @@ server <- function(input, output, session) {
         c("pearson", "spearman", "kendall"),
         list(tr("corr_method_pearson"), tr("corr_method_spearman"), tr("corr_method_kendall"))
       ),
-      selected = input$corrm_method %||% "spearman"
+      selected = input$corrm_method %||% input$corr_method %||% "pearson"
     )
 
     updateRadioButtons(
@@ -1887,7 +2007,7 @@ server <- function(input, output, session) {
     lang_js <- gsub("\\\\", "\\\\\\\\", as.character(lang))
     lang_js <- gsub("'", "\\\\'", lang_js, fixed = TRUE)
     shinyjs::runjs(sprintf(
-      "(function(){var node=document.getElementById('i18n-state');if(!node||!window.jQuery)return;if(!Array.isArray(window.i18n_translations))return;jQuery(node).data('lang','%s').trigger('change');})();",
+      "(function(){window.BIOSZEN_LANG='%s';document.dispatchEvent(new Event('bioszen:lang-changed'));})();",
       lang_js
     ))
     set_default_labels(lang, force = FALSE)
@@ -2542,11 +2662,61 @@ server <- function(input, output, session) {
     merged_well_map(NULL)
     merge_status("")
 
-    ok <- tryCatch({
+    file_path <- input$dataFile$datapath
+    file_name <- input$dataFile$name %||% ""
+    is_csv_input <- is_csv_filename(file_name)
 
-      file_path <- input$dataFile$datapath
-      file_name <- input$dataFile$name %||% ""
-      is_csv_input <- is_csv_filename(file_name)
+    recover_grouped_platemap <- function() {
+      if (isTRUE(is_csv_input)) return(FALSE)
+
+      conv_fb <- tryCatch(
+        build_platemap_from_summary(file_path),
+        error = function(e) NULL
+      )
+      if (is.null(conv_fb)) return(FALSE)
+
+      prep_fb <- tryCatch(
+        prepare_platemap(conv_fb$Datos, conv_fb$PlotSettings, defaults_profile = "excel"),
+        error = function(e) NULL
+      )
+      if (is.null(prep_fb)) return(FALSE)
+
+      df_fb <- prep_fb$datos
+      cfg_fb <- prep_fb$cfg
+      if (!is.data.frame(df_fb) || !nrow(df_fb) || !is.data.frame(cfg_fb) || !"Parameter" %in% names(cfg_fb)) {
+        return(FALSE)
+      }
+
+      params_fb <- as.character(cfg_fb$Parameter %||% character(0))
+      params_fb <- params_fb[!is.na(params_fb) & nzchar(params_fb)]
+      if (!length(params_fb) || identical(params_fb, "Parametro_dummy")) return(FALSE)
+
+      reset_dataset_state()
+      apply_data_labels(conv_fb$Labels %||% list(Strain = NULL, Media = NULL), input$app_lang %||% i18n_lang)
+
+      cfg_y_max_fb <- suppressWarnings(as.numeric(cfg_fb$Y_Max %||% NA_real_))
+      cfg_interval_fb <- suppressWarnings(as.numeric(cfg_fb$Interval %||% NA_real_))
+      for (i in seq_along(params_fb)) {
+        p_chr <- trimws(params_fb[[i]])
+        if (is.na(p_chr) || !nzchar(p_chr)) next
+        ylims[[p_chr]] <- list(
+          ymax = cfg_y_max_fb[[i]],
+          ybreak = cfg_interval_fb[[i]]
+        )
+        ylims[[paste0(p_chr, "_Norm")]] <- list(
+          ymax = 1,
+          ybreak = 0.2
+        )
+      }
+
+      datos_box(df_fb)
+      plot_cfg_box(cfg_fb)
+      summary_input_mode(FALSE)
+      is_group_data(TRUE)
+      TRUE
+    }
+
+    ok <- tryCatch({
 
       df_raw <- NULL
       cfg_raw <- NULL
@@ -2642,8 +2812,28 @@ server <- function(input, output, session) {
       refresh_static_choices()
 
       if ((isTRUE(summary_mode_this) || isTRUE(is_group)) && !isTRUE(is_csv_input)) {
-        curve_conv <- load_curve_workbook(file_path, file_name = file_name)
-        if (isTRUE(curve_conv$ok)) {
+        curve_conv <- tryCatch(
+          load_curve_workbook(file_path, file_name = file_name),
+          error = function(e) {
+            list(
+              ok = FALSE,
+              reason = "invalid",
+              message = conditionMessage(e),
+              Sheet1 = NULL,
+              Sheet2 = NULL,
+              Meta = NULL,
+              Summary = NULL,
+              SummaryMode = FALSE
+            )
+          }
+        )
+
+        curve_ok <- isTRUE(curve_conv$ok) &&
+          is.data.frame(curve_conv$Sheet1) &&
+          is.data.frame(curve_conv$Sheet2) &&
+          all(c("X_Max", "Interval_X", "Y_Max", "Interval_Y") %in% names(curve_conv$Sheet2))
+
+        if (curve_ok) {
           cur_data_box(curve_conv$Sheet1)
           cur_cfg_box(curve_conv$Sheet2)
           cur_meta_box(curve_conv$Meta)
@@ -2657,7 +2847,7 @@ server <- function(input, output, session) {
           )
         } else {
           lang <- input$app_lang %||% i18n_lang
-          if (identical(curve_conv$reason, "invalid")) {
+          if (identical(curve_conv$reason %||% "", "invalid")) {
             detail <- curve_conv$message
             if (!is.character(detail) || !nzchar(detail)) {
               detail <- "Curve workbook format not recognized."
@@ -2685,10 +2875,22 @@ server <- function(input, output, session) {
       FALSE
     })
     
-    if (!ok) return()
+    if (!ok) {
+      ok <- recover_grouped_platemap()
+      if (!ok) return()
+    }
     
     ## Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â‚¬â€  REFRESCAR UI Ã¢â‚¬â€ Ã¢â‚¬Å (segÃƒÂºn haya o no parÃƒÂ¡metros Ã‚Â«realesÃ‚Â») Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-    params <- plot_cfg_box()$Parameter
+    params <- as.character(plot_cfg_box()$Parameter %||% character(0))
+    params <- params[!is.na(params) & nzchar(params)]
+    if (!isTRUE(is_csv_input) &&
+        (!length(params) || identical(params, "Parametro_dummy"))) {
+      recovered <- recover_grouped_platemap()
+      if (isTRUE(recovered)) {
+        params <- as.character(plot_cfg_box()$Parameter %||% character(0))
+        params <- params[!is.na(params) & nzchar(params)]
+      }
+    }
     
     # 2.a) actualiza selector de tipo de grÃƒÂ¡fico ------------------------------
     if (length(params) == 0 || identical(params, "Parametro_dummy")) {
@@ -2745,7 +2947,12 @@ server <- function(input, output, session) {
       )
 
       if (length(params)) {
-        first_cfg <- cfg[cfg$Parameter == params[1], ]
+        cfg_ui <- plot_cfg_box()
+        first_cfg <- if (is.data.frame(cfg_ui) && "Parameter" %in% names(cfg_ui)) {
+          cfg_ui[cfg_ui$Parameter == params[1], , drop = FALSE]
+        } else {
+          data.frame(Y_Max = NA_real_, Interval = NA_real_)
+        }
         updateNumericInput(session, "ymax",
                            label  = paste0(tr("y_max"), " (", params[1], "):"),
                            value  = first_cfg$Y_Max)
@@ -3183,14 +3390,48 @@ server <- function(input, output, session) {
     params
   }
 
-  update_stack_params_input <- function(params, selected = NULL) {
+  sanitize_param_vector <- function(params) {
     params <- unique(as.character(params %||% character(0)))
-    params <- params[!is.na(params) & nzchar(params)]
+    params[!is.na(params) & nzchar(params)]
+  }
+
+  safe_plot_setting_params <- function() {
+    cfg <- tryCatch(plot_settings(), error = function(e) NULL)
+    if (is.null(cfg) || !"Parameter" %in% names(cfg)) return(character(0))
+    sanitize_param_vector(cfg$Parameter)
+  }
+
+  resolve_stack_params <- function(df = NULL, selected = NULL) {
+    params_all <- safe_plot_setting_params()
+
+    if (is.null(selected)) {
+      selected <- input$stackParams %||% character(0)
+    }
+    selected <- sanitize_param_vector(selected)
+
+    params <- if (length(selected)) selected else params_all
+    if (length(params_all)) {
+      params <- intersect(params, params_all)
+    }
+
+    if (is.data.frame(df)) {
+      available <- names(df)
+      params <- intersect(params, available)
+      if (!length(params) && length(params_all)) {
+        params <- intersect(params_all, available)
+      }
+    }
+
+    params
+  }
+
+  update_stack_params_input <- function(params, selected = NULL) {
+    params <- sanitize_param_vector(params)
 
     if (is.null(selected)) {
       selected <- isolate(input$stackParams %||% character(0))
     }
-    selected <- intersect(as.character(selected %||% character(0)), params)
+    selected <- intersect(sanitize_param_vector(selected), params)
     if (!length(selected)) selected <- default_stack_params(params)
 
     if (is_server_side_param_set(params)) {
@@ -3417,11 +3658,21 @@ server <- function(input, output, session) {
   
   # --- ParÃƒÂ¡m. seguro: siempre existe en el Excel cargado ----  
   safe_param <- reactive({
-    req(input$param)
-    if (isTRUE(input$doNorm) && has_ctrl_selected())
-      paste0(input$param, "_Norm")
-    else
-      input$param
+    params_all <- safe_plot_setting_params()
+    current <- as.character(input$param %||% "")
+    if (!length(current) || is.na(current[[1]])) current <- ""
+    current <- current[[1]]
+
+    if ((!nzchar(current) || !current %in% params_all) && length(params_all)) {
+      current <- params_all[[1]]
+    }
+    if (!nzchar(current)) return("")
+
+    if (isTRUE(input$doNorm) && has_ctrl_selected()) {
+      paste0(current, "_Norm")
+    } else {
+      current
+    }
   })
   
   
@@ -3589,9 +3840,12 @@ server <- function(input, output, session) {
     df     <- apply_qc_tech_filter_raw(datos_combinados())
     present <- intersect(params, names(df))
     missing <- setdiff(params, present)
+    missing <- sort(unique(missing))
     
     # 2) Notificar si faltan
-    if (length(missing) > 0) {
+    missing_key <- paste(missing, collapse = "|")
+    last_missing_key <- isolate(missing_params_notice_key())
+    if (length(missing) > 0 && !identical(missing_key, last_missing_key)) {
       showNotification(
         sprintf(
           tr_text("missing_params_warning", input$app_lang %||% i18n_lang),
@@ -3599,6 +3853,9 @@ server <- function(input, output, session) {
         ),
         type = "warning", duration = 5
       )
+    }
+    if (!identical(missing_key, last_missing_key)) {
+      missing_params_notice_key(missing_key)
     }
     
     # 3) Agrupar y resumir parametros + columnas SD_/N_ si existen.
@@ -3615,6 +3872,17 @@ server <- function(input, output, session) {
         .groups = "drop"
       )
   })
+
+  active_plot_data <- function() {
+    if (isTRUE(should_use_normalized_data(
+      do_norm = input$doNorm,
+      ctrl_medium = input$ctrlMedium
+    ))) {
+      datos_agrupados_norm()
+    } else {
+      datos_agrupados()
+    }
+  }
   
   
   
@@ -3624,18 +3892,37 @@ server <- function(input, output, session) {
     
     
     # 1) poblar selector de cepas  
+    strain_choices <- sort(unique(datos_agrupados()$Strain))
+    prev_strain <- isolate(as.character(input$strain %||% ""))
+    if (!length(prev_strain) || is.na(prev_strain[[1]])) prev_strain <- ""
+    prev_strain <- prev_strain[[1]]
+    selected_strain <- if (nzchar(prev_strain) && prev_strain %in% strain_choices) {
+      prev_strain
+    } else if (length(strain_choices)) {
+      strain_choices[[1]]
+    } else {
+      character(0)
+    }
     update_selectize_adaptive(
       "strain",
       label = paste0(strain_label_ui() %||% default_label_text(input$app_lang %||% i18n_lang, "strain_label"), ":"),
-      choices = sort(unique(datos_agrupados()$Strain))
+      choices = strain_choices,
+      selected = selected_strain
     )  
     # 2) poblar filtro de medios  
     medias <- sort(unique(datos_agrupados()$Media))  
     output$showMediosUI <- renderUI({  
       input$app_lang
       media_label <- media_label_ui() %||% default_label_text(input$app_lang %||% i18n_lang, "media_label")
-      checkboxGroupInput("showMedios", paste0(media_label, ":"),
-                         choices = medias, selected = medias)  
+      prev_medias <- isolate(as.character(input$showMedios %||% character(0)))
+      selected_medias <- intersect(prev_medias, medias)
+      if (!length(selected_medias)) selected_medias <- medias
+      checkboxGroupInput(
+        "showMedios",
+        paste0(media_label, ":"),
+        choices = medias,
+        selected = selected_medias
+      )
     })  
     # 3) inicializar orden de medios  
     # Inicializa orderMedios usando el orden de la columna Ã¢â‚¬ËœOrdenÃ¢â‚¬â„¢
@@ -3645,11 +3932,10 @@ server <- function(input, output, session) {
       arrange(Orden) %>%
       pull(Media)
     
-    updateTextInput(session, "orderMedios",
-                    value = paste(medias_order, collapse = ","))
-    
-    updateCheckboxInput(session, "toggleMedios",  value = TRUE)  
-    updateCheckboxInput(session, "toggleGroups", value = TRUE)  
+    update_text_input_if_changed("orderMedios", paste(medias_order, collapse = ","))
+
+    update_checkbox_input_if_changed("toggleMedios", value = TRUE)
+    update_checkbox_input_if_changed("toggleGroups", value = TRUE)
     
     # ------------------------------------------------------------------  
     
@@ -3664,7 +3950,7 @@ server <- function(input, output, session) {
     df <- if (use_param) {
       param_rep_df()
     } else {
-      if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+      active_plot_data()
     }
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return(NULL)
     if (scope_sel == "Por Cepa" && !is.null(input$showMedios)) {
@@ -3727,7 +4013,7 @@ server <- function(input, output, session) {
         error = function(e) {  
           showNotification(tr_text("norm_failed_generic", lang), type = "warning", duration = 6)  
           df_raw %>% dplyr::mutate(dplyr::across(  
-            dplyr::all_of(params),  
+            dplyr::any_of(params),  
             ~ .x,  
             .names = "{.col}_Norm"  
           ))  
@@ -3740,18 +4026,25 @@ server <- function(input, output, session) {
     norm_mode <- as.character(attr(res, "norm_mode") %||% "")
     should_warn_unavailable <- isTRUE(attr(res, "norm_fallback")) &&
       identical(norm_mode, "unavailable")
+    ctrl_chr <- if (!is.null(ctrl) && length(ctrl) && !is.na(ctrl[[1]])) {
+      trimws(as.character(ctrl[[1]]))
+    } else {
+      ""
+    }
+    warn_key <- ""
     if (isTRUE(should_warn_unavailable)) {
-      ctrl_chr <- if (!is.null(ctrl) && length(ctrl) && !is.na(ctrl[[1]])) {
-        trimws(as.character(ctrl[[1]]))
-      } else {
-        ""
+      warn_key <- paste0("unavailable::", tolower(ctrl_chr))
+      if (!identical(isolate(norm_unavailable_notice_key()), warn_key)) {
+        msg <- if (nzchar(ctrl_chr)) {
+          sprintf(tr_text("norm_unavailable_ctrl", lang), ctrl_chr)
+        } else {
+          tr_text("norm_unavailable_ctrl_noctrl", lang)
+        }
+        showNotification(msg, type = "warning", duration = 6)
       }
-      msg <- if (nzchar(ctrl_chr)) {
-        sprintf(tr_text("norm_unavailable_ctrl", lang), ctrl_chr)
-      } else {
-        tr_text("norm_unavailable_ctrl_noctrl", lang)
-      }
-      showNotification(msg, type = "warning", duration = 6)
+    }
+    if (!identical(isolate(norm_unavailable_notice_key()), warn_key)) {
+      norm_unavailable_notice_key(warn_key)
     }
   
     res  
@@ -3765,6 +4058,9 @@ server <- function(input, output, session) {
     if (is.null(input$showMedios)) return()
     medias <- sort(unique(df$Media))  
     sel    <- if (isTRUE(input$toggleMedios)) medias else character(0)  
+    current_sel <- sort(unique(as.character(input$showMedios %||% character(0))))
+    target_sel <- sort(unique(as.character(sel %||% character(0))))
+    if (identical(current_sel, target_sel)) return()
     updateCheckboxGroupInput(session,  
                              inputId  = "showMedios",  
                              choices  = medias,  
@@ -3780,6 +4076,9 @@ server <- function(input, output, session) {
     if (is.null(input$showGroups)) return()
     grps <- unique(paste(df$Strain, df$Media, sep = "-"))  
     sel  <- if (isTRUE(input$toggleGroups)) grps else character(0)  
+    current_sel <- sort(unique(as.character(input$showGroups %||% character(0))))
+    target_sel <- sort(unique(as.character(sel %||% character(0))))
+    if (identical(current_sel, target_sel)) return()
     updateCheckboxGroupInput(session,  
                              inputId  = "showGroups",  
                              choices  = grps,  
@@ -3796,7 +4095,7 @@ server <- function(input, output, session) {
     df <- if (use_param) {
       param_rep_df()
     } else {
-      if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+      active_plot_data()
     }
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return(NULL)
     df <- df %>%
@@ -3893,7 +4192,11 @@ server <- function(input, output, session) {
         checkboxGroupInput(
           "showGroups", tr("groups_label"),
           choices  = grps,
-          selected = grps
+          selected = {
+            prev_groups <- isolate(as.character(input$showGroups %||% character(0)))
+            selected_groups <- intersect(prev_groups, grps)
+            if (!length(selected_groups)) grps else selected_groups
+          }
         ),
         textInput(
           "orderGroups", tr("order_csv"),
@@ -3901,7 +4204,7 @@ server <- function(input, output, session) {
         )
       )
     })
-    updateCheckboxInput(session, "toggleGroups", value = TRUE)
+    update_checkbox_input_if_changed("toggleGroups", value = TRUE)
   })
   
   output$repsGrpUI <- renderUI({
@@ -3912,7 +4215,7 @@ server <- function(input, output, session) {
     df <- if (use_param) {
       param_rep_df()
     } else {
-      if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+      active_plot_data()
     }
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return(NULL)
     df <- df %>%
@@ -3971,14 +4274,18 @@ server <- function(input, output, session) {
   )
 
   observeEvent(rm_reps_all_debounced(), {
+    if (isTRUE(replicate_bulk_updating())) return()
     drop_all <- rm_reps_all_debounced()
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
     df <- if (use_param) {
       param_rep_df()
     } else {
-      if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+      active_plot_data()
     }
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return()
+
+    replicate_bulk_updating(TRUE)
+    on.exit(replicate_bulk_updating(FALSE), add = TRUE)
 
     scope_sel <- input$scope %||% "Por Cepa"
     if (scope_sel == "Por Cepa") {
@@ -4099,11 +4406,7 @@ server <- function(input, output, session) {
   # -------------------------------------------------------------------------
 
   observe({
-    ps <- plot_settings()
-    params <- input$stackParams
-    if (is.null(params) || !length(params)) {
-      params <- if (!is.null(ps)) ps$Parameter else character(0)
-    }
+    params <- resolve_stack_params()
     current <- isolate(input$sig_param)
     if (!length(params)) {
       update_selectize_adaptive(
@@ -4139,6 +4442,14 @@ server <- function(input, output, session) {
     
     cfg <- plot_settings() %>%
       dplyr::filter(Parameter == input$param)
+    if (!nrow(cfg)) return()
+
+    axis_sync_inflight(TRUE)
+    on.exit({
+      session$onFlushed(function() {
+        axis_sync_inflight(FALSE)
+      }, once = TRUE)
+    }, add = TRUE)
     
     # 1Ã‚Â· refrescar las cajas
     updateNumericInput(session, "ymax",
@@ -4445,7 +4756,7 @@ server <- function(input, output, session) {
   
   # ---- Reactivos base (sin cache forzado) para filtrar una sola vez por alcance ----
   base_plot_df <- reactive({
-    df <- if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+    df <- active_plot_data()
     if (!is.data.frame(df) || !nrow(df)) return(df)
     if ("Strain" %in% names(df)) df$Strain <- sanitize_curve_label(df$Strain)
     if ("Media" %in% names(df)) df$Media <- sanitize_curve_label(df$Media)
@@ -4455,9 +4766,28 @@ server <- function(input, output, session) {
   scoped_plot_df <- reactive({
     df <- base_plot_df()
     if (input$scope == "Por Cepa") {
-      req(input$strain)
+      strains <- sort(unique(as.character(df$Strain %||% character(0))))
+      strains <- strains[!is.na(strains) & nzchar(strains)]
+      current_strain <- as.character(input$strain %||% "")
+      if (!length(current_strain) || is.na(current_strain[[1]])) current_strain <- ""
+      current_strain <- current_strain[[1]]
+      selected_strain <- if (nzchar(current_strain) && current_strain %in% strains) {
+        current_strain
+      } else if (length(strains)) {
+        strains[[1]]
+      } else {
+        ""
+      }
+      if (!nzchar(selected_strain)) return(df[0, , drop = FALSE])
+      if (!identical(current_strain, selected_strain)) {
+        update_selectize_adaptive(
+          "strain",
+          choices = strains,
+          selected = selected_strain
+        )
+      }
       df <- df %>%
-        filter(Strain == input$strain) %>%
+        filter(Strain == selected_strain) %>%
         order_filter_strain() %>%
         filter_reps_strain()
     } else {
@@ -4477,9 +4807,17 @@ server <- function(input, output, session) {
 
     df <- base_plot_df()
     if (scope == "Por Cepa") {
-      req(strain)
+      strains <- sort(unique(as.character(df$Strain %||% character(0))))
+      strains <- strains[!is.na(strains) & nzchar(strains)]
+      strain_chr <- as.character(strain %||% "")
+      if (!length(strain_chr) || is.na(strain_chr[[1]])) strain_chr <- ""
+      strain_chr <- strain_chr[[1]]
+      if (!nzchar(strain_chr) || !strain_chr %in% strains) {
+        strain_chr <- if (length(strains)) strains[[1]] else ""
+      }
+      if (!nzchar(strain_chr)) return(df[0, , drop = FALSE])
       df <- df %>%
-        filter(Strain == strain) %>%
+        filter(Strain == strain_chr) %>%
         order_filter_strain() %>%
         filter_reps_strain()
     } else {
@@ -4523,10 +4861,20 @@ server <- function(input, output, session) {
     out
   })
   
+  order_groups_input <- debounce(
+    reactive(as.character(input$orderGroups %||% "")),
+    millis = 250
+  )
+  order_medios_input <- debounce(
+    reactive(as.character(input$orderMedios %||% "")),
+    millis = 250
+  )
+
   # --- helper: orden seguro de grupos (vacio si el input esta vacio) ----
-  safe_orderGroups <- function() {  
-    if (!is.null(input$orderGroups) && nzchar(input$orderGroups)) {  
-      trimws(unlist(strsplit(input$orderGroups, ",")))  
+  safe_orderGroups <- function() {
+    order_groups_chr <- order_groups_input()
+    if (nzchar(order_groups_chr)) {
+      trimws(unlist(strsplit(order_groups_chr, ",")))
     } else {  
       NULL  
     }  
@@ -4549,8 +4897,9 @@ server <- function(input, output, session) {
       arrange(Orden) %>%
       pull(Media)
     # 3) Si el usuario escribiÃƒÂ³ un CSV en orderMedios, lo prioriza
-    if (!is.null(input$orderMedios) && nzchar(input$orderMedios)) {
-      user_order <- trimws(strsplit(input$orderMedios, ",", fixed = TRUE)[[1]])
+    order_medios_chr <- order_medios_input()
+    if (nzchar(order_medios_chr)) {
+      user_order <- trimws(strsplit(order_medios_chr, ",", fixed = TRUE)[[1]])
       user_order <- sanitize_curve_label(user_order)
       user_order <- user_order[!is.na(user_order) & nzchar(user_order)]
       user_order <- unique(user_order[user_order %in% final_levels])
@@ -4581,8 +4930,9 @@ server <- function(input, output, session) {
       intersect(available)
     # 4) Si el usuario escribiÃƒÂ³ un CSV en orderGroups, lo prioriza
     user_order <- NULL
-    if (!is.null(input$orderGroups) && nzchar(input$orderGroups)) {
-      user_order_raw <- trimws(strsplit(input$orderGroups, ",", fixed = TRUE)[[1]])
+    order_groups_chr <- order_groups_input()
+    if (nzchar(order_groups_chr)) {
+      user_order_raw <- trimws(strsplit(order_groups_chr, ",", fixed = TRUE)[[1]])
       user_order_raw <- sanitize_curve_label(user_order_raw)
       user_order_raw <- user_order_raw[!is.na(user_order_raw) & nzchar(user_order_raw)]
       user_order <- unique(user_order_raw[user_order_raw %in% available])
@@ -4639,7 +4989,7 @@ server <- function(input, output, session) {
     if (is.null(p) || !length(p) || is.na(p[1]) || !nzchar(p[1])) return(empty_df)
     if (isTRUE(input$doNorm) && has_ctrl_selected()) p <- paste0(p, "_Norm")
 
-    src <- if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+    src <- active_plot_data()
     if (!is.data.frame(src) || !nrow(src) || !p %in% names(src)) return(empty_df)
     if (input$scope == "Por Cepa" &&
         (is.null(input$strain) || is.na(input$strain) || !nzchar(input$strain))) {
@@ -4672,7 +5022,7 @@ server <- function(input, output, session) {
     if (is.null(p) || !length(p) || is.na(p[1]) || !nzchar(p[1])) return(empty_df)
     if (isTRUE(input$doNorm) && has_ctrl_selected()) p <- paste0(p, "_Norm")
 
-    src <- if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+    src <- active_plot_data()
     if (!is.data.frame(src) || !nrow(src) || !p %in% names(src)) return(empty_df)
     if (input$scope == "Por Cepa" &&
         (is.null(input$strain) || is.na(input$strain) || !nzchar(input$strain))) {
@@ -6255,7 +6605,7 @@ server <- function(input, output, session) {
   # Tabla de valores (debajo del grafico) segun tipo  
   output$statsTable <- renderDT({  
     tipo <- input$tipo %||% ""  
-    base_df <- if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()  
+    base_df <- active_plot_data()  
     lang <- input$app_lang %||% i18n_lang
     
     # Helper: aplica filtros de scope y rÃƒÂ©plicas  
@@ -6339,8 +6689,6 @@ server <- function(input, output, session) {
     }  
     
     if (tipo == "Apiladas") {  
-      params <- input$stackParams %||% plot_settings()$Parameter  
-      validate(need(length(params) > 0, tr_text("no_params_to_show", lang)))  
       df <- filter_scope(base_df)  
       if (!"Label" %in% names(df)) {  
         if (input$scope == "Por Cepa") {  
@@ -6351,6 +6699,8 @@ server <- function(input, output, session) {
       }  
       df <- df %>% mutate(BiologicalReplicate = as.character(BiologicalReplicate))  
       validate(need(nrow(df) > 0, tr_text("no_data_selection", lang)))  
+      params <- resolve_stack_params(df = df)
+      validate(need(length(params) > 0, tr_text("no_params_to_show", lang)))
       df_long <- df %>%  
         tidyr::pivot_longer(cols = dplyr::all_of(params), names_to = "Parametro", values_to = "Valor") %>%  
         filter(!is.na(Valor))  
@@ -6432,13 +6782,13 @@ server <- function(input, output, session) {
       tibble::tibble(Mensaje = tr_text("table_not_available", input$app_lang %||% i18n_lang)),
       options = list(dom = 't')
     )  
-  })  
+  }, server = FALSE)  
   # Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
   
   # Ã¢â€â‚¬Ã¢â€â‚¬ Helper para elegir paleta segÃƒÂºn input$colorMode Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
   qc_scope_base_df <- reactive({
     req(datos_agrupados(), plot_settings())
-    df <- if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+    df <- active_plot_data()
     if (!is.data.frame(df) || !nrow(df)) return(df)
 
     if (input$scope == "Por Cepa") {
@@ -6636,7 +6986,7 @@ server <- function(input, output, session) {
     df <- if (use_param) {
       param_rep_df()
     } else {
-      if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+      active_plot_data()
     }
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return(df)
 
@@ -7174,6 +7524,9 @@ server <- function(input, output, session) {
 
   qc_apply_replicate_selection <- function(selector_state, selected_map) {
     if (!length(selector_state)) return(invisible(NULL))
+    if (isTRUE(replicate_bulk_updating())) return(invisible(NULL))
+    replicate_bulk_updating(TRUE)
+    on.exit(replicate_bulk_updating(FALSE), add = TRUE)
     map_strain <- reps_strain_selected()
     map_group <- reps_group_selected()
     for (g in names(selector_state)) {
@@ -7617,11 +7970,7 @@ server <- function(input, output, session) {
     tipo  <- input$tipo %||% ""
     scope <- input$scope %||% "Por Cepa"
     if (identical(tipo, "Apiladas")) {
-      params <- input$stackParams
-      if (is.null(params) || !length(params)) {
-        ps <- plot_settings()
-        params <- if (!is.null(ps)) ps$Parameter else character(0)
-      }
+      params <- resolve_stack_params(df = scoped_plot_df())
       return(length(params))
     }
     if (identical(tipo, "Curvas")) {
@@ -7676,7 +8025,7 @@ server <- function(input, output, session) {
     }
 
     if (identical(tipo, "Apiladas")) {
-      params <- input$stackParams %||% character(0)
+      params <- resolve_stack_params(df = scoped_plot_df())
       if (!length(params)) return(character(0))
       order_input <- trimws(strsplit(input$orderStack %||% "", ",")[[1]])
       order_levels <- intersect(order_input[nzchar(order_input)], params)
@@ -7826,14 +8175,31 @@ server <- function(input, output, session) {
     stringsAsFactors = FALSE
   )
 
+  normalize_adv_palette_filters <- function(filters = character(0)) {
+    out <- as.character(filters %||% character(0))
+    out <- trimws(out)
+    out <- out[!is.na(out) & nzchar(out)]
+    intersect(out, c("colorblind", "print", "photocopy"))
+  }
+
   brewer_palette_choices <- function(type = "seq", filters = character(0), n_classes = 0) {
     info <- RColorBrewer::brewer.pal.info
     cat  <- switch(type, seq = "seq", div = "div", qual = "qual", "seq")
     info <- info[info$category == cat, , drop = FALSE]
+    filters <- normalize_adv_palette_filters(filters)
     if (length(filters)) {
-      if ("colorblind" %in% filters) info <- info[info$colorblind, , drop = FALSE]
-      if ("print" %in% filters) info <- info[info$print, , drop = FALSE]
-      if ("photocopy" %in% filters) info <- info[info$photocopy, , drop = FALSE]
+      if ("colorblind" %in% filters && "colorblind" %in% names(info)) {
+        keep <- !is.na(info$colorblind) & as.logical(info$colorblind)
+        info <- info[keep, , drop = FALSE]
+      }
+      if ("print" %in% filters && "print" %in% names(info)) {
+        keep <- !is.na(info$print) & as.logical(info$print)
+        info <- info[keep, , drop = FALSE]
+      }
+      if ("photocopy" %in% filters && "photocopy" %in% names(info)) {
+        keep <- !is.na(info$photocopy) & as.logical(info$photocopy)
+        info <- info[keep, , drop = FALSE]
+      }
     }
     choices <- rownames(info)
     extra <- adv_extra_info[adv_extra_info$category == cat, , drop = FALSE]
@@ -7847,7 +8213,7 @@ server <- function(input, output, session) {
     list(input$adv_pal_type, input$adv_pal_filters, adv_palette_n()),
     {
       type      <- input$adv_pal_type %||% "seq"
-      filters   <- input$adv_pal_filters %||% character(0)
+      filters   <- normalize_adv_palette_filters(input$adv_pal_filters)
       n_classes <- adv_palette_n()
       choices <- brewer_palette_choices(type, filters, n_classes)
       if (!length(choices)) {
@@ -7856,10 +8222,26 @@ server <- function(input, output, session) {
       if (!length(choices)) {
         choices <- brewer_palette_choices(type, character(0), 0)
       }
-      selected <- isolate(input$adv_pal_name)
-      if (is.null(selected) || !selected %in% choices) {
+
+      selected_candidates <- c(
+        trimws(as.character(isolate(input$adv_pal_name) %||% "")),
+        trimws(as.character(isolate(last_adv_palette_name()) %||% ""))
+      )
+      selected_candidates <- selected_candidates[!is.na(selected_candidates) & nzchar(selected_candidates)]
+      selected <- if (length(selected_candidates)) selected_candidates[[1]] else ""
+
+      known_palettes <- unique(c(rownames(RColorBrewer::brewer.pal.info), adv_extra_info$name))
+      sticky_known <- selected_candidates[selected_candidates %in% known_palettes]
+      if (length(sticky_known) && !sticky_known[[1]] %in% choices) {
+        choices <- unique(c(choices, sticky_known[[1]]))
+      }
+      if (!length(choices)) {
+        choices <- c("BuGn")
+      }
+      if (!nzchar(selected) || !selected %in% choices) {
         selected <- choices[1]
       }
+      last_adv_palette_name(selected)
       updateSelectInput(session, "adv_pal_name",
                         choices = choices, selected = selected)
     },
@@ -8121,6 +8503,71 @@ server <- function(input, output, session) {
     if (is_star_label(label)) tpad * 0.25 else tpad
   }
 
+  build_sig_x_lookup <- function(panel, build = NULL) {
+    xbreaks <- panel$x$breaks
+    if (is.null(xbreaks) || !length(xbreaks) || anyNA(xbreaks)) {
+      xbreaks <- unique(unlist(lapply(build$data %||% list(), function(d) d$x)))
+    }
+    if (is.null(xbreaks) || !length(xbreaks)) {
+      return(list(
+        labels = character(0),
+        breaks = xbreaks,
+        breaks_chr = character(0),
+        positions = numeric(0)
+      ))
+    }
+
+    xlabels <- NULL
+    if (is.function(panel$x$get_labels)) {
+      xlabels <- tryCatch(panel$x$get_labels(xbreaks), error = function(e) NULL)
+    }
+    if (is.null(xlabels) || !length(xlabels)) xlabels <- xbreaks
+
+    xpos <- suppressWarnings(as.numeric(attr(xbreaks, "pos")))
+    if (length(xpos) != length(xbreaks) || any(!is.finite(xpos))) {
+      if (is.numeric(xbreaks) && all(is.finite(xbreaks))) {
+        xpos <- as.numeric(xbreaks)
+      } else {
+        xpos <- as.numeric(seq_along(xbreaks))
+      }
+    }
+
+    list(
+      labels = as.character(xlabels),
+      breaks = xbreaks,
+      breaks_chr = as.character(xbreaks),
+      positions = xpos
+    )
+  }
+
+  resolve_sig_x_position <- function(group, x_lookup, apply_wrap = TRUE) {
+    if (is.null(group)) return(NA_real_)
+    if (is.numeric(group)) {
+      g_num <- suppressWarnings(as.numeric(group)[1])
+      return(if (is.finite(g_num)) g_num else NA_real_)
+    }
+    if (is.null(x_lookup) || !length(x_lookup$positions)) return(NA_real_)
+
+    labels_ref <- as.character(x_lookup$labels %||% character(0))
+    breaks_chr <- as.character(x_lookup$breaks_chr %||% character(0))
+
+    g_chr <- trimws(as.character(group)[1])
+    if (!nzchar(g_chr)) return(NA_real_)
+
+    g_try <- if (isTRUE(apply_wrap)) wrap_sig_group(g_chr, labels_ref) else g_chr
+
+    idx <- match(g_try, labels_ref)
+    if (is.na(idx)) idx <- match(g_try, breaks_chr)
+    if (is.na(idx) && !identical(g_try, g_chr)) {
+      idx <- match(g_chr, labels_ref)
+      if (is.na(idx)) idx <- match(g_chr, breaks_chr)
+    }
+    if (is.na(idx)) return(NA_real_)
+
+    xpos <- suppressWarnings(as.numeric(x_lookup$positions[idx]))
+    if (!is.finite(xpos)) NA_real_ else xpos
+  }
+
   # 1-A  Dibuja UNA barra de significancia tipo Ã¢â‚¬Å“TÃ¢â‚¬Â
   add_sigline <- function(p, group1, group2, label = "*",
                           height   = .05,  # separaciÃƒÂ³n barraÃ¢â‚¬â€˜datos  (proporciÃƒÂ³n del rango Y)
@@ -8135,30 +8582,33 @@ server <- function(input, output, session) {
       build  <- ggplot_build(p)
       if (!length(build$data)) return(p)
       panel  <- build$layout$panel_params[[1]]
-      xbreaks <- panel$x$breaks
-      if (is.null(xbreaks) || anyNA(xbreaks)) {
-        xbreaks <- unique(unlist(lapply(build$data, function(d) d$x)))
-      }
-      if (is.null(xbreaks) || !length(xbreaks)) return(p)
+      x_lookup <- build_sig_x_lookup(panel, build)
+      if (!length(x_lookup$positions)) return(p)
       dat   <- build$data[[1]]
       ytop  <- if ("ymax" %in% names(dat)) max(dat$ymax, dat$y, na.rm = TRUE)
       else                               max(dat$y,    na.rm = TRUE)
       yrng  <- diff(range(panel$y.range))
       if (!is.finite(yrng) || yrng <= 0) yrng <- 1
       info <- list(
-        xbreaks = xbreaks,
+        xbreaks = x_lookup$labels,
+        x_lookup = x_lookup,
         ytop    = if (is.finite(ytop)) ytop else max(panel$y.range, na.rm = TRUE),
         yrng    = yrng
       )
     }
     
-    xbreaks <- info$xbreaks
-    if (is.null(xbreaks) || !length(xbreaks)) return(p)
-      get_x   <- function(g) {
-        if (is.numeric(g)) return(g)
-        g_chr <- wrap_sig_group(g, xbreaks)
-        match(g_chr, xbreaks)
-      }
+    x_lookup <- info$x_lookup
+    if (is.null(x_lookup) || !length(x_lookup$positions)) {
+      xbreaks <- info$xbreaks %||% character(0)
+      x_lookup <- list(
+        labels = as.character(xbreaks),
+        breaks = xbreaks,
+        breaks_chr = as.character(xbreaks),
+        positions = if (is.numeric(xbreaks)) as.numeric(xbreaks) else as.numeric(seq_along(xbreaks))
+      )
+    }
+
+    get_x <- function(g) resolve_sig_x_position(g, x_lookup, apply_wrap = TRUE)
     x1 <- get_x(group1);  x2 <- get_x(group2)
     if (any(is.na(c(x1, x2)))) return(p)
     
@@ -8383,11 +8833,9 @@ server <- function(input, output, session) {
     y_span <- diff(range(y_range))
     if (!is.finite(y_span) || y_span <= 0) y_span <- 1
     
-    xranks <- panel$x$breaks   # posiciones 1,2,3,?
-    if (is.null(xranks) || anyNA(xranks)) {
-      xranks <- unique(unlist(lapply(build$data, function(d) d$x)))
-    }
-    if (is.null(xranks) || !length(xranks)) return(p)
+    x_lookup <- build_sig_x_lookup(panel, build)
+    if (!length(x_lookup$positions)) return(p)
+    xlabels <- x_lookup$labels
     
     dat   <- build$data[[1]]
     ytop_raw <- if ('ymax' %in% names(dat)) max(dat$ymax, dat$y, na.rm = TRUE)
@@ -8395,7 +8843,8 @@ server <- function(input, output, session) {
     ytop <- if (is.finite(ytop_raw)) ytop_raw else max(y_range, na.rm = TRUE)
     
     info <- list(
-      xbreaks = xranks,
+      xbreaks = xlabels,
+      x_lookup = x_lookup,
       ytop    = ytop,
       yrng    = y_span,
       y_range = y_range
@@ -8404,10 +8853,8 @@ server <- function(input, output, session) {
     if (!is.numeric(base_h) || !is.finite(base_h)) base_h <- sep
     
       get_span <- function(cmp){
-        g1 <- if (is.numeric(cmp$g1)) cmp$g1 else wrap_sig_group(cmp$g1, xranks)
-        g2 <- if (is.numeric(cmp$g2)) cmp$g2 else wrap_sig_group(cmp$g2, xranks)
-        x1 <- if (is.numeric(g1)) g1 else match(g1, xranks)
-        x2 <- if (is.numeric(g2)) g2 else match(g2, xranks)
+        x1 <- resolve_sig_x_position(cmp$g1, x_lookup, apply_wrap = TRUE)
+        x2 <- resolve_sig_x_position(cmp$g2, x_lookup, apply_wrap = TRUE)
         if (any(is.na(c(x1, x2)))) return(NULL)
         c(min(x1,x2), max(x1,x2))
       }
@@ -8446,8 +8893,8 @@ server <- function(input, output, session) {
     for (i in seq_along(sigs)){
       h <- base_h + (bar_level[i] - 1) * sep
       cmp <- sigs[[i]]
-      x1 <- if (is.numeric(cmp$g1)) cmp$g1 else match(cmp$g1, info$xbreaks)
-      x2 <- if (is.numeric(cmp$g2)) cmp$g2 else match(cmp$g2, info$xbreaks)
+      x1 <- resolve_sig_x_position(cmp$g1, x_lookup, apply_wrap = TRUE)
+      x2 <- resolve_sig_x_position(cmp$g2, x_lookup, apply_wrap = TRUE)
       if (any(is.na(c(x1, x2)))) {
         y_txt_vals[i] <- NA_real_
         next
@@ -8554,11 +9001,9 @@ server <- function(input, output, session) {
     y_span <- diff(range(y_range))
     if (!is.finite(y_span) || y_span <= 0) y_span <- 1
 
-    xbreaks <- panel$x$breaks
-    if (is.null(xbreaks) || anyNA(xbreaks)) {
-      xbreaks <- unique(unlist(lapply(build$data, function(d) d$x)))
-    }
-    if (is.null(xbreaks) || !length(xbreaks)) return(p)
+    x_lookup <- build_sig_x_lookup(panel, build)
+    if (!length(x_lookup$positions)) return(p)
+    xbreaks <- x_lookup$labels
 
     gt <- group_tops
     if (!all(c("group", "y_top") %in% names(gt))) return(p)
@@ -8603,7 +9048,7 @@ server <- function(input, output, session) {
       }
       tpad_use <- sig_tpad(cmp$lab, tpad)
       ytxt <- y_top + tpad_use * y_span
-          x_val <- if (is.numeric(grp)) grp else match(grp_chr, xbreaks)
+      x_val <- resolve_sig_x_position(grp_chr, x_lookup, apply_wrap = TRUE)
       if (is.na(x_val)) {
         y_txt_vals[i] <- NA_real_
         next
@@ -8799,17 +9244,17 @@ server <- function(input, output, session) {
     
     lang <- input$app_lang %||% i18n_lang
     num <- function(x) as.numeric(gsub(",", ".", x))  
-    
-    params_apilar <- input$stackParams  
-    validate(need(
-      length(params_apilar) > 0,
-      sprintf(tr_text("select_param_at_least_one", lang), tr_text("stack_params", lang))
-    ))  
-    
+
     df_f <- get_scope_df(scope, strain)
     if ("Strain" %in% names(df_f)) df_f$Strain <- sanitize_curve_label_preserve_levels(df_f$Strain)
     if ("Media" %in% names(df_f))  df_f$Media  <- sanitize_curve_label_preserve_levels(df_f$Media)
     if ("Label" %in% names(df_f))  df_f$Label  <- sanitize_curve_label_preserve_levels(df_f$Label)
+
+    params_apilar <- resolve_stack_params(df = df_f)
+    validate(need(
+      length(params_apilar) > 0,
+      sprintf(tr_text("select_param_at_least_one", lang), tr_text("stack_params", lang))
+    ))
     
     eje_x <- if (scope == "Por Cepa") {
       "Media"
@@ -8826,7 +9271,7 @@ server <- function(input, output, session) {
       eje_levels <- unique(df_f[[eje_x]])
     }
     
-    order_stack_input <- trimws(strsplit(input$orderStack, ",")[[1]])
+    order_stack_input <- trimws(strsplit(input$orderStack %||% "", ",")[[1]])
     order_levels      <- intersect(order_stack_input, params_apilar)
     stack_levels      <- if (length(order_levels)) order_levels else params_apilar
 
@@ -8870,6 +9315,7 @@ server <- function(input, output, session) {
         ) |>
         arrange(.data[[eje_x]], Parametro)
     }
+    df_long <- sanitize_stack_summary(df_long)
     
     if (nrow(df_long) == 0) {
       return(plot_ly(width  = width %||% input$plot_w, height = height %||% input$plot_h))
@@ -8988,6 +9434,13 @@ server <- function(input, output, session) {
     }
     
     ## 6 Ã‚Â· Layout (ejes y cuadrÃƒÂ­cula) ------------------------------------------  
+    y_tick_step <- axis_interval_limited(
+      max_value = input$ymax,
+      interval = input$ybreak,
+      max_ticks = 40L,
+      fallback_ticks = 6L
+    )$step
+
     plt <- plt %>%
       layout(
         barmode = "stack",
@@ -9008,7 +9461,7 @@ server <- function(input, output, session) {
                            family = "Helvetica",
                            color  = "black"),
           range     = c(0, input$ymax),
-          dtick     = input$ybreak,
+          dtick     = y_tick_step,
           showline  = TRUE,
           linecolor = "black",
           linewidth = input$axis_line_size,
@@ -9286,9 +9739,40 @@ server <- function(input, output, session) {
   })
 
   build_corrm_snapshot <- function(scope, strain = NULL) {
-    df_m <- get_scope_df(scope, strain)
+    df_scope <- get_scope_df(scope, strain)
     all_params <- as.character(plot_settings()$Parameter %||% character(0))
     all_params <- all_params[!is.na(all_params) & nzchar(all_params)]
+
+    aggregate_corr_scope_df <- function(df, scope_sel, params) {
+      if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(df)
+      group_cols <- if (identical(scope_sel, "Por Cepa")) c("Media") else c("Strain", "Media")
+      group_cols <- intersect(group_cols, names(df))
+      if (!length(group_cols)) return(df)
+
+      corr_cols <- unique(c(
+        as.character(params %||% character(0)),
+        paste0(as.character(params %||% character(0)), "_Norm")
+      ))
+      corr_cols <- corr_cols[!is.na(corr_cols) & nzchar(corr_cols)]
+      corr_cols <- intersect(corr_cols, names(df))
+      if (!length(corr_cols)) return(df)
+
+      safe_mean_num <- function(v) {
+        num <- suppressWarnings(as.numeric(v))
+        num <- num[is.finite(num)]
+        if (!length(num)) return(NA_real_)
+        mean(num, na.rm = TRUE)
+      }
+
+      df %>%
+        dplyr::group_by(dplyr::across(dplyr::all_of(group_cols))) %>%
+        dplyr::summarise(
+          dplyr::across(dplyr::any_of(corr_cols), safe_mean_num),
+          .groups = "drop"
+        )
+    }
+
+    df_m <- aggregate_corr_scope_df(df_scope, scope, all_params)
 
     list(
       df_m = df_m,
@@ -9299,7 +9783,7 @@ server <- function(input, output, session) {
       high_dim = is_large_param_set(all_params),
       do_norm = isTRUE(input$doNorm),
       has_ctrl_selected = has_ctrl_selected(),
-      corr_method = input$corrm_method %||% "spearman",
+      corr_method = input$corrm_method %||% input$corr_method %||% "pearson",
       adjust_method = input$corrm_adjust %||% "none",
       order_profile = isTRUE(input$corrm_order_profile),
       show_sig_only = isTRUE(input$corrm_show_sig),
@@ -9358,10 +9842,33 @@ server <- function(input, output, session) {
   build_plot <- function(scope, strain = NULL, tipo, for_interactive = FALSE) {  
     lang <- input$app_lang %||% i18n_lang
     req(plot_settings())
-    if (!identical(tipo, "Heatmap")) req(input$param)
-    
+    params_all <- safe_plot_setting_params()
+    raw_param_input <- as.character(input$param %||% "")
+    if (!length(raw_param_input) || is.na(raw_param_input[[1]])) raw_param_input <- ""
+    raw_param_input <- raw_param_input[[1]]
+
+    if (!identical(tipo, "Heatmap")) {
+      if (!length(params_all)) {
+        return(
+          ggplot() +
+            theme_void() +
+            annotate("text", 0, 0, label = tr_text("no_params_to_show", lang))
+        )
+      }
+      if (!nzchar(raw_param_input) || !raw_param_input %in% params_all) {
+        raw_param_input <- params_all[[1]]
+      }
+      if (!identical(raw_param_input, as.character(input$param %||% ""))) {
+        update_selectize_adaptive(
+          "param",
+          choices = params_all,
+          selected = raw_param_input
+        )
+      }
+    }
+
     # Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Nuevo bloque para normalizaciÃƒÂ³n Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
-    rawParam <- enc2utf8(input$param %||% "")  
+    rawParam <- enc2utf8(raw_param_input)  
     is_norm  <- isTRUE(input$doNorm)  
     msg_no_data_sel <- tr_text("no_data_selection", lang)
     add_whisker_caps <- draw_whisker_caps
@@ -9859,7 +10366,9 @@ server <- function(input, output, session) {
           add_black_t_errorbar = add_black_t_errorbar,
           margin_adj = margin_adj,
           apply_sig_layers = apply_sig_layers,
-          apply_square_legend_right = apply_square_legend_right
+          apply_square_legend_right = apply_square_legend_right,
+          for_interactive = for_interactive,
+          downsample_points_by_group = downsample_points_by_group
         ))
       )
     }
@@ -10188,10 +10697,25 @@ server <- function(input, output, session) {
     # 4. Devuelve SIEMPRE el objeto plotly resultante
     return(sanitize_plotly_display_labels(plt))
   }
-  
-  
+
+  run_with_plot_time_limit <- function(expr, seconds = 25) {
+    sec <- suppressWarnings(as.numeric(seconds))
+    if (!is.finite(sec) || sec <= 0) sec <- 25
+    setTimeLimit(elapsed = sec, transient = TRUE)
+    on.exit(setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE), add = TRUE)
+    force(expr)
+  }
+
+
   # ---- plot_base: la versiÃƒÂ³n Ã¢â‚¬Å“reactiveÃ¢â‚¬Â que usa la interfaz actual ----  
   plot_base <- reactive({  
+    if (isTRUE(is_session_closing())) {
+      return(
+        ggplot() +
+          theme_void() +
+          annotate("text", 0, 0, label = tr_text("loading_plot_data", input$app_lang %||% i18n_lang))
+      )
+    }
     scope_sel  <- if (input$scope == "Combinado") "Combinado" else "Por Cepa"  
     strain_sel <- if (scope_sel == "Por Cepa") input$strain else NULL
     lang <- input$app_lang %||% i18n_lang
@@ -10199,29 +10723,31 @@ server <- function(input, output, session) {
 
     tryCatch(
       {
-        if (input$tipo == "Apiladas") {
-          if (isTRUE(input$plot_flip)) {
-            p_stack <- build_plot(scope_sel, strain_sel, "Apiladas", for_interactive = TRUE)
-            safe_ggplotly(
-              p_stack,
-              tooltip = c("x", "y", "name", "text"),
-              width = input$plot_w,
-              height = input$plot_h,
-              originalData = FALSE
-            )
+        run_with_plot_time_limit({
+          if (input$tipo == "Apiladas") {
+            if (isTRUE(input$plot_flip)) {
+              p_stack <- build_plot(scope_sel, strain_sel, "Apiladas", for_interactive = TRUE)
+              safe_ggplotly(
+                p_stack,
+                tooltip = c("x", "y", "name", "text"),
+                width = input$plot_w,
+                height = input$plot_h,
+                originalData = FALSE
+              )
+            } else {
+              # Devuelve un objeto *plotly* listo
+              build_plotly_stack(
+                scope_sel,
+                strain_sel,
+                width  = input$plot_w,
+                height = input$plot_h
+              )
+            }
           } else {
-            # Devuelve un objeto *plotly* listo
-            build_plotly_stack(
-              scope_sel,
-              strain_sel,
-              width  = input$plot_w,
-              height = input$plot_h
-            )
+            # Todo lo demÃƒÂ¡s sigue con tu funciÃƒÂ³n ggplot2
+            build_plot(scope_sel, strain_sel, input$tipo, for_interactive = TRUE)
           }
-        } else {
-          # Todo lo demÃƒÂ¡s sigue con tu funciÃƒÂ³n ggplot2
-          build_plot(scope_sel, strain_sel, input$tipo, for_interactive = TRUE)
-        }
+        }, seconds = 25)
       },
       error = function(e) {
         msg <- conditionMessage(e)
@@ -10240,6 +10766,12 @@ server <- function(input, output, session) {
       }
     )
   })  
+
+  plot_base_interactive <- debounce(
+    reactive(plot_base()),
+    millis = 250
+  )
+
   # --- Salidas ---  
   output$plotInteractivoUI <- renderUI({
     base_w <- as.numeric(input$plot_w %||% 1000)
@@ -10270,16 +10802,18 @@ server <- function(input, output, session) {
     )
   })
 
-  outputOptions(output, "rmRepsGlobalUI", suspendWhenHidden = FALSE)
-  outputOptions(output, "repsStrainUI", suspendWhenHidden = FALSE)
-  outputOptions(output, "repsGrpUI", suspendWhenHidden = FALSE)
+  outputOptions(output, "rmRepsGlobalUI", suspendWhenHidden = TRUE)
+  outputOptions(output, "repsStrainUI", suspendWhenHidden = TRUE)
+  outputOptions(output, "repsGrpUI", suspendWhenHidden = TRUE)
 
   observe({
+    if (isTRUE(replicate_bulk_updating())) return()
+    if (!identical(input$scope %||% "Por Cepa", "Por Cepa")) return()
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
     df <- if (use_param) {
       param_rep_df()
     } else {
-      if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+      active_plot_data()
     }
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return()
     if (is.null(input$strain) || !length(input$strain)) return()
@@ -10332,6 +10866,8 @@ server <- function(input, output, session) {
   })
 
   observe({
+    if (isTRUE(replicate_bulk_updating())) return()
+    if (!identical(input$scope %||% "Por Cepa", "Combinado")) return()
     grps <- input$showGroups %||% character(0)
     if (!length(grps)) return()
 
@@ -10339,7 +10875,7 @@ server <- function(input, output, session) {
     df <- if (use_param) {
       param_rep_df()
     } else {
-      if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+      active_plot_data()
     }
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return()
 
@@ -10387,11 +10923,12 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$repsGrpSelectAll, {
+    if (isTRUE(replicate_bulk_updating())) return()
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
     df <- if (use_param) {
       param_rep_df()
     } else {
-      if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+      active_plot_data()
     }
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return()
 
@@ -10419,6 +10956,9 @@ server <- function(input, output, session) {
     } else {
       all_groups <- sort(unique(all_groups))
     }
+
+    replicate_bulk_updating(TRUE)
+    on.exit(replicate_bulk_updating(FALSE), add = TRUE)
 
     updateCheckboxGroupInput(
       session,
@@ -10461,11 +11001,12 @@ server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   observeEvent(input$repsStrainSelectAll, {
+    if (isTRUE(replicate_bulk_updating())) return()
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
     df <- if (use_param) {
       param_rep_df()
     } else {
-      if (isTRUE(input$doNorm)) datos_agrupados_norm() else datos_agrupados()
+      active_plot_data()
     }
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return()
     if (is.null(input$strain) || !length(input$strain)) return()
@@ -10478,6 +11019,9 @@ server <- function(input, output, session) {
       dplyr::arrange(Orden) %>%
       dplyr::pull(Media)
     if (!length(medias)) return()
+
+    replicate_bulk_updating(TRUE)
+    on.exit(replicate_bulk_updating(FALSE), add = TRUE)
 
     updateCheckboxGroupInput(
       session,
@@ -10525,30 +11069,46 @@ server <- function(input, output, session) {
 
   output$plotInteractivo <- renderPlotly({
     input$mobile_plot_refresh
+    input$param
+    input$strain
+    input$scope
+    input$doNorm
+    input$ctrlMedium
     req(input$dataFile)
     if (input$tipo == "Curvas") {
       req(cur_data_box(), cur_cfg_box())
     }
     
     lang <- input$app_lang %||% i18n_lang
+    if (isTRUE(replicate_bulk_updating())) {
+      validate(need(FALSE, tr_text("loading_plot_data", lang)))
+    }
+    if (isTRUE(axis_sync_inflight())) {
+      validate(need(FALSE, tr_text("loading_plot_data", lang)))
+    }
     if (isTRUE(dataset_loading())) {
       validate(need(FALSE, tr_text("loading_plot_data", lang)))
     }
+    if (isTRUE(is_session_closing())) {
+      validate(need(FALSE, tr_text("loading_plot_data", lang)))
+    }
     msg_no_data <- tr_text("no_data_plot", lang)
-    p <- tryCatch(plot_base(), error = function(e) NULL)
+    p <- tryCatch(plot_base_interactive(), error = function(e) NULL)
     validate(need(!is.null(p), msg_no_data))
     if (inherits(p, "ggplot")) {
       plotly_width <- input$plot_w
       plotly_height <- input$plot_h
       tooltip_fields <- plotly_tooltip_fields(input$tipo %||% "")
       plt <- tryCatch(
-        suppressWarnings(
-          safe_ggplotly(
-            p,
-            tooltip      = tooltip_fields,
-            width        = plotly_width,
-            height       = plotly_height,
-            originalData = FALSE
+        run_with_plot_time_limit(
+          suppressWarnings(
+            safe_ggplotly(
+              p,
+              tooltip      = tooltip_fields,
+              width        = plotly_width,
+              height       = plotly_height,
+              originalData = FALSE
+            )
           )
         ),
         error = function(e) NULL

@@ -1,10 +1,10 @@
 library(testthat)
 
 test_that("prepare_platemap keeps literal 'NA' strain/media and parameter names", {
-  old <- setwd(testthat::test_path("..", "..", "inst", "app"))
+  old <- setwd(app_test_path())
   on.exit(setwd(old), add = TRUE)
 
-  source(testthat::test_path("..", "..", "inst", "app", "global.R"))
+  source(app_test_path( "global.R"))
 
   datos <- data.frame(
     Well = c("A1", "A2"),
@@ -37,7 +37,7 @@ test_that("prepare_platemap keeps literal 'NA' strain/media and parameter names"
 })
 
 test_that("server does not treat literal 'NA' labels as missing for params/media", {
-  server_file <- test_path("..", "..", "inst", "app", "server", "server_main.R")
+  server_file <- app_test_path( "server", "server_main.R")
   expect_true(file.exists(server_file))
 
   txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
@@ -53,7 +53,7 @@ test_that("server does not treat literal 'NA' labels as missing for params/media
 })
 
 test_that("helpers do not treat literal 'NA' labels as missing", {
-  helpers_file <- test_path("..", "..", "inst", "app", "helpers.R")
+  helpers_file <- app_test_path( "helpers.R")
   expect_true(file.exists(helpers_file))
 
   txt <- paste(readLines(helpers_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")

@@ -5,7 +5,17 @@ The format is based on Keep a Changelog and this project adheres to
 Semantic Versioning.
 
 ## [Unreleased]
-- No changes recorded.
+- No notable changes yet.
+
+## [2.0.1] - 2026-04-21
+- Stabilized analysis control persistence so plot-type and advanced palette selections are retained more reliably across UI refreshes.
+- Release hygiene updates:
+  - Improved package metadata title for CRAN-style checks.
+  - Declared `later` and `png` in `Suggests` for test-only namespace usage.
+  - Removed unused dependency declarations (`webshot`, `future`, `future.apply`, `parallelly`) to reduce import surface and startup namespace conflicts.
+  - Reduced packaging noise by excluding repository-only and local check artifacts from source builds.
+  - Removed debug/temporary top-level files that were not part of app functionality.
+  - Synchronized release metadata references to `2.0.1` in `.zenodo.json`, `CITATION.cff`, and README citation text.
 
 ## [2.0.0]
 - Improved interface behavior and usability in key workflows, including growth-processing controls and status feedback.

@@ -11,6 +11,10 @@
 *.zip
 *.Rcheck/
 Rplots.pdf
+check_clean/
+check_clean_as_cran/
+..Rcheck/
+BIOSZEN.Rcheck/
 
 # Local libraries
 R_libs/
@@ -39,3 +43,8 @@ Thumbs.db
 
 # Shiny deploy artifacts
 rsconnect/
+
+# Local utility outputs/cache
+tools/outputs/
+tools/reusable_scripts/__pycache__/
+tools/reusable_scripts/manual_tmp/

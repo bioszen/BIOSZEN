@@ -1,8 +1,8 @@
 library(testthat)
 
-root <- normalizePath(testthat::test_path("..", ".."))
-source(file.path(root, "inst", "app", "helpers.R"))
-source(file.path(root, "inst", "app", "stats", "stats_upgrades.R"))
+root <- app_test_root()
+source(app_test_path( "helpers.R"))
+source(app_test_path( "stats", "stats_upgrades.R"))
 
 make_upgrade_df <- function() {
   data.frame(

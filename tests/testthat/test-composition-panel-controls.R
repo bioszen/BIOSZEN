@@ -1,9 +1,11 @@
 library(testthat)
 
-app_root <- normalizePath(testthat::test_path("..", ".."))
-
 read_app_file <- function(...) {
-  path <- file.path(app_root, ...)
+  parts <- as.character(c(...))
+  if (length(parts) >= 2 && identical(parts[1:2], c("inst", "app"))) {
+    parts <- parts[-c(1, 2)]
+  }
+  path <- do.call(app_test_path, as.list(parts))
   paste(readLines(path, warn = FALSE), collapse = "\n")
 }
 

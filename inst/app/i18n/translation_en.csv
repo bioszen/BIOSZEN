@@ -225,6 +225,7 @@ x_wrap,Wrap X labels
 x_wrap_lines,Max lines:
 y_axis_settings,Y Axis Settings
 y_interval,Y interval
+interval_hint_general,Hint: Use larger intervals for faster rendering with fewer axis ticks.
 y_max,Y max
 corr_settings,Correlation Settings
 corr_param_x,X axis parameter:

@@ -1323,6 +1323,7 @@ ui <- fluidPage(
                       column(6, numericInput("xbreak_corr", tr("corr_xbreak"), value = 1,  min = 0.001)),
                       column(6, numericInput("ybreak_corr", tr("corr_ybreak"), value = 1,  min = 0.001))
                     ),
+                    tags$p(class = "qc-help", tr("interval_hint_general")),
                     fluidRow(
                       column(6, numericInput("ymin_corr", tr("corr_ymin"), value = 0)),
                       column(6, numericInput("ymax_corr", tr("corr_ymax"), value = 0)),
@@ -1466,14 +1467,15 @@ ui <- fluidPage(
                  
                 
                  # ---------- Eje Y para Boxplot/Barras ---------------------------------
-                 conditionalPanel(
-                   condition = "['Boxplot','Barras','Violin','Apiladas'].indexOf(input.tipo) >= 0",
-                   h4(tr("y_axis_settings")),
-                   fluidRow(
-                     column(6, numericInput('ymax',   tr("y_max"),  value = 0, min = 0)),
-                     column(6, numericInput('ybreak', tr("y_interval"),  value = 1, min = 0.001))
-                   )
-                 ),
+                  conditionalPanel(
+                    condition = "['Boxplot','Barras','Violin','Apiladas'].indexOf(input.tipo) >= 0",
+                    h4(tr("y_axis_settings")),
+                    fluidRow(
+                      column(6, numericInput('ymax',   tr("y_max"),  value = 0, min = 0)),
+                      column(6, numericInput('ybreak', tr("y_interval"),  value = 1, min = 0.001))
+                    ),
+                    tags$p(class = "qc-help", tr("interval_hint_general"))
+                  ),
                  
                  # ---------- Ajustes Curvas --------------------------------------------
                  conditionalPanel(
@@ -1483,14 +1485,15 @@ ui <- fluidPage(
                      column(6, numericInput('xmax_cur',   tr("curves_xmax"), value = 3000, min = 0)),
                      column(6, numericInput('xbreak_cur', tr("curves_xbreak"), value = 1000, min = 1))
                    ),
+                    fluidRow(
+                      column(6, numericInput('ymax_cur',   tr("curves_ymax"), value = 1.5, min = 0)),
+                      column(6, numericInput('ybreak_cur', tr("curves_ybreak"), value = 0.5, min = 0.01))
+                    ),
+                   tags$p(class = "qc-help", tr("interval_hint_general")),
                    fluidRow(
-                     column(6, numericInput('ymax_cur',   tr("curves_ymax"), value = 1.5, min = 0)),
-                     column(6, numericInput('ybreak_cur', tr("curves_ybreak"), value = 0.5, min = 0.01))
+                     column(6, textInput('cur_xlab', tr("curves_xlab"), '')),
+                     column(6, textInput('cur_ylab', tr("curves_ylab"), ''))
                    ),
-                  fluidRow(
-                    column(6, textInput('cur_xlab', tr("curves_xlab"), '')),
-                    column(6, textInput('cur_ylab', tr("curves_ylab"), ''))
-                  ),
                   numericInput('curve_lwd', tr("curves_linewidth"), value = 1.5, min = 0.5, step = 0.1),
                   checkboxInput("cur_show_ci", tr("curves_show_ci"), FALSE),
                   radioButtons(

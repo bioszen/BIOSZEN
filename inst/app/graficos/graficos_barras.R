@@ -177,6 +177,11 @@ get_palette <- function(n) {
 
 build_barras_plot_impl <- function(ctx) {
   with(ctx, {
+    downsample_fn <- downsample_points_by_group
+    if (!is.function(downsample_fn)) {
+      downsample_fn <- function(df, group_col, cap_total = 7000L, min_per_group = 80L) df
+    }
+
     if (scope == "Combinado") {
       df_raw <- scope_df %>%
         filter(is.finite(.data[[param_sel]]))
@@ -195,6 +200,11 @@ build_barras_plot_impl <- function(ctx) {
       }
 
       summary_mode_active <- isTRUE(is_summary_mode())
+      df_points <- if (!isTRUE(summary_mode_active) && isTRUE(for_interactive)) {
+        downsample_fn(df_raw, "Label", cap_total = 7000L)
+      } else {
+        df_raw
+      }
       sd_col <- resolve_prefixed_param_col(df_raw, "SD_", param_sel)
       resumen <- df_raw %>%
         group_by(Label) %>%
@@ -240,7 +250,7 @@ build_barras_plot_impl <- function(ctx) {
         if (!summary_mode_active) {
           p <- p +
             geom_point(
-              data = df_raw,
+              data = df_points,
               inherit.aes = FALSE,
               aes(x = Label, y = .data[[param_sel]]),
               position = position_jitter(width = input$pt_jit, height = 0),
@@ -265,7 +275,7 @@ build_barras_plot_impl <- function(ctx) {
         if (!summary_mode_active) {
           p <- p +
             geom_point(
-              data = df_raw,
+              data = df_points,
               inherit.aes = FALSE,
               aes(x = Label, y = .data[[param_sel]], fill = Label),
               position = position_jitter(width = input$pt_jit, height = 0),
@@ -328,7 +338,7 @@ build_barras_plot_impl <- function(ctx) {
         ) +
         scale_y_continuous(
           limits = c(0, ymax),
-          breaks = seq(0, ymax, by = ybreak),
+          breaks = axis_breaks_limited(ymax, ybreak),
           expand = c(0, 0),
           oob = scales::oob_keep
         ) +
@@ -392,6 +402,11 @@ build_barras_plot_impl <- function(ctx) {
     x_ang_cat <- if (flip_plot && is.na(input$x_angle)) 0 else x_ang
     b_mar <- get_bottom_margin(x_ang_cat, input$x_wrap, input$x_wrap_lines)
     summary_mode_active <- isTRUE(is_summary_mode())
+    df_points <- if (!isTRUE(summary_mode_active) && isTRUE(for_interactive)) {
+      downsample_fn(df_raw, "Media", cap_total = 7000L)
+    } else {
+      df_raw
+    }
     sd_col <- resolve_prefixed_param_col(df_raw, "SD_", param_sel)
     resumen <- df_raw %>%
       group_by(Media) %>%
@@ -421,7 +436,7 @@ build_barras_plot_impl <- function(ctx) {
       if (!summary_mode_active) {
         p <- p +
           geom_point(
-            data = df_raw,
+            data = df_points,
             inherit.aes = FALSE,
             aes(x = Media, y = .data[[param_sel]]),
             position = position_jitter(width = input$pt_jit, height = 0),
@@ -446,7 +461,7 @@ build_barras_plot_impl <- function(ctx) {
       if (!summary_mode_active) {
         p <- p +
           geom_point(
-            data = df_raw,
+            data = df_points,
             inherit.aes = FALSE,
             aes(x = Media, y = .data[[param_sel]], fill = Media),
             position = position_jitter(width = input$pt_jit, height = 0),
@@ -507,7 +522,7 @@ build_barras_plot_impl <- function(ctx) {
       ) +
       scale_y_continuous(
         limits = c(0, ymax),
-        breaks = seq(0, ymax, by = ybreak),
+        breaks = axis_breaks_limited(ymax, ybreak),
         expand = c(0, 0),
         oob = scales::oob_keep
       ) +

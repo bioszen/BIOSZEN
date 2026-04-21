@@ -1,10 +1,10 @@
 library(testthat)
 
 test_that("merge_platemap_workbooks preserves base order and merges parameters correctly", {
-  old <- setwd(testthat::test_path("..", "..", "inst", "app"))
+  old <- setwd(app_test_path())
   on.exit(setwd(old), add = TRUE)
 
-  source(testthat::test_path("..", "..", "inst", "app", "global.R"))
+  source(app_test_path( "global.R"))
 
   tmp_dir <- tempfile("platemap_merge_")
   dir.create(tmp_dir, recursive = TRUE, showWarnings = FALSE)
@@ -118,10 +118,10 @@ test_that("merge_platemap_workbooks preserves base order and merges parameters c
 })
 
 test_that("merge_platemap_workbooks preserves literal 'NA' labels in Strain/Media/Parameter", {
-  old <- setwd(testthat::test_path("..", "..", "inst", "app"))
+  old <- setwd(app_test_path())
   on.exit(setwd(old), add = TRUE)
 
-  source(testthat::test_path("..", "..", "inst", "app", "global.R"))
+  source(app_test_path( "global.R"))
 
   tmp_dir <- tempfile("platemap_merge_na_literal_")
   dir.create(tmp_dir, recursive = TRUE, showWarnings = FALSE)
@@ -192,10 +192,10 @@ test_that("merge_platemap_workbooks preserves literal 'NA' labels in Strain/Medi
 })
 
 test_that("merge_platemap_workbooks appends repeated parameters as new biological replicates while preserving technical replicates", {
-  old <- setwd(testthat::test_path("..", "..", "inst", "app"))
+  old <- setwd(app_test_path())
   on.exit(setwd(old), add = TRUE)
 
-  source(testthat::test_path("..", "..", "inst", "app", "global.R"))
+  source(app_test_path( "global.R"))
 
   tmp_dir <- tempfile("platemap_merge_reps_")
   dir.create(tmp_dir, recursive = TRUE, showWarnings = FALSE)
@@ -251,10 +251,10 @@ test_that("merge_platemap_workbooks appends repeated parameters as new biologica
 })
 
 test_that("merge_platemap_workbooks keeps new-only parameters in parallel and expands rows only to max replicate count", {
-  old <- setwd(testthat::test_path("..", "..", "inst", "app"))
+  old <- setwd(app_test_path())
   on.exit(setwd(old), add = TRUE)
 
-  source(testthat::test_path("..", "..", "inst", "app", "global.R"))
+  source(app_test_path( "global.R"))
 
   tmp_dir <- tempfile("platemap_merge_parallel_")
   dir.create(tmp_dir, recursive = TRUE, showWarnings = FALSE)
@@ -308,10 +308,10 @@ test_that("merge_platemap_workbooks keeps new-only parameters in parallel and ex
 })
 
 test_that("repeated parameters always remap wells for curves using appended biological replicates", {
-  old <- setwd(testthat::test_path("..", "..", "inst", "app"))
+  old <- setwd(app_test_path())
   on.exit(setwd(old), add = TRUE)
 
-  source(testthat::test_path("..", "..", "inst", "app", "global.R"))
+  source(app_test_path( "global.R"))
 
   tmp_dir <- tempfile("platemap_curve_merge_repeated_")
   dir.create(tmp_dir, recursive = TRUE, showWarnings = FALSE)

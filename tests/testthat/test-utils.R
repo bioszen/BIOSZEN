@@ -1,6 +1,6 @@
 library(testthat)
 
-source(testthat::test_path('..', '..', 'inst', 'app', 'helpers.R'))
+source(app_test_path( 'helpers.R'))
 
 test_that('matrix_to_tibble works', {
   skip_if_not_installed('tibble')

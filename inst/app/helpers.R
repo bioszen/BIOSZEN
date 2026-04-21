@@ -177,6 +177,158 @@ sanitize <- function(x) {
   gsub("[/\\\\:*?\"<>|]", "_", x)
 }
 
+# Limit axis intervals to avoid generating excessive tick marks that can
+# freeze plotting when users enter very small break values.
+axis_interval_limited <- function(max_value,
+                                  interval,
+                                  max_ticks = 40L,
+                                  fallback_ticks = 6L,
+                                  min_step = 1e-9) {
+  pick_first_num <- function(x, default = NA_real_) {
+    vals <- suppressWarnings(as.numeric(x))
+    vals <- vals[is.finite(vals)]
+    if (!length(vals)) default else vals[[1]]
+  }
+
+  max_val <- pick_first_num(max_value, default = NA_real_)
+  if (!is.finite(max_val) || max_val <= 0) {
+    max_val <- 1
+  }
+
+  step <- pick_first_num(interval, default = NA_real_)
+  if (!is.finite(step) || step <= 0) {
+    step <- max_val / max(2, as.numeric(fallback_ticks))
+  }
+
+  max_ticks <- suppressWarnings(as.integer(max_ticks))
+  if (!is.finite(max_ticks) || max_ticks < 5L) max_ticks <- 40L
+  fallback_ticks <- suppressWarnings(as.integer(fallback_ticks))
+  if (!is.finite(fallback_ticks) || fallback_ticks < 2L) fallback_ticks <- 6L
+  min_step <- suppressWarnings(as.numeric(min_step))
+  if (!is.finite(min_step) || min_step <= 0) min_step <- 1e-9
+
+  min_allowed <- max(max_val / max_ticks, min_step)
+  adjusted <- FALSE
+  if (!is.finite(step) || step < min_allowed) {
+    step <- min_allowed
+    adjusted <- TRUE
+  }
+
+  tick_count <- floor(max_val / step) + 1L
+  if (!is.finite(tick_count) || tick_count > (max_ticks + 1L)) {
+    step <- max(max_val / max_ticks, min_step)
+    tick_count <- floor(max_val / step) + 1L
+    adjusted <- TRUE
+  }
+
+  list(
+    max = max_val,
+    step = step,
+    tick_count = tick_count,
+    adjusted = adjusted
+  )
+}
+
+axis_breaks_limited <- function(max_value,
+                                interval,
+                                max_ticks = 40L,
+                                fallback_ticks = 6L,
+                                min_step = 1e-9) {
+  lim <- axis_interval_limited(
+    max_value = max_value,
+    interval = interval,
+    max_ticks = max_ticks,
+    fallback_ticks = fallback_ticks,
+    min_step = min_step
+  )
+  out <- seq(0, lim$max, by = lim$step)
+  if (!length(out)) out <- c(0, lim$max)
+  if (tail(out, 1) < lim$max) out <- c(out, lim$max)
+  unique(round(out, 10))
+}
+
+axis_interval_limited_range <- function(min_value,
+                                        max_value,
+                                        interval,
+                                        max_ticks = 40L,
+                                        fallback_ticks = 6L,
+                                        min_step = 1e-9) {
+  pick_first_num <- function(x, default = NA_real_) {
+    vals <- suppressWarnings(as.numeric(x))
+    vals <- vals[is.finite(vals)]
+    if (!length(vals)) default else vals[[1]]
+  }
+
+  lo <- pick_first_num(min_value, default = 0)
+  hi <- pick_first_num(max_value, default = 1)
+  if (!is.finite(lo)) lo <- 0
+  if (!is.finite(hi)) hi <- lo + 1
+  if (hi <= lo) {
+    hi <- lo + 1
+  }
+
+  span <- hi - lo
+  lim <- axis_interval_limited(
+    max_value = span,
+    interval = interval,
+    max_ticks = max_ticks,
+    fallback_ticks = fallback_ticks,
+    min_step = min_step
+  )
+  lim$min <- lo
+  lim$max <- hi
+  lim$span <- span
+  lim
+}
+
+axis_breaks_limited_range <- function(min_value,
+                                      max_value,
+                                      interval,
+                                      max_ticks = 40L,
+                                      fallback_ticks = 6L,
+                                      min_step = 1e-9) {
+  lim <- axis_interval_limited_range(
+    min_value = min_value,
+    max_value = max_value,
+    interval = interval,
+    max_ticks = max_ticks,
+    fallback_ticks = fallback_ticks,
+    min_step = min_step
+  )
+  out <- seq(lim$min, lim$max, by = lim$step)
+  if (!length(out)) out <- c(lim$min, lim$max)
+  if (tail(out, 1) < lim$max) out <- c(out, lim$max)
+  unique(round(out, 10))
+}
+
+# Ensure stacked-plot summaries never propagate NaN/Inf into plot layers.
+sanitize_stack_summary <- function(df, mean_col = "Mean", sd_col = "SD") {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(df)
+
+  if (mean_col %in% names(df)) {
+    mean_vec <- suppressWarnings(as.numeric(df[[mean_col]]))
+    mean_vec[!is.finite(mean_vec)] <- 0
+    df[[mean_col]] <- mean_vec
+  }
+
+  if (sd_col %in% names(df)) {
+    sd_vec <- suppressWarnings(as.numeric(df[[sd_col]]))
+    sd_vec[!is.finite(sd_vec) | sd_vec < 0] <- 0
+    df[[sd_col]] <- sd_vec
+  }
+
+  df
+}
+
+# Decide if normalized data should be consumed in reactive pipelines.
+# We only enable strict normalization after a non-empty control medium exists.
+should_use_normalized_data <- function(do_norm = FALSE, ctrl_medium = NULL) {
+  if (!isTRUE(do_norm)) return(FALSE)
+  if (is.null(ctrl_medium) || !length(ctrl_medium)) return(FALSE)
+  ctrl_chr <- trimws(as.character(ctrl_medium[[1]]))
+  nzchar(ctrl_chr)
+}
+
 # Normaliza columnas de parámetros contra un medio control y tolera faltantes.
 normalize_params <- function(df, params = character(0), do_norm = FALSE, ctrl_medium = NULL) {
   if (!isTRUE(do_norm)) return(df)

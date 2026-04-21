@@ -1,7 +1,7 @@
 library(testthat)
 
 test_that("mobile pane switch UI is present and uses i18n labels", {
-  ui_file <- test_path("..", "..", "inst", "app", "ui", "ui_main.R")
+  ui_file <- app_test_path( "ui", "ui_main.R")
   expect_true(file.exists(ui_file))
 
   txt <- paste(readLines(ui_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
@@ -15,7 +15,7 @@ test_that("mobile pane switch UI is present and uses i18n labels", {
 })
 
 test_that("mobile pane switch script toggles panes and triggers refresh", {
-  ui_file <- test_path("..", "..", "inst", "app", "ui", "ui_main.R")
+  ui_file <- app_test_path( "ui", "ui_main.R")
   txt <- paste(readLines(ui_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
 
   expect_match(txt, 'getActiveLayout\\(\\)', perl = TRUE)
@@ -35,7 +35,7 @@ test_that("mobile pane switch script toggles panes and triggers refresh", {
 })
 
 test_that("plot outputs stay active when hidden in one-pane mobile mode", {
-  server_file <- test_path("..", "..", "inst", "app", "server", "server_main.R")
+  server_file <- app_test_path( "server", "server_main.R")
   expect_true(file.exists(server_file))
 
   txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
@@ -55,7 +55,7 @@ test_that("plot outputs stay active when hidden in one-pane mobile mode", {
 })
 
 test_that("server syncs floating switch labels when language changes", {
-  server_file <- test_path("..", "..", "inst", "app", "server", "server_main.R")
+  server_file <- app_test_path( "server", "server_main.R")
   txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
 
   expect_match(txt, 'tr_text\\(\\s*"mobile_switch_view_graphics"', perl = TRUE)

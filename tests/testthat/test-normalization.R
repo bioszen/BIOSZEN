@@ -1,7 +1,7 @@
 library(testthat)
 
-root <- normalizePath(testthat::test_path("..", ".."))
-source(file.path(root, "inst", "app", "helpers.R"))
+root <- app_test_root()
+source(app_test_path( "helpers.R"))
 
 make_norm_fixture <- function() {
   data.frame(
@@ -111,4 +111,13 @@ test_that("normalize_params can mix valid replicates and omitted replicates by p
   raw_params <- attr(res, "norm_raw_fallback_params")
   if (is.null(raw_params)) raw_params <- character(0)
   expect_length(raw_params, 0)
+})
+
+test_that("should_use_normalized_data only activates with an explicit control medium", {
+  expect_false(should_use_normalized_data(do_norm = FALSE, ctrl_medium = "Ctrl"))
+  expect_false(should_use_normalized_data(do_norm = TRUE, ctrl_medium = NULL))
+  expect_false(should_use_normalized_data(do_norm = TRUE, ctrl_medium = character(0)))
+  expect_false(should_use_normalized_data(do_norm = TRUE, ctrl_medium = "   "))
+  expect_true(should_use_normalized_data(do_norm = TRUE, ctrl_medium = "Ctrl"))
+  expect_true(should_use_normalized_data(do_norm = TRUE, ctrl_medium = c("Ctrl", "M1")))
 })

@@ -226,7 +226,7 @@ build_boxplot_plot_impl <- function(ctx) {
         ) +
         scale_y_continuous(
           limits = c(0, ymax_plot),
-          breaks = seq(0, ymax_plot, by = ybreak),
+          breaks = axis_breaks_limited(ymax_plot, ybreak),
           expand = c(0, 0),
           oob = scales::oob_keep
         ) +
@@ -421,7 +421,7 @@ build_boxplot_plot_impl <- function(ctx) {
       ) +
       scale_y_continuous(
         limits = c(0, ymax_plot),
-        breaks = seq(0, ymax_plot, by = ybreak),
+        breaks = axis_breaks_limited(ymax_plot, ybreak),
         expand = c(0, 0),
         oob = scales::oob_keep
       ) +

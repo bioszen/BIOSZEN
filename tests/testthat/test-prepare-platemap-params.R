@@ -1,10 +1,10 @@
 library(testthat)
 
 test_that("prepare_platemap keeps existing parameter columns even if numeric parsing is empty", {
-  old <- setwd(testthat::test_path("..", "..", "inst", "app"))
+  old <- setwd(app_test_path())
   on.exit(setwd(old), add = TRUE)
 
-  source(testthat::test_path("..", "..", "inst", "app", "global.R"))
+  source(app_test_path( "global.R"))
 
   datos <- data.frame(
     Well = c("A1", "A2"),
@@ -35,10 +35,10 @@ test_that("prepare_platemap keeps existing parameter columns even if numeric par
 })
 
 test_that("prepare_platemap includes parameters present in Datos even when missing in PlotSettings", {
-  old <- setwd(testthat::test_path("..", "..", "inst", "app"))
+  old <- setwd(app_test_path())
   on.exit(setwd(old), add = TRUE)
 
-  source(testthat::test_path("..", "..", "inst", "app", "global.R"))
+  source(app_test_path( "global.R"))
 
   datos <- data.frame(
     Well = c("A1", "A2", "A3"),
@@ -70,10 +70,10 @@ test_that("prepare_platemap includes parameters present in Datos even when missi
 })
 
 test_that("prepare_platemap treats blank replicate as missing and keeps explicit zero", {
-  old <- setwd(testthat::test_path("..", "..", "inst", "app"))
+  old <- setwd(app_test_path())
   on.exit(setwd(old), add = TRUE)
 
-  source(testthat::test_path("..", "..", "inst", "app", "global.R"))
+  source(app_test_path( "global.R"))
 
   datos <- data.frame(
     Well = c("A1", "A2", "A3", "A4"),

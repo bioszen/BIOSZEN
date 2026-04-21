@@ -1,6 +1,6 @@
 # Locate project root
-root <- normalizePath(testthat::test_path('..', '..'))
-app <- file.path(root, 'inst', 'app')
+root <- app_test_root()
+app <- app_test_path()
 files <- c(
   file.path(app, 'app.R'),
   file.path(app, 'global.R'),

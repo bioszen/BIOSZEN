@@ -13,9 +13,9 @@ extract_i18n_keys <- function(file_path) {
 }
 
 test_that("translation files stay synchronized and include new keys", {
-  root <- normalizePath(testthat::test_path("..", ".."))
-  en_file <- file.path(root, "inst", "app", "i18n", "translation_en.csv")
-  es_file <- file.path(root, "inst", "app", "i18n", "translation_es.csv")
+  root <- app_test_root()
+  en_file <- app_test_path( "i18n", "translation_en.csv")
+  es_file <- app_test_path( "i18n", "translation_es.csv")
 
   en <- read.csv(en_file, stringsAsFactors = FALSE, fileEncoding = "UTF-8")
   es <- read.csv(es_file, stringsAsFactors = FALSE, fileEncoding = "UTF-8")
@@ -48,8 +48,8 @@ test_that("translation files stay synchronized and include new keys", {
 })
 
 test_that("all direct tr/tr_text keys used by app R files exist in translation_en", {
-  root <- normalizePath(testthat::test_path("..", ".."))
-  app_dir <- file.path(root, "inst", "app")
+  root <- app_test_root()
+  app_dir <- app_test_path()
   en_file <- file.path(app_dir, "i18n", "translation_en.csv")
   en_keys <- as.character(read.csv(en_file, stringsAsFactors = FALSE, fileEncoding = "UTF-8")$key)
 

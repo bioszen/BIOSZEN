@@ -227,15 +227,20 @@ build_correlation_plot_impl <- function(scope,
   if (!is.finite(ybreak) || ybreak <= 0) ybreak <- (ymax - ymin) / 5
   if (!is.finite(ybreak) || ybreak <= 0) ybreak <- 0.2
 
-  build_breaks <- function(lo, hi, step) {
-    if (!is.finite(lo) || !is.finite(hi) || hi <= lo) return(pretty(c(0, 1), n = 6))
-    if (!is.finite(step) || step <= 0) return(pretty(c(lo, hi), n = 6))
-    n_breaks <- floor((hi - lo) / step) + 1
-    if (!is.finite(n_breaks) || n_breaks > 5000) return(pretty(c(lo, hi), n = 6))
-    seq(lo, hi, by = step)
-  }
-  x_breaks <- build_breaks(xmin, xmax, xbreak)
-  y_breaks <- build_breaks(ymin, ymax, ybreak)
+  x_breaks <- axis_breaks_limited_range(
+    min_value = xmin,
+    max_value = xmax,
+    interval = xbreak,
+    max_ticks = 60L,
+    fallback_ticks = 6L
+  )
+  y_breaks <- axis_breaks_limited_range(
+    min_value = ymin,
+    max_value = ymax,
+    interval = ybreak,
+    max_ticks = 60L,
+    fallback_ticks = 6L
+  )
 
   dx <- 0.05 * (xmax - xmin)
   dy <- 0.04 * (ymax - ymin)

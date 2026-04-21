@@ -1,7 +1,7 @@
 library(testthat)
 
-root <- normalizePath(testthat::test_path("..", ".."))
-app_dir <- file.path(root, "inst", "app")
+root <- app_test_root()
+app_dir <- app_test_path()
 
 load_app_sources <- function() {
   source(file.path(app_dir, "helpers.R"))

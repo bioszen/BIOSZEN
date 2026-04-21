@@ -4,8 +4,8 @@ testthat::test_that("plotly legend autofit avoids clipping", {
   testthat::skip_if_not_installed("ggplot2")
   testthat::skip_if_not_installed("chromote")
 
-  root <- normalizePath(testthat::test_path("..", ".."))
-  helper_path <- file.path(root, "inst", "app", "graficos", "plotly_autofit.R")
+  root <- app_test_root()
+  helper_path <- app_test_path( "graficos", "plotly_autofit.R")
   source(helper_path, local = TRUE)
 
   tmp_dir <- tempfile()
@@ -118,8 +118,8 @@ testthat::test_that("plotly legend autofit avoids clipping", {
 
 testthat::test_that("plotly autofit injects legend padding", {
   testthat::skip_if_not_installed("plotly")
-  root <- normalizePath(testthat::test_path("..", ".."))
-  helper_path <- file.path(root, "inst", "app", "graficos", "plotly_autofit.R")
+  root <- app_test_root()
+  helper_path <- app_test_path( "graficos", "plotly_autofit.R")
   source(helper_path, local = TRUE)
 
   p <- plotly::plot_ly(x = c(1, 2), y = c(1, 2), type = "scatter", mode = "markers")

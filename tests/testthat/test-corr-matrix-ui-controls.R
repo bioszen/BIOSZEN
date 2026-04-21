@@ -1,5 +1,5 @@
 test_that("correlation matrix controls are gated by matrix plot type", {
-  ui_file <- test_path("..", "..", "inst", "app", "ui", "ui_main.R")
+  ui_file <- app_test_path( "ui", "ui_main.R")
   expect_true(file.exists(ui_file))
 
   txt <- paste(readLines(ui_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
@@ -37,7 +37,7 @@ test_that("correlation matrix controls are gated by matrix plot type", {
 })
 
 test_that("initial plot-type choices include correlation matrix", {
-  ui_file <- test_path("..", "..", "inst", "app", "ui", "ui_main.R")
+  ui_file <- app_test_path( "ui", "ui_main.R")
   txt <- paste(readLines(ui_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
 
   expect_match(

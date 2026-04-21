@@ -1,7 +1,7 @@
 library(testthat)
 
-root <- normalizePath(testthat::test_path("..", ".."))
-source(file.path(root, "inst", "app", "helpers.R"))
+root <- app_test_root()
+source(app_test_path( "helpers.R"))
 
 test_that("metadata_filter_design_only removes data-selection keys", {
   meta <- data.frame(

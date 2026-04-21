@@ -317,12 +317,12 @@ build_curvas_plot_impl <- function(ctx) {
       ) +
       scale_x_continuous(
         limits = c(0, x_max),
-        breaks = seq(0, x_max, by = x_break),
+        breaks = axis_breaks_limited(x_max, x_break),
         expand = c(0, 0)
       ) +
       scale_y_continuous(
         limits = c(0, y_max),
-        breaks = seq(0, y_max, by = y_break),
+        breaks = axis_breaks_limited(y_max, y_break),
         expand = c(0, 0)
       ) +
       theme_classic(base_size = input$base_size, base_family = "Helvetica") +

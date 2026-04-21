@@ -6,7 +6,7 @@ test_that("boxplot whisker caps are drawn for export", {
   skip_if_not_installed("ggplot2")
   skip_if_not_installed("dplyr")
 
-  source(testthat::test_path("..", "..", "inst", "app", "graficos", "boxplot_caps.R"))
+  source(app_test_path( "graficos", "boxplot_caps.R"))
 
   df <- data.frame(
     Group = "A",

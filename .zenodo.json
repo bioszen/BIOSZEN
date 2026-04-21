@@ -1,7 +1,7 @@
 {
   "title": "BIOSZEN",
   "upload_type": "software",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "BIOSZEN is an app for data analysis and visualization from an Excel file. It can generate boxplot, barplot, violin plot, stacked plots, and correlation plots between parameters. It includes normality tests such as Shapiro-Wilk, Kolmogorov-Smirnov, and Anderson-Darling, and significance tests such as ANOVA, Kruskal-Wallis, t-test, and Wilcoxon. It also extracts microbial growth curve parameters (uMax, max_percap_time, doub_time, lag_time, ODmax, max_time, AUC).",
   "creators": [
     {
