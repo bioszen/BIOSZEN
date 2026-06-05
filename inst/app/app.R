@@ -1,3 +1,13 @@
+startup_files <- c(
+  file.path("R", "app_startup.R"),
+  file.path("..", "..", "R", "app_startup.R")
+)
+startup_file <- startup_files[file.exists(startup_files)][1]
+if (!is.na(startup_file)) {
+  sys.source(startup_file, envir = globalenv())
+  bioszen_prepare_direct_run()
+}
+
 source_dir <- function(path, envir) {
   files <- sort(list.files(path, pattern = "\\.R$", full.names = TRUE))
   for (f in files) sys.source(f, envir = envir)
