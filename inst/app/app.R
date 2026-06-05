@@ -1,3 +1,19 @@
+use_bioszen_standalone_library <- function() {
+  local_lib <- getOption("BIOSZEN.local_lib", Sys.getenv("BIOSZEN_LOCAL_LIB", ""))
+  if (!is.character(local_lib) || !length(local_lib) || !nzchar(local_lib[[1]])) {
+    return(invisible(FALSE))
+  }
+  if (!dir.exists(local_lib[[1]])) {
+    return(invisible(FALSE))
+  }
+
+  local_lib <- normalizePath(local_lib[[1]], winslash = "/", mustWork = TRUE)
+  .libPaths(unique(c(local_lib, .libPaths())))
+  invisible(TRUE)
+}
+
+use_bioszen_standalone_library()
+
 startup_files <- c(
   file.path("R", "app_startup.R"),
   file.path("..", "..", "R", "app_startup.R")

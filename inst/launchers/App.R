@@ -2,7 +2,7 @@
 # Goals:
 # 1) Fix host/port for the launcher
 # 2) Open the app in a browser app window when possible (prefer Chrome; else default browser)
-# 3) Use a local ./R_libs
+# 3) Use a local ./R_libs/<R major.minor>
 # 4) Install BIOSZEN from embedded or nearby archives if needed
 
 options(
@@ -87,10 +87,36 @@ try({
   cat("root_dir  : ", root_dir, "\n", sep = "")
 }, silent = TRUE)
 
+if (getRversion() < "4.1.0") {
+  stop("BIOSZEN requires R >= 4.1.0.")
+}
+
 # -------- local library (self-contained) --------
-local_lib <- file.path(root_dir, "R_libs")
-dir.create(local_lib, showWarnings = FALSE, recursive = TRUE)
-.libPaths(c(local_lib, .libPaths()))
+r_version_key <- function() {
+  minor <- strsplit(R.version$minor, ".", fixed = TRUE)[[1]][1]
+  paste(R.version$major, minor, sep = ".")
+}
+
+is_stale_windows_user_library <- function(path) {
+  path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  expected <- paste0("/win-library/", r_version_key())
+  grepl("/win-library/[0-9]+\\.[0-9]+$", path) && !grepl(expected, path, fixed = TRUE)
+}
+
+configure_local_library <- function(root) {
+  lib_dir <- file.path(root, "R_libs", r_version_key())
+  dir.create(lib_dir, showWarnings = FALSE, recursive = TRUE)
+
+  existing <- .libPaths()
+  existing <- existing[!vapply(existing, is_stale_windows_user_library, logical(1))]
+  .libPaths(unique(c(lib_dir, existing)))
+
+  normalizePath(lib_dir, winslash = "/", mustWork = TRUE)
+}
+
+local_lib <- configure_local_library(root_dir)
+Sys.setenv(BIOSZEN_LOCAL_LIB = local_lib)
+options(BIOSZEN.local_lib = local_lib)
 cat(".libPaths():\n")
 print(.libPaths())
 
@@ -226,6 +252,34 @@ get_local_version <- function(pkg_name, lib_dir) {
   tryCatch(packageVersion(pkg_name, lib.loc = lib_dir), error = function(e) NULL)
 }
 
+archive_fingerprint <- function(archive_path) {
+  if (is.null(archive_path) || !file.exists(archive_path)) return("")
+  value <- tryCatch(unname(tools::md5sum(archive_path)), error = function(e) "")
+  if (is.na(value)) "" else value
+}
+
+archive_marker_path <- function(lib_dir, pkg_name = "BIOSZEN") {
+  file.path(lib_dir, paste0(".", pkg_name, "_archive_md5"))
+}
+
+archive_matches_local_install <- function(archive_path, lib_dir, pkg_name = "BIOSZEN") {
+  fingerprint <- archive_fingerprint(archive_path)
+  marker <- archive_marker_path(lib_dir, pkg_name)
+  if (!nzchar(fingerprint) || !file.exists(marker)) return(FALSE)
+
+  recorded <- tryCatch(readLines(marker, warn = FALSE), error = function(e) character(0))
+  length(recorded) && identical(recorded[[1]], fingerprint)
+}
+
+write_archive_marker <- function(archive_path, lib_dir, pkg_name = "BIOSZEN") {
+  fingerprint <- archive_fingerprint(archive_path)
+  if (!nzchar(fingerprint)) return(invisible(FALSE))
+  tryCatch({
+    writeLines(fingerprint, archive_marker_path(lib_dir, pkg_name), useBytes = TRUE)
+    TRUE
+  }, error = function(e) FALSE)
+}
+
 pick_best_archive <- function(infos) {
   if (!length(infos)) return(NULL)
 
@@ -300,6 +354,181 @@ ensure_cran_repo <- function() {
   if (is.null(cran) || is.na(cran) || !nzchar(cran) || cran == "@CRAN@") {
     options(repos = c(CRAN = "https://cran.rstudio.com"))
   }
+
+  invisible(TRUE)
+}
+
+cran_repo_candidates <- function() {
+  repos <- getOption("repos")
+  current <- if (is.null(repos)) "" else unname(repos[["CRAN"]])
+  current <- current[!is.na(current)]
+  unique(c(current, "https://cran.rstudio.com", "https://cloud.r-project.org", "https://cran.r-project.org"))
+}
+
+download_method_candidates <- function() {
+  current <- getOption("download.file.method", "")
+  current <- if (is.null(current)) "" else as.character(current)
+  if (.Platform$OS.type == "windows") {
+    unique(c(current, "auto", "wininet", "libcurl"))
+  } else {
+    unique(c(current, "auto", "libcurl"))
+  }
+}
+
+read_available_packages_once <- function(repo, method) {
+  options(repos = c(CRAN = repo))
+  if (nzchar(method)) {
+    options(download.file.method = method)
+  }
+
+  warnings <- character(0)
+  db <- tryCatch(
+    withCallingHandlers(
+      utils::available.packages(),
+      warning = function(w) {
+        warnings <<- c(warnings, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    ),
+    error = function(e) {
+      warnings <<- c(warnings, conditionMessage(e))
+      NULL
+    }
+  )
+
+  if (!is.null(db) && nrow(db) > 0) {
+    method_label <- if (nzchar(method)) method else "default"
+    cat("[deps] Using CRAN mirror ", repo, " with download method ", method_label, ".\n", sep = "")
+    return(db)
+  }
+
+  if (length(warnings)) {
+    method_label <- if (nzchar(method)) method else "default"
+    cat(
+      "[deps] CRAN metadata unavailable via ", repo,
+      " (", method_label, "): ", warnings[[1]], "\n",
+      sep = ""
+    )
+  }
+  NULL
+}
+
+read_available_package_db <- function() {
+  ensure_cran_repo()
+
+  repos <- cran_repo_candidates()
+  repos <- repos[nzchar(repos) & repos != "@CRAN@"]
+  methods <- download_method_candidates()
+
+  for (repo in repos) {
+    for (method in methods) {
+      db <- read_available_packages_once(repo, method)
+      if (!is.null(db)) return(db)
+    }
+  }
+
+  NULL
+}
+
+loadable_package <- function(package, lib_dir = NULL) {
+  tryCatch(
+    requireNamespace(package, quietly = TRUE, lib.loc = lib_dir),
+    error = function(e) FALSE
+  )
+}
+
+missing_packages <- function(packages, lib_dir = NULL) {
+  packages <- unique(packages[nzchar(packages) & packages != "R"])
+  packages[!vapply(packages, loadable_package, logical(1), lib_dir = lib_dir)]
+}
+
+default_library_packages <- function() {
+  rownames(installed.packages(priority = c("base", "recommended")))
+}
+
+installed_in_local_library <- function(lib_dir) {
+  if (!dir.exists(lib_dir)) return(character(0))
+  rownames(utils::installed.packages(lib.loc = lib_dir, noCache = TRUE))
+}
+
+packages_missing_from_local_library <- function(packages, lib_dir) {
+  packages <- unique(packages[nzchar(packages) & packages != "R"])
+  setdiff(packages, unique(c(installed_in_local_library(lib_dir), default_library_packages())))
+}
+
+loadable_with_local_library <- function(package, lib_dir) {
+  old_libs <- .libPaths()
+  on.exit(.libPaths(old_libs), add = TRUE)
+
+  libs <- old_libs[!vapply(old_libs, is_stale_windows_user_library, logical(1))]
+  .libPaths(unique(c(lib_dir, libs)))
+
+  loadable_package(package, lib_dir = lib_dir)
+}
+
+install_dependency_packages <- function(packages, lib_dir) {
+  if (!length(packages)) return(invisible(TRUE))
+
+  ensure_cran_repo()
+  cat("[deps] Installing missing packages: ", paste(packages, collapse = ", "), "\n", sep = "")
+  ok <- tryCatch({
+    utils::install.packages(
+      packages,
+      lib = lib_dir,
+      dependencies = NA
+    )
+    TRUE
+  }, error = function(e) {
+    cat("[deps] install.packages failed: ", conditionMessage(e), "\n", sep = "")
+    FALSE
+  })
+  if (!ok) stop("Failed installing dependencies. Check bioszen_r.log.")
+  invisible(TRUE)
+}
+
+repair_unloadable_packages <- function(packages, lib_dir) {
+  packages <- unique(packages[nzchar(packages) & packages != "R"])
+  if (!length(packages)) return(invisible(TRUE))
+
+  cat("[deps] Repairing packages not loadable from local library: ", paste(packages, collapse = ", "), "\n", sep = "")
+  package_dirs <- file.path(lib_dir, packages)
+  unlink(package_dirs[dir.exists(package_dirs)], recursive = TRUE, force = TRUE)
+  install_dependency_packages(packages, lib_dir)
+  invisible(TRUE)
+}
+
+resolve_dependency_closure <- function(deps) {
+  deps <- unique(deps[nzchar(deps) & deps != "R"])
+  if (!length(deps)) return(character(0))
+
+  ensure_cran_repo()
+  db <- read_available_package_db()
+  if (is.null(db)) return(deps)
+
+  available <- rownames(db)
+  packages_with_metadata <- intersect(deps, available)
+  packages_without_metadata <- setdiff(deps, available)
+  if (length(packages_without_metadata)) {
+    cat("[deps] No CRAN metadata for: ", paste(packages_without_metadata, collapse = ", "), "\n", sep = "")
+  }
+
+  recursive <- character(0)
+  if (length(packages_with_metadata)) {
+    recursive <- tryCatch({
+      deps_map <- tools::package_dependencies(
+        packages_with_metadata,
+        db = db,
+        which = c("Depends", "Imports", "LinkingTo"),
+        recursive = TRUE
+      )
+      unlist(deps_map, use.names = FALSE)
+    }, error = function(e) {
+      cat("[deps] Could not resolve recursive CRAN dependencies: ", conditionMessage(e), "\n", sep = "")
+      character(0)
+    })
+  }
+
+  setdiff(unique(c(deps, recursive)), c("R", default_library_packages()))
 }
 
 ensure_dependencies <- function(deps, lib_dir) {
@@ -308,30 +537,27 @@ ensure_dependencies <- function(deps, lib_dir) {
     return(invisible(TRUE))
   }
 
-  missing <- deps[!vapply(deps, requireNamespace, logical(1), quietly = TRUE)]
-  if (!length(missing)) {
-    cat("[deps] All dependencies are already installed.\n")
-    return(invisible(TRUE))
+  all_deps <- resolve_dependency_closure(deps)
+  missing <- packages_missing_from_local_library(all_deps, lib_dir)
+  if (length(missing)) {
+    install_dependency_packages(missing, lib_dir)
+  } else {
+    cat("[deps] All dependency packages are present in the local library.\n")
   }
 
-  ensure_cran_repo()
-  cat("[deps] Installing missing packages: ", paste(missing, collapse = ", "), "\n", sep = "")
-  ok <- tryCatch({
-    utils::install.packages(
-      missing,
-      lib = lib_dir,
-      dependencies = c("Depends", "Imports", "LinkingTo")
-    )
-    TRUE
-  }, error = function(e) {
-    cat("[deps] install.packages failed: ", conditionMessage(e), "\n", sep = "")
-    FALSE
-  })
-  if (!ok) stop("Failed installing dependencies. Check bioszen_r.log.")
-
-  missing_after <- missing[!vapply(missing, requireNamespace, logical(1), quietly = TRUE)]
+  missing_after <- packages_missing_from_local_library(all_deps, lib_dir)
   if (length(missing_after)) {
     stop("Missing packages after install: ", paste(missing_after, collapse = ", "))
+  }
+
+  not_loadable <- all_deps[!vapply(all_deps, loadable_with_local_library, logical(1), lib_dir = lib_dir)]
+  if (length(not_loadable)) {
+    repair_unloadable_packages(not_loadable, lib_dir)
+  }
+
+  not_loadable <- deps[!vapply(deps, loadable_with_local_library, logical(1), lib_dir = lib_dir)]
+  if (length(not_loadable)) {
+    stop("Packages installed but not loadable from local library: ", paste(not_loadable, collapse = ", "))
   }
   invisible(TRUE)
 }
@@ -529,6 +755,22 @@ remove_incomplete_install <- function(lib_dir, pkg_name = "BIOSZEN") {
   }
 }
 
+unload_package_namespace <- function(pkg_name) {
+  attached_name <- paste0("package:", pkg_name)
+  if (attached_name %in% search()) {
+    tryCatch(detach(attached_name, unload = TRUE, character.only = TRUE), error = function(e) {
+      cat("[install] Could not detach loaded package ", pkg_name, ": ", conditionMessage(e), "\n", sep = "")
+    })
+  }
+
+  if (pkg_name %in% loadedNamespaces()) {
+    tryCatch(unloadNamespace(pkg_name), error = function(e) {
+      cat("[install] Could not unload namespace ", pkg_name, ": ", conditionMessage(e), "\n", sep = "")
+    })
+  }
+  invisible(TRUE)
+}
+
 # -------- ensure BIOSZEN --------
 remove_incomplete_install(local_lib, pkg)
 
@@ -586,6 +828,9 @@ if (is.null(local_version)) {
   install_needed <- !is.null(archive_path)
 } else if (!is.null(archive_version)) {
   install_needed <- archive_version > local_version
+  if (!install_needed && archive_version == local_version && !is.null(archive_path) && file.exists(archive_path)) {
+    install_needed <- !archive_matches_local_install(archive_path, local_lib, pkg)
+  }
 }
 
 if (install_needed && !is.null(archive_path) && !file.exists(archive_path)) {
@@ -614,8 +859,14 @@ if (length(deps) && nzchar(deps_source)) {
 ensure_dependencies(deps, local_lib)
 
 if (install_needed) {
+  unload_package_namespace(pkg)
+
   if (!is.null(local_version) && !is.null(archive_version)) {
-    cat("[install] Updating BIOSZEN: ", as.character(local_version), " -> ", as.character(archive_version), "\n", sep = "")
+    if (archive_version > local_version) {
+      cat("[install] Updating BIOSZEN: ", as.character(local_version), " -> ", as.character(archive_version), "\n", sep = "")
+    } else {
+      cat("[install] Installing BIOSZEN from archive.\n")
+    }
   } else {
     cat("[install] Installing BIOSZEN from archive.\n")
   }
@@ -626,11 +877,12 @@ if (install_needed) {
     install_from_tarball(archive_path, local_lib, pkg)
   }
   remove_incomplete_install(local_lib, pkg)
+  write_archive_marker(archive_path, local_lib, pkg)
 } else if (!is.null(local_version)) {
   cat("[install] Local BIOSZEN is up to date; skipping install.\n")
 }
 
-if (!requireNamespace(pkg, quietly = TRUE, lib.loc = local_lib)) {
+if (!loadable_with_local_library(pkg, local_lib)) {
   stop("BIOSZEN is still not loadable. Check bioszen_r.log.")
 }
 

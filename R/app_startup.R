@@ -42,6 +42,8 @@ bioszen_configure_project_library <- function(root = bioszen_find_source_root())
   existing <- existing[!vapply(existing, bioszen_is_stale_user_library, logical(1))]
   .libPaths(unique(c(lib, existing)))
   options(BIOSZEN.project_lib = lib)
+  options(BIOSZEN.local_lib = lib)
+  Sys.setenv(BIOSZEN_LOCAL_LIB = lib)
   invisible(.libPaths())
 }
 
