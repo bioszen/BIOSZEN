@@ -23,6 +23,21 @@ test_that("flip orientation control is scoped to supported plot types and metada
     ui_txt,
     perl = TRUE
   ))
+  expect_true(grepl(
+    "uiOutput\\(\\s*\"errbarStatUI\"\\s*\\)",
+    ui_txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "output\\$errbarStatUI\\s*<-\\s*renderUI",
+    srv_txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "errbar_stat_minmax",
+    srv_txt,
+    fixed = TRUE
+  ))
 
   expect_true(grepl(
     "Campo\\s*=\\s*c\\(\"pt_size\",\\s*\"x_angle\",\\s*\"plot_flip\",\\s*\"x_wrap\",\\s*\"x_wrap_lines\"\\)",
@@ -41,18 +56,52 @@ test_that("flip orientation control is scoped to supported plot types and metada
   ))
 })
 
-test_that("flip orientation label exists in both translation files", {
+test_that("flip orientation and error-bar labels exist in both translation files", {
   en <- read_app_file("inst", "app", "i18n", "translation_en.csv")
   es <- read_app_file("inst", "app", "i18n", "translation_es.csv")
 
   expect_true(grepl("(^|\\n)plot_flip,", en, perl = TRUE))
   expect_true(grepl("(^|\\n)plot_flip,", es, perl = TRUE))
+  expect_true(grepl("(^|\\n)errbar_stat_minmax,", en, perl = TRUE))
+  expect_true(grepl("(^|\\n)errbar_stat_minmax,", es, perl = TRUE))
+})
+
+test_that("stacked significance labels use visible stack parameters", {
+  ui_txt <- read_app_file("inst", "app", "ui", "ui_main.R")
+  srv_txt <- read_app_file("inst", "app", "server", "server_main.R")
+
+  expect_true(grepl(
+    "selectizeInput\\(\\s*'sig_param'",
+    ui_txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "(?s)update_selectize_adaptive\\s*<-\\s*function\\([^)]*server\\s*=\\s*NULL.*selected\\s*=\\s*normalized_selected",
+    srv_txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "(?s)resolve_sig_stack_params\\s*<-\\s*function\\(selected\\s*=\\s*NULL\\).*scoped_plot_df\\(\\).*resolve_stack_params\\(df\\s*=\\s*scope_df,\\s*selected\\s*=\\s*selected\\)",
+    srv_txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "(?s)update_selectize_adaptive\\(\\s*\"sig_param\".*choices\\s*=\\s*params.*selected\\s*=\\s*current.*server\\s*=\\s*FALSE",
+    srv_txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "select_sig_stack_param\\(input\\$sig_param,\\s*resolve_sig_stack_params\\(\\)\\)",
+    srv_txt,
+    perl = TRUE
+  ))
 })
 
 test_that("distribution plot builders toggle CoordFlip only when requested", {
   skip_if_not_installed("ggplot2")
   skip_if_not_installed("dplyr")
   skip_if_not_installed("tidyr")
+  skip_if_not_installed("plotly")
 
   suppressPackageStartupMessages(library(ggplot2))
   suppressPackageStartupMessages(library(dplyr))
@@ -61,7 +110,7 @@ test_that("distribution plot builders toggle CoordFlip only when requested", {
 
   `%||%` <- function(x, y) if (is.null(x)) y else x
 
-  make_dist_ctx <- function(flip = FALSE) {
+  make_dist_ctx <- function(flip = FALSE, errbar_stat = "SD") {
     df <- data.frame(
       Label = c("A", "A", "B", "B"),
       Strain = c("S1", "S1", "S2", "S2"),
@@ -86,6 +135,7 @@ test_that("distribution plot builders toggle CoordFlip only when requested", {
         labelMode = FALSE,
         plot_h = 500,
         plot_flip = flip,
+        errbar_stat = errbar_stat,
         box_w = 0.7,
         violin_width = 0.5,
         violin_linewidth = 0.6
@@ -132,10 +182,40 @@ test_that("distribution plot builders toggle CoordFlip only when requested", {
   expect_false(inherits(p_barras_v$coordinates, "CoordFlip"))
   expect_true(inherits(p_barras_h$coordinates, "CoordFlip"))
 
-  p_box_v <- build_boxplot_plot_impl(make_dist_ctx(flip = FALSE))
+  black_calls <- 0L
+  whisker_calls <- 0L
+  whisker_stats <- NULL
+  box_ctx <- make_dist_ctx(flip = FALSE)
+  box_ctx$add_black_t_errorbar <- function(p, ...) {
+    black_calls <<- black_calls + 1L
+    p
+  }
+  box_ctx$add_whisker_caps <- function(p, stats_df, ...) {
+    whisker_calls <<- whisker_calls + 1L
+    whisker_stats <<- stats_df
+    p
+  }
+  p_box_v <- build_boxplot_plot_impl(box_ctx)
   p_box_h <- build_boxplot_plot_impl(make_dist_ctx(flip = TRUE))
   expect_false(inherits(p_box_v$coordinates, "CoordFlip"))
   expect_true(inherits(p_box_h$coordinates, "CoordFlip"))
+  expect_equal(black_calls, 0L)
+  expect_equal(whisker_calls, 1L)
+  expect_true(all(c("Mean", "SD", "lower", "upper") %in% names(whisker_stats)))
+  expect_equal(whisker_stats$lower, whisker_stats$Mean - whisker_stats$SD)
+  expect_equal(whisker_stats$upper, whisker_stats$Mean + whisker_stats$SD)
+  expect_error(ggplot2::ggplot_build(p_box_v), NA)
+  expect_error(plotly::ggplotly(p_box_v, originalData = TRUE), NA)
+
+  minmax_stats <- NULL
+  minmax_ctx <- make_dist_ctx(flip = FALSE, errbar_stat = "MINMAX")
+  minmax_ctx$add_whisker_caps <- function(p, stats_df, ...) {
+    minmax_stats <<- stats_df
+    p
+  }
+  expect_error(build_boxplot_plot_impl(minmax_ctx), NA)
+  expect_equal(minmax_stats$lower, minmax_stats$min_val)
+  expect_equal(minmax_stats$upper, minmax_stats$max_val)
 
   p_violin_v <- build_violin_plot_impl(make_dist_ctx(flip = FALSE))
   p_violin_h <- build_violin_plot_impl(make_dist_ctx(flip = TRUE))
@@ -155,7 +235,7 @@ test_that("stacked ggplot builder toggles CoordFlip only when requested", {
 
   `%||%` <- function(x, y) if (is.null(x)) y else x
 
-  make_stacked_ctx <- function(flip = FALSE) {
+  make_stacked_ctx <- function(flip = FALSE, sig_param = NULL) {
     df <- data.frame(
       Label = c("A", "A", "B", "B"),
       Strain = c("S1", "S1", "S2", "S2"),
@@ -185,7 +265,7 @@ test_that("stacked ggplot builder toggles CoordFlip only when requested", {
         plotTitle = "Stacked",
         yLab = "",
         plot_h = 500,
-        sig_param = NULL,
+        sig_param = sig_param,
         plot_flip = flip
       ),
       lang = "en",
@@ -204,7 +284,11 @@ test_that("stacked ggplot builder toggles CoordFlip only when requested", {
         setNames(rep("#1f77b4", length(levels)), levels)
       },
       margin_adj = function(top, right, bottom, left) ggplot2::margin(top, right, bottom, left, unit = "pt"),
-      apply_sig_layers = function(p, ...) p
+      apply_sig_layers = function(p, group_tops = NULL, default_param = NULL, ...) {
+        attr(p, "sig_default_param") <- default_param
+        attr(p, "sig_label_params") <- as.character(unique(group_tops$param))
+        p
+      }
     )
   }
 
@@ -213,6 +297,9 @@ test_that("stacked ggplot builder toggles CoordFlip only when requested", {
 
   p_stack_v <- build_apiladas_plot_impl(make_stacked_ctx(flip = FALSE))
   p_stack_h <- build_apiladas_plot_impl(make_stacked_ctx(flip = TRUE))
+  p_stack_sig <- build_apiladas_plot_impl(make_stacked_ctx(flip = FALSE, sig_param = "ParamB"))
   expect_false(inherits(p_stack_v$coordinates, "CoordFlip"))
   expect_true(inherits(p_stack_h$coordinates, "CoordFlip"))
+  expect_identical(attr(p_stack_sig, "sig_default_param"), "ParamB")
+  expect_setequal(attr(p_stack_sig, "sig_label_params"), c("ParamA", "ParamB"))
 })

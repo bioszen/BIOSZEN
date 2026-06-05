@@ -25,6 +25,7 @@ From data import to reproducible plots, statistics, metadata, and bundle exports
 - [Visual Gallery](#visual-gallery)
 - [Common User Scenarios](#common-user-scenarios)
 - [Documentation](#documentation)
+- [AI Skill for Input Preparation](#ai-skill-for-input-preparation)
 - [Troubleshooting](#troubleshooting)
 - [Citation](#citation)
 - [License](#license)
@@ -158,6 +159,29 @@ Reference templates include:
 - [Ejemplo_curvas.xlsx](inst/app/www/reference_files/Ejemplo_curvas.xlsx)
 - [Ejemplo_parametros_agrupados.xlsx](inst/app/www/reference_files/Ejemplo_parametros_agrupados.xlsx)
 - [Ejemplo_input_summary_mean_sd.xlsx](inst/app/www/reference_files/Ejemplo_input_summary_mean_sd.xlsx)
+
+## AI Skill for Input Preparation
+
+This repository includes an optional reusable AI-agent skill in the
+[`skills/bioszen-platemap-curves/` GitHub folder](https://github.com/bioszen/BIOSZEN/tree/main/skills/bioszen-platemap-curves).
+To use it, give that GitHub folder URL to the corresponding AI tool or agent so
+it can read or acquire the skill. If the agent needs local files, download the
+repository ZIP from
+<https://github.com/bioszen/BIOSZEN/archive/refs/heads/main.zip> and copy the
+`skills/bioszen-platemap-curves/` folder into your agent's skill system.
+
+The skill can be used from Codex, Claude, Antigravity, or similar agentic coding
+tools to create, repair, and validate BIOSZEN-compatible platemap and curves
+workbooks before upload. It is intended for arbitrary numeric plotting datasets:
+it does not assume fixed parameter names, fixed experiment labels, or a specific
+measurement type.
+
+Use it when you need help generating a `Datos` + `PlotSettings` platemap from
+any readable source file with data, creating or correcting a separate curves
+workbook, repairing stale `PlotSettings`, fixing parameter-name typing mistakes
+that make BIOSZEN reject or misread a platemap, or checking that `Datos$Well`
+matches curve columns exactly. The skill is documentation/tooling only and does
+not change the BIOSZEN Shiny application.
 
 ## Troubleshooting
 

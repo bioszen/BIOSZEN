@@ -60,6 +60,10 @@ stack_show_errbars,Mostrar barras de desviación
 stack_outline_only,Contorno negro solo barra total
 stack_errbar_param_color,Color de barras según parámetro
 errbar_size,Grosor de barras de error:
+errbar_stat,Estadístico de barras de error:
+errbar_stat_sd,SD
+errbar_stat_sem,SEM
+errbar_stat_minmax,Min-Max
 violin_linewidth,Grosor contorno violín:
 violin_width,Ancho violín:
 plot_width,Ancho px:

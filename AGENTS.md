@@ -18,6 +18,26 @@ Directory structure:
 - `inst/app/` – all Shiny modules and resources (`global.R`, `helpers.R`,
   `params/`, `stats/`, `graficos/`, `server/`, `ui/`, `www/`).
 - `tests/` – automated tests executed with `testthat`.
+- `skills/` – optional AI-agent skills and supporting references. These are
+  repository extras for Codex, Claude, Antigravity, and similar tools; they are
+  not Shiny runtime code.
+
+## AI Skill Extra
+
+The repository includes
+[`skills/bioszen-platemap-curves/`](https://github.com/bioszen/BIOSZEN/tree/main/skills/bioszen-platemap-curves),
+an optional reusable skill for creating, repairing, and validating
+BIOSZEN-compatible platemap and curves workbooks before upload.
+
+Use this skill when a user asks to generate a platemap from any readable source
+file with data, correct platemap files, repair curves files, fix `PlotSettings`,
+repair parameter-name typing mistakes, or validate `Well` alignment. Keep the
+skill generic: it should work with arbitrary datasets and arbitrary numeric
+plotting parameters, without hard-coded parameter names, experiment labels, or
+measurement-type assumptions.
+
+When the requested work is only to update this skill or its references, do not
+modify the Shiny app files under `inst/app`.
 
 ## Adding Modules
 

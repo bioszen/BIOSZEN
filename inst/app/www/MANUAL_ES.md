@@ -173,6 +173,28 @@ CSV (`.csv`):
 - BIOSZEN intenta convertir perfiles no platemap a un formato compatible.
 - **Cargar curvas** también acepta `.csv` (`Time` + wells).
 
+### 4.6 Skill de IA opcional para preparar entradas
+
+El repositorio fuente/GitHub incluye una skill opcional para agentes de IA en la
+[carpeta de GitHub `skills/bioszen-platemap-curves/`](https://github.com/bioszen/BIOSZEN/tree/main/skills/bioszen-platemap-curves).
+Para usarla, entrega ese URL de la carpeta de GitHub a la IA o agente
+correspondiente para que lea o adquiera la skill. Si el agente necesita archivos
+locales, descarga el ZIP del repositorio desde
+<https://github.com/bioszen/BIOSZEN/archive/refs/heads/main.zip> y copia la
+carpeta `skills/bioszen-platemap-curves/` al sistema de skills de tu agente.
+
+Usa esta skill desde Codex, Claude, Antigravity u otras herramientas agénticas
+similares cuando necesites generar un platemap `Datos` + `PlotSettings` desde
+cualquier archivo legible con datos, corregir un platemap existente, reparar
+errores de tipeo en nombres de parámetros entre columnas de `Datos` y
+`PlotSettings$Parameter`, preparar un workbook de curvas separado, o validar
+que `Datos$Well` coincida exactamente con los encabezados de curvas antes de
+subir los archivos a BIOSZEN.
+
+La skill es un extra de documentación/herramientas. No modifica la app BIOSZEN
+y no asume nombres fijos de parámetros, etiquetas fijas de experimento ni un
+tipo específico de medición.
+
 ## 5. Flujo Estándar
 
 1. Carga el archivo principal de datos.

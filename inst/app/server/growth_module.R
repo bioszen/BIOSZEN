@@ -1,4 +1,84 @@
 # Growth rate processing module
+.bioszen_growth_runtime <- new.env(parent = emptyenv())
+.bioszen_growth_runtime$active_jobs <- 0L
+
+.bioszen_growth_job_started <- function() {
+  .bioszen_growth_runtime$active_jobs <- .bioszen_growth_runtime$active_jobs + 1L
+  invisible(.bioszen_growth_runtime$active_jobs)
+}
+
+.bioszen_growth_job_finished <- function() {
+  .bioszen_growth_runtime$active_jobs <- max(0L, .bioszen_growth_runtime$active_jobs - 1L)
+  invisible(.bioszen_growth_runtime$active_jobs)
+}
+
+.bioszen_growth_has_active_jobs <- function() {
+  isTRUE(.bioszen_growth_runtime$active_jobs > 0L)
+}
+
+.bioszen_maybe_stop_app_when_growth_idle <- function() {
+  active <- get0("active_sessions", ifnotfound = NULL, inherits = TRUE)
+  if (is.null(active) || !length(active) || is.na(active[1]) || active[1] > 0) {
+    return(invisible(FALSE))
+  }
+  if (.bioszen_growth_has_active_jobs()) return(invisible(FALSE))
+  try(shiny::stopApp(), silent = TRUE)
+  invisible(TRUE)
+}
+
+.bioszen_safe_growth_name <- function(x, fallback) {
+  if (is.null(x) || !length(x) || is.na(x[1])) x <- ""
+  x <- tools::file_path_sans_ext(basename(as.character(x[[1]])))
+  x <- gsub("[^A-Za-z0-9._-]+", "_", x)
+  x <- gsub("^_+|_+$", "", x)
+  if (!nzchar(x)) fallback else x
+}
+
+.bioszen_unique_growth_stems <- function(names) {
+  stems <- vapply(seq_along(names), function(i) {
+    .bioszen_safe_growth_name(names[[i]], sprintf("growth_file_%d", i))
+  }, character(1))
+  make.unique(stems, sep = "_")
+}
+
+.bioszen_copy_growth_uploads <- function(files, names, parent_dir = file.path(tempdir(), "growth_upload_cache")) {
+  if (is.null(files) || !length(files)) stop("No growth files were provided.")
+  if (is.null(names) || length(names) != length(files)) {
+    names <- basename(files)
+  }
+
+  if (!dir.exists(parent_dir)) {
+    dir.create(parent_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  if (!dir.exists(parent_dir)) {
+    stop(sprintf("Could not create growth upload cache directory: %s", parent_dir))
+  }
+
+  run_dir <- tempfile(pattern = "run_", tmpdir = parent_dir)
+  dir.create(run_dir, recursive = TRUE, showWarnings = FALSE)
+  if (!dir.exists(run_dir)) {
+    stop(sprintf("Could not create growth upload working directory: %s", run_dir))
+  }
+
+  stems <- .bioszen_unique_growth_stems(names)
+  extensions <- gsub("[^A-Za-z0-9]+", "", tools::file_ext(names))
+  extensions[!nzchar(extensions)] <- "xlsx"
+  target_names <- paste0(stems, ".", extensions)
+  targets <- file.path(run_dir, target_names)
+
+  for (i in seq_along(files)) {
+    if (!file.exists(files[[i]])) {
+      stop(sprintf("Growth input file is no longer available: %s", files[[i]]))
+    }
+    copied <- file.copy(files[[i]], targets[[i]], overwrite = TRUE)
+    if (!isTRUE(copied)) {
+      stop(sprintf("Could not prepare growth input file: %s", names[[i]]))
+    }
+  }
+
+  list(files = targets, names = names, output_stems = stems, cache_dir = run_dir)
+}
+
 compute_growth_results_batch <- function(tidy_df, should_abort = NULL, progress_callback = NULL) {
   .bioszen_abort_if_requested(should_abort)
   wells <- unique(tidy_df$Well)
@@ -194,6 +274,7 @@ setup_growth_module <- function(input, output, session) {
   growth_state <- new.env(parent = emptyenv())
   growth_state$cancel_requested <- FALSE
   growth_state$running <- FALSE
+  growth_state$session_closed <- FALSE
 
   # Use translated text when available; fall back to defaults for standalone tests
   current_lang <- function() {
@@ -261,9 +342,48 @@ setup_growth_module <- function(input, output, session) {
     invisible(NULL)
   }
 
+  is_growth_session_closed <- function() {
+    if (isTRUE(growth_state$session_closed)) return(TRUE)
+    by_closed <- tryCatch(isTRUE(session$closed), error = function(e) FALSE)
+    if (isTRUE(by_closed)) return(TRUE)
+    tryCatch(isTRUE(session$isClosed()), error = function(e) FALSE)
+  }
+
+  safe_inc_progress <- function(amount, detail = NULL) {
+    if (is_growth_session_closed()) return(invisible(NULL))
+    try(incProgress(amount, detail = detail), silent = TRUE)
+    invisible(NULL)
+  }
+
+  render_growth_results_table <- function() {
+    if (is_growth_session_closed()) return(invisible(NULL))
+    files_done <- list.files(growth_out_dir, pattern = '^(Parametros|Parameters)_.*\\.xlsx$', full.names = TRUE)
+    if (!length(files_done)) {
+      output$growthTable <- DT::renderDT(data.frame(), options = list(pageLength = 10))
+    } else {
+      dfs <- lapply(files_done, readxl::read_excel, .name_repair = "minimal")
+      names(dfs) <- basename(files_done)
+      combined <- dplyr::bind_rows(dfs, .id = 'Archivo')
+      output$growthTable <- DT::renderDT(combined, options = list(pageLength = 10))
+    }
+    invisible(NULL)
+  }
+
+  reset_growth_results <- function() {
+    if (dir.exists(growth_out_dir)) unlink(growth_out_dir, recursive = TRUE)
+    dir.create(growth_out_dir, recursive = TRUE, showWarnings = FALSE)
+    if (!dir.exists(growth_out_dir)) {
+      stop(sprintf("Could not create growth results directory: %s", growth_out_dir))
+    }
+    render_growth_results_table()
+    invisible(NULL)
+  }
+
   output$growthStatus <- renderText({
     status_text()
   })
+
+  render_growth_results_table()
 
   clear_growth_upload_ui <- function() {
     if (requireNamespace("shinyjs", quietly = TRUE)) {
@@ -273,20 +393,34 @@ setup_growth_module <- function(input, output, session) {
     invisible(NULL)
   }
 
-  run_growth_job <- function(files, names, max_time, time_interval, lang) {
+  run_growth_job <- function(files,
+                             names,
+                             max_time,
+                             time_interval,
+                             lang,
+                             output_stems = NULL,
+                             upload_cache_dir = NULL) {
+    .bioszen_growth_job_started()
     on.exit({
       growth_state$running <- FALSE
       growth_running(FALSE)
       set_growth_buttons(FALSE)
       set_growth_running_flag(FALSE)
+      .bioszen_growth_job_finished()
+      if (!is.null(upload_cache_dir) && dir.exists(upload_cache_dir)) {
+        unlink(upload_cache_dir, recursive = TRUE)
+      }
+      .bioszen_maybe_stop_app_when_growth_idle()
     }, add = TRUE)
 
-    if (dir.exists(growth_out_dir)) unlink(growth_out_dir, recursive = TRUE)
-    dir.create(growth_out_dir)
+    reset_growth_results()
     curve_prefix <- if (identical(lang, "es")) "Curvas_" else "Curves_"
     param_prefix <- if (identical(lang, "es")) "Parametros_" else "Parameters_"
     was_cancelled <- FALSE
     run_error <- NULL
+    if (is.null(output_stems) || length(output_stems) != length(files)) {
+      output_stems <- .bioszen_unique_growth_stems(names)
+    }
 
     tryCatch({
       withProgress(message = growth_tr("growth_progress_files", "Processing files...", lang), value = 0, {
@@ -294,11 +428,12 @@ setup_growth_module <- function(input, output, session) {
         for (i in seq_along(files)) {
           .bioszen_abort_if_requested(should_abort)
           f  <- files[i]
-          nm <- tools::file_path_sans_ext(names[i])
+          display_nm <- tools::file_path_sans_ext(basename(names[i]))
+          nm <- output_stems[[i]]
           prepared <- .bioszen_build_curves_sheet(f, max_time = max_time, time_interval = time_interval)
           new_data <- prepared$new_data
           fixed_params <- prepared$fixed_params
-          status_text(sprintf("Processing file %d/%d: %s (%s format)", i, n_files, nm, prepared$format))
+          status_text(sprintf("Processing file %d/%d: %s (%s format)", i, n_files, display_nm, prepared$format))
           curvas_file <- file.path(growth_out_dir, paste0(curve_prefix, nm, '.xlsx'))
           writexl::write_xlsx(list(Sheet1 = new_data, Sheet2 = fixed_params), path = curvas_file)
           .bioszen_abort_if_requested(should_abort)
@@ -324,15 +459,15 @@ setup_growth_module <- function(input, output, session) {
                   detail_label <- if (!is.null(well) && !is.na(well) && nzchar(as.character(well))) {
                     as.character(well)
                   } else {
-                    nm
+                    display_nm
                   }
                   phase_label <- if (identical(stage, "robust")) "Strict" else "Permissive"
                   if (identical(stage, "permissive_skipped")) phase_label <- "Permissive skipped"
                   status_text(sprintf(
                     "File %d/%d (%s): %s [%d/%d]",
-                    i, n_files, nm, phase_label, min(done, total_wells), total_wells
+                    i, n_files, display_nm, phase_label, min(done, total_wells), total_wells
                   ))
-                  incProgress(
+                  safe_inc_progress(
                     delta,
                     detail = sprintf("%s - %s [%d/%d]", phase_label, detail_label, min(done, total_wells), total_wells)
                   )
@@ -340,12 +475,12 @@ setup_growth_module <- function(input, output, session) {
                 }
               }
             )
-            if (last_progress < 1) incProgress(1 - last_progress, detail = nm)
+            if (last_progress < 1) safe_inc_progress(1 - last_progress, detail = display_nm)
           })
           param_file <- file.path(growth_out_dir, paste0(param_prefix, nm, '.xlsx'))
           openxlsx::write.xlsx(final_df, param_file, sheetName = 'Resultados Combinados',
                                colNames = TRUE, rowNames = FALSE)
-          incProgress(1 / n_files, detail = sprintf(growth_tr("growth_progress_file_done", "File %s completed", lang), nm))
+          safe_inc_progress(1 / n_files, detail = sprintf(growth_tr("growth_progress_file_done", "File %s completed", lang), display_nm))
         }
       })
     }, bioszen_growth_cancelled = function(e) {
@@ -372,15 +507,7 @@ setup_growth_module <- function(input, output, session) {
       status_text("Completed.")
     }
 
-    files_done <- list.files(growth_out_dir, pattern = '^(Parametros|Parameters)_.*\\.xlsx$', full.names = TRUE)
-    if (!length(files_done)) {
-      output$growthTable <- DT::renderDT(data.frame(), options = list(pageLength = 10))
-    } else {
-      dfs <- lapply(files_done, readxl::read_excel, .name_repair = "minimal")
-      names(dfs) <- basename(files_done)
-      combined <- dplyr::bind_rows(dfs, .id = 'Archivo')
-      output$growthTable <- DT::renderDT(combined, options = list(pageLength = 10))
-    }
+    render_growth_results_table()
   }
 
   observeEvent(input$stopGrowth, {
@@ -397,42 +524,67 @@ setup_growth_module <- function(input, output, session) {
     }
   }, ignoreInit = TRUE)
 
-  observeEvent(input$growth_progress_closed, {
-    growth_state$cancel_requested <- TRUE
-    cancel_requested(TRUE)
-    clear_growth_upload_ui()
-    status_text("Processing window closed. Stopping at next safe point...")
-    if (isTRUE(growth_running())) {
-      showNotification(
-        growth_tr("growth_stop_requested", "Stop requested. Cancelling current processing..."),
-        type = "warning",
-        duration = 4
-      )
-    }
-  }, ignoreInit = TRUE)
-
   session$onSessionEnded(function() {
-    growth_state$cancel_requested <- TRUE
-    cancel_requested(TRUE)
+    growth_state$session_closed <- TRUE
   })
 
   observeEvent(input$runGrowth, {
     req(input$growthFiles)
     if (isTRUE(growth_running())) return()
+    reset_ok <- tryCatch(
+      {
+        reset_growth_results()
+        status_text("Starting...")
+        TRUE
+      },
+      error = function(e) {
+        msg <- conditionMessage(e)
+        status_text(sprintf("Error: %s", msg))
+        showNotification(
+          sprintf(growth_tr("global_error_template", "Error in %s: %s", current_lang()), "growth", msg),
+          type = "error",
+          duration = 8
+        )
+        FALSE
+      }
+    )
+    if (!isTRUE(reset_ok)) return()
+    files <- isolate(input$growthFiles$datapath)
+    names <- isolate(input$growthFiles$name)
+    prepared_uploads <- tryCatch(
+      .bioszen_copy_growth_uploads(files, names),
+      error = function(e) {
+        msg <- conditionMessage(e)
+        status_text(sprintf("Error: %s", msg))
+        showNotification(
+          sprintf(growth_tr("global_error_template", "Error in %s: %s", current_lang()), "growth", msg),
+          type = "error",
+          duration = 8
+        )
+        NULL
+      }
+    )
+    if (is.null(prepared_uploads)) return()
+
     growth_state$cancel_requested <- FALSE
     growth_state$running <- TRUE
     cancel_requested(FALSE)
     growth_running(TRUE)
     set_growth_buttons(TRUE)
     set_growth_running_flag(TRUE)
-    status_text("Starting...")
-    files <- isolate(input$growthFiles$datapath)
-    names <- isolate(input$growthFiles$name)
     max_time <- isolate(input$maxTime)
     time_interval <- isolate(input$timeInterval)
     lang <- isolate(current_lang())
 
-    run_growth_job(files, names, max_time, time_interval, lang)
+    run_growth_job(
+      prepared_uploads$files,
+      prepared_uploads$names,
+      max_time,
+      time_interval,
+      lang,
+      output_stems = prepared_uploads$output_stems,
+      upload_cache_dir = prepared_uploads$cache_dir
+    )
   })
 
   output$downloadGrowthZip <- downloadHandler(

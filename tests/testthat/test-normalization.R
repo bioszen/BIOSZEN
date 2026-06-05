@@ -113,6 +113,40 @@ test_that("normalize_params can mix valid replicates and omitted replicates by p
   expect_length(raw_params, 0)
 })
 
+test_that("normalize_params normalizes summary SD columns and carries N columns", {
+  df <- data.frame(
+    Strain = c("S1", "S1", "S1", "S1"),
+    Media = c("Ctrl", "Treat", "Ctrl", "Treat"),
+    BiologicalReplicate = c(1, 1, 2, 2),
+    Growth = c(2, 6, 3, 9),
+    SD_Growth = c(0.2, 0.6, 0.3, 0.9),
+    N_Growth = c(3, 3, 4, 4)
+  )
+
+  res <- normalize_params(df, params = "Growth", do_norm = TRUE, ctrl_medium = "Ctrl")
+
+  expect_equal(res$Growth_Norm[df$Media == "Treat"], c(3, 3))
+  expect_true("SD_Growth_Norm" %in% names(res))
+  expect_true("N_Growth_Norm" %in% names(res))
+  expect_equal(res$SD_Growth_Norm[df$Media == "Treat"], c(0.3, 0.3))
+  expect_equal(res$N_Growth_Norm[df$Media == "Treat"], c(3, 4))
+})
+
+test_that("error bar helper switches between SD and SEM on supplied plot values", {
+  vals <- c(1, 3, 5, 7)
+
+  expect_equal(calculate_errorbar_height(vals, "SD"), stats::sd(vals))
+  expect_equal(calculate_errorbar_height(vals, "SEM"), stats::sd(vals) / sqrt(length(vals)))
+  expect_equal(
+    calculate_errorbar_height(vals, "SEM", sd_values = c(2, 2), n_values = c(4, 4)),
+    1
+  )
+  expect_identical(normalize_errorbar_stat("se"), "SEM")
+  expect_identical(normalize_errorbar_stat("min-max"), "MINMAX")
+  expect_identical(normalize_errorbar_stat("min-max", allow_minmax = FALSE), "SD")
+  expect_identical(normalize_errorbar_stat("unknown"), "SD")
+})
+
 test_that("should_use_normalized_data only activates with an explicit control medium", {
   expect_false(should_use_normalized_data(do_norm = FALSE, ctrl_medium = "Ctrl"))
   expect_false(should_use_normalized_data(do_norm = TRUE, ctrl_medium = NULL))

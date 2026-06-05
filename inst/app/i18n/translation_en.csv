@@ -60,6 +60,10 @@ stack_show_errbars,Show deviation bars
 stack_outline_only,Black outline only for total bar
 stack_errbar_param_color,Error bar color by parameter
 errbar_size,Error bar thickness:
+errbar_stat,Error bar statistic:
+errbar_stat_sd,SD
+errbar_stat_sem,SEM
+errbar_stat_minmax,Min-Max
 violin_linewidth,Violin outline thickness:
 violin_width,Violin width:
 plot_width,Width px:

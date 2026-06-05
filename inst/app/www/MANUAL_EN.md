@@ -173,6 +173,27 @@ CSV (`.csv`):
 - BIOSZEN attempts profile conversion when CSV is not already platemap-ready.
 - **Load Curves** also accepts `.csv` (`Time` + wells).
 
+### 4.6 Optional AI skill for input preparation
+
+The GitHub/source repository includes an optional AI-agent skill in the
+[`skills/bioszen-platemap-curves/` GitHub folder](https://github.com/bioszen/BIOSZEN/tree/main/skills/bioszen-platemap-curves).
+To use it, give that GitHub folder URL to the corresponding AI tool or agent so
+it can read or acquire the skill. If the agent needs local files, download the
+repository ZIP from
+<https://github.com/bioszen/BIOSZEN/archive/refs/heads/main.zip> and copy the
+`skills/bioszen-platemap-curves/` folder into your agent's skill system.
+
+Use this skill from Codex, Claude, Antigravity, or similar agentic tools when
+you need to generate a `Datos` + `PlotSettings` platemap from any readable data
+file, correct an existing platemap, repair parameter-name typing mistakes
+between `Datos` columns and `PlotSettings$Parameter`, prepare a separate curves
+workbook, or validate that `Datos$Well` exactly matches curve headers before
+uploading files to BIOSZEN.
+
+The skill is a documentation/tooling extra. It does not modify the BIOSZEN app
+and does not assume fixed parameter names, fixed experiment labels, or a
+specific measurement type.
+
 ## 5. Standard Workflow
 
 1. Load main data file.

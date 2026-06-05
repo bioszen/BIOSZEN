@@ -36,18 +36,32 @@ build_apiladas_plot_impl <- function(ctx) {
     }
 
     summary_mode_active <- isTRUE(is_summary_mode())
+    errorbar_stat <- normalize_errorbar_stat(input$errbar_stat %||% "SD", allow_minmax = FALSE)
     if (summary_mode_active) {
       stack_parts <- lapply(params_apilar, function(pm) {
         sd_col <- resolve_prefixed_param_col(df_f, "SD_", pm)
-        df_f %>%
+        n_col <- resolve_prefixed_param_col(df_f, "N_", pm)
+        df_pm <- df_f
+        df_pm$.err_sd_source <- if (!is.null(sd_col) && sd_col %in% names(df_pm)) {
+          suppressWarnings(as.numeric(df_pm[[sd_col]]))
+        } else {
+          NA_real_
+        }
+        df_pm$.err_n_source <- if (!is.null(n_col) && n_col %in% names(df_pm)) {
+          suppressWarnings(as.numeric(df_pm[[n_col]]))
+        } else {
+          NA_real_
+        }
+        df_pm %>%
           group_by(.data[[eje_x]]) %>%
           summarise(
             Mean = mean(.data[[pm]], na.rm = TRUE),
-            SD = if (!is.null(sd_col) && sd_col %in% names(df_f)) {
-              mean(.data[[sd_col]], na.rm = TRUE)
-            } else {
-              sd(.data[[pm]], na.rm = TRUE)
-            },
+            SD = calculate_errorbar_height(
+              .data[[pm]],
+              stat = errorbar_stat,
+              sd_values = .data$.err_sd_source,
+              n_values = .data$.err_n_source
+            ),
             .groups = "drop"
           ) %>%
           mutate(Parametro = pm)
@@ -61,7 +75,7 @@ build_apiladas_plot_impl <- function(ctx) {
         group_by(.data[[eje_x]], Parametro) %>%
         summarise(
           Mean = mean(Valor, na.rm = TRUE),
-          SD = sd(Valor, na.rm = TRUE),
+          SD = calculate_errorbar_height(Valor, stat = errorbar_stat),
           .groups = "drop"
         ) %>%
         mutate(Parametro = factor(Parametro, levels = stack_levels)) %>%
@@ -280,12 +294,17 @@ build_apiladas_plot_impl <- function(ctx) {
         legend.key.size = unit(1.4, "lines")
       )
 
+    sig_default_param <- input$sig_param %||% ""
+    if (is.na(sig_default_param) || !sig_default_param %in% stack_levels) {
+      sig_default_param <- if (length(stack_levels)) stack_levels[[1]] else NULL
+    }
+
     p <- apply_sig_layers(
       p,
       group_tops = label_tops,
       margin_base = base_margin,
       plot_height = input$plot_h,
-      default_param = input$sig_param
+      default_param = sig_default_param
     )
     if (flip_plot) {
       p <- suppressMessages(p + coord_flip(clip = "off"))

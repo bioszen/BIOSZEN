@@ -270,12 +270,22 @@ get_current_version <- function(pkg = "BIOSZEN") {
 
 server <- function(input, output, session) {
   session_closing <- reactiveVal(FALSE)
+  if (is.function(session$allowReconnect)) {
+    try(session$allowReconnect(TRUE), silent = TRUE)
+  }
 
   active_sessions <<- active_sessions + 1
   session$onSessionEnded(function() {
     session_closing(TRUE)
     active_sessions <<- max(0, active_sessions - 1)
-    if (active_sessions == 0) shiny::stopApp()
+    has_active_growth_jobs <- get0(
+      ".bioszen_growth_has_active_jobs",
+      mode = "function",
+      inherits = TRUE,
+      ifnotfound = NULL
+    )
+    keep_running_for_growth <- is.function(has_active_growth_jobs) && isTRUE(has_active_growth_jobs())
+    if (active_sessions == 0 && !keep_running_for_growth) shiny::stopApp()
   })
 
   is_session_closing <- function() {
@@ -431,6 +441,7 @@ server <- function(input, output, session) {
   qc_tech_selected_by_param <- reactiveVal(list())
   last_plot_type <- reactiveVal("Boxplot")
   last_adv_palette_name <- reactiveVal("BuGn")
+  last_param_selection <- reactiveVal("")
 
   observeEvent(input$tipo, {
     current_type <- trimws(as.character(input$tipo %||% ""))
@@ -443,6 +454,21 @@ server <- function(input, output, session) {
     current_palette <- trimws(as.character(input$adv_pal_name %||% ""))
     if (nzchar(current_palette)) {
       last_adv_palette_name(current_palette)
+    }
+  }, ignoreInit = FALSE)
+
+  observeEvent(input$param, {
+    current_param <- trimws(as.character(input$param %||% ""))
+    if (!nzchar(current_param)) return()
+    cfg <- isolate(plot_cfg_box())
+    params_all <- if (is.data.frame(cfg) && "Parameter" %in% names(cfg)) {
+      vals <- as.character(cfg$Parameter %||% character(0))
+      vals[!is.na(vals) & nzchar(vals)]
+    } else {
+      character(0)
+    }
+    if (length(params_all) && current_param %in% params_all) {
+      last_param_selection(current_param)
     }
   }, ignoreInit = FALSE)
   qc_tech_bulk_updating <- reactiveVal(FALSE)
@@ -702,6 +728,106 @@ server <- function(input, output, session) {
     TRUE
   }
 
+  begin_bulk_update <- function(flag_rv) {
+    if (!is.function(flag_rv)) return(FALSE)
+    if (isTRUE(flag_rv())) return(FALSE)
+    flag_rv(TRUE)
+    session$onFlushed(function() {
+      flag_rv(FALSE)
+    }, once = TRUE)
+    TRUE
+  }
+
+  update_checkbox_group_input_if_changed <- function(input_id,
+                                                     choices = NULL,
+                                                     selected = NULL,
+                                                     label = NULL,
+                                                     freeze_input = FALSE) {
+    normalized_choices <- normalize_update_values(choices)
+    normalized_selected <- if (is.null(selected)) {
+      NULL
+    } else {
+      normalize_update_values(selected)
+    }
+    if (!is.null(normalized_selected) && length(normalized_choices)) {
+      normalized_selected <- intersect(normalized_selected, normalized_choices)
+    }
+
+    cache_key <- paste0("checkbox::", input_id)
+    update_signature <- list(
+      choices = normalized_choices,
+      selected = normalized_selected,
+      label = if (is.null(label)) NULL else as.character(label[[1]])
+    )
+    previous_signature <- if (exists(cache_key, envir = input_update_cache, inherits = FALSE)) {
+      get(cache_key, envir = input_update_cache, inherits = FALSE)
+    } else {
+      NULL
+    }
+    if (identical(update_signature, previous_signature)) {
+      return(invisible(FALSE))
+    }
+
+    if (isTRUE(freeze_input)) shiny::freezeReactiveValue(input, input_id)
+    args <- list(
+      session = session,
+      inputId = input_id,
+      choices = choices
+    )
+    if (!is.null(selected)) args$selected <- normalized_selected
+    if (!is.null(label)) args$label <- label
+    do.call(updateCheckboxGroupInput, args)
+    assign(cache_key, update_signature, envir = input_update_cache)
+    invisible(TRUE)
+  }
+
+  update_select_input_if_changed <- function(input_id,
+                                             choices = NULL,
+                                             selected = NULL,
+                                             label = NULL) {
+    normalized_choices <- normalize_update_values(choices)
+    normalized_selected <- if (is.null(selected)) {
+      NULL
+    } else {
+      normalize_update_values(selected)
+    }
+    if (!is.null(normalized_selected) && length(normalized_choices)) {
+      normalized_selected <- intersect(normalized_selected, normalized_choices)
+    }
+    if (!is.null(normalized_selected) && length(normalized_selected) > 1L) {
+      normalized_selected <- normalized_selected[[1]]
+    }
+    if (!is.null(normalized_selected) && !length(normalized_selected)) {
+      normalized_selected <- character(0)
+    }
+
+    cache_key <- paste0("select::", input_id)
+    update_signature <- list(
+      choices = normalized_choices,
+      selected = normalized_selected,
+      label = if (is.null(label)) NULL else as.character(label[[1]])
+    )
+    previous_signature <- if (exists(cache_key, envir = input_update_cache, inherits = FALSE)) {
+      get(cache_key, envir = input_update_cache, inherits = FALSE)
+    } else {
+      NULL
+    }
+    if (identical(update_signature, previous_signature)) {
+      return(invisible(FALSE))
+    }
+
+    args <- list(
+      session = session,
+      inputId = input_id,
+      choices = choices
+    )
+    if (!is.null(selected)) args$selected <- normalized_selected
+    if (!is.null(label)) args$label <- label
+    do.call(updateSelectInput, args)
+    assign(cache_key, update_signature, envir = input_update_cache)
+    invisible(TRUE)
+  }
+
   enforce_axis_break_limit <- function(break_id,
                                        max_id,
                                        min_id = NULL,
@@ -794,7 +920,8 @@ server <- function(input, output, session) {
                                         choices = NULL,
                                         selected = NULL,
                                         label = NULL,
-                                        options = NULL) {
+                                        options = NULL,
+                                        server = NULL) {
     normalized_choices <- normalize_selectize_values(choices)
     normalized_selected <- if (is.null(selected)) {
       NULL
@@ -804,7 +931,11 @@ server <- function(input, output, session) {
     if (!is.null(normalized_selected) && length(normalized_choices)) {
       normalized_selected <- intersect(normalized_selected, normalized_choices)
     }
-    server_mode <- isTRUE(should_use_server_selectize(choices))
+    server_mode <- if (is.null(server)) {
+      isTRUE(should_use_server_selectize(choices))
+    } else {
+      isTRUE(server)
+    }
 
     cache_key <- paste0("selectize::", input_id)
     update_signature <- list(
@@ -827,7 +958,7 @@ server <- function(input, output, session) {
       session = session,
       inputId = input_id,
       choices = choices,
-      selected = selected,
+      selected = normalized_selected,
       server = server_mode
     )
     if (!is.null(label)) args$label <- label
@@ -1146,6 +1277,16 @@ server <- function(input, output, session) {
         )
       )
     }
+    if (input$tipo %in% c("Boxplot", "Barras")) {
+      meta <- add_row(
+        meta,
+        Campo = "errbar_stat",
+        Valor = normalize_errorbar_stat(
+          input$errbar_stat %||% "SD",
+          allow_minmax = identical(input$tipo, "Boxplot")
+        )
+      )
+    }
     if (input$tipo == "Violin") {
       meta <- add_row(
         meta,
@@ -1200,14 +1341,16 @@ server <- function(input, output, session) {
                   "showErrBars",
                   "stack_outline_only",
                   "errbar_param_color",
-                  "errbar_size",
-                  "ymax", "ybreak"),
+                  "errbar_stat",
+          "errbar_size",
+          "ymax", "ybreak"),
         Valor = c(
           paste(input$stackParams, collapse = ","),
           input$orderStack %||% "",
           as.character(input$showErrBars),
           as.character(input$stack_outline_only %||% FALSE),
           as.character(input$errbar_param_color %||% FALSE),
+          normalize_errorbar_stat(input$errbar_stat %||% "SD", allow_minmax = FALSE),
           as.character(input$errbar_size),
           as.character(input$ymax),
           as.character(input$ybreak)
@@ -1292,9 +1435,23 @@ server <- function(input, output, session) {
     metadata_filter_design_only(meta)
   }
 
+  theme_mode_state <- reactiveVal("light")
+  apply_theme_mode <- function(mode) {
+    mode_chr <- as.character(mode %||% "light")
+    mode_chr <- if (identical(mode_chr, "dark")) "dark" else "light"
+    if (identical(isolate(theme_mode_state()), mode_chr)) return(invisible(FALSE))
+    if (identical(mode_chr, "dark")) {
+      session$setCurrentTheme(theme_dark)
+    } else {
+      session$setCurrentTheme(theme_light)
+    }
+    theme_mode_state(mode_chr)
+    invisible(TRUE)
+  }
+
   observeEvent(input$btn_light, {
     # 1Ã‚Â· cambia el tema visual
-    session$setCurrentTheme(theme_light)
+    apply_theme_mode("light")
     # 2Ã‚Â· guarda la preferencia en localStorage
     session$sendCustomMessage("saveMode", "light")
     # 3Ã‚Â· actualiza input$mode (por si lo usas en otros lugares)
@@ -1304,12 +1461,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$mode, {
-    mode <- input$mode %||% "light"
-    if (identical(mode, "dark")) {
-      session$setCurrentTheme(theme_dark)
-    } else {
-      session$setCurrentTheme(theme_light)
-    }
+    apply_theme_mode(input$mode %||% "light")
   })
 
   write_metadata_xlsx <- function(file){
@@ -1442,7 +1594,7 @@ server <- function(input, output, session) {
   }
 
   observeEvent(input$btn_dark, {
-    session$setCurrentTheme(theme_dark)
+    apply_theme_mode("dark")
     session$sendCustomMessage("saveMode", "dark")
     shinyjs::runjs(
       "Shiny.setInputValue('mode', 'dark', {priority: 'event'});"
@@ -2348,12 +2500,12 @@ server <- function(input, output, session) {
   
   observeEvent(input$add_sig, {  
     req(input$sig_group1, input$sig_group2, nzchar(input$sig_label))  
+    param_val <- NULL
     if (identical(input$sig_mode, "labels") && identical(input$tipo, "Apiladas")) {
-      req(input$sig_param)
+      param_val <- select_sig_stack_param(input$sig_param, resolve_sig_stack_params())
+      req(length(param_val))
     }
     # no duplicar  
-    param_val <- if (identical(input$sig_mode, "labels") && identical(input$tipo, "Apiladas"))
-      input$sig_param else NULL
     new_cmp <- list(g1 = input$sig_group1,  
                     g2 = input$sig_group2,  
                     lab = input$sig_label,
@@ -2381,7 +2533,16 @@ server <- function(input, output, session) {
     updateTextInput(session, "sig_label", value = as.character(cmp$lab %||% ""))
     if (identical(input$tipo, "Apiladas")) {
       cmp_param <- cmp$param %||% ""
-      if (nzchar(cmp_param)) updateSelectizeInput(session, "sig_param", selected = cmp_param, server = TRUE)
+      params <- resolve_sig_stack_params()
+      cmp_param <- select_sig_stack_param(cmp_param, params)
+      if (length(cmp_param)) {
+        update_selectize_adaptive(
+          "sig_param",
+          choices = params,
+          selected = cmp_param,
+          server = FALSE
+        )
+      }
     }
   }, ignoreInit = TRUE)
 
@@ -2404,7 +2565,8 @@ server <- function(input, output, session) {
     }
     sl[[idx]]$lab <- input$sig_label
     if (identical(input$sig_mode, "labels") && identical(input$tipo, "Apiladas")) {
-      sl[[idx]]$param <- input$sig_param %||% sl[[idx]]$param
+      param_val <- select_sig_stack_param(input$sig_param, resolve_sig_stack_params())
+      if (length(param_val)) sl[[idx]]$param <- param_val
     }
     sig_preselect(as.character(idx))
     sig_list(sl)
@@ -2443,7 +2605,8 @@ server <- function(input, output, session) {
     }
 
     param_val <- if (identical(input$sig_mode, "labels") && identical(input$tipo, "Apiladas")) {
-      input$sig_param %||% NULL
+      selected_param <- select_sig_stack_param(input$sig_param, resolve_sig_stack_params())
+      if (length(selected_param)) selected_param else NULL
     } else {
       NULL
     }
@@ -2475,7 +2638,7 @@ server <- function(input, output, session) {
 
     sl_old <- sig_list()
     param_key <- if (identical(input$sig_mode, "labels") && identical(input$tipo, "Apiladas")) {
-      input$sig_param %||% ""
+      param_val %||% ""
     } else {
       NULL
     }
@@ -2940,11 +3103,13 @@ server <- function(input, output, session) {
     }
     
     # 2.b) selector de parÃƒÂ¡metro (lo deje vacÃƒÂ­o si no hay)
+      selected_param_default <- if (length(params)) params[1] else character(0)
       update_selectize_adaptive(
         "param",
         choices = params,
-        selected = if (length(params)) params[1] else character(0)
+        selected = selected_param_default
       )
+      last_param_selection(if (length(selected_param_default)) as.character(selected_param_default[[1]]) else "")
 
       if (length(params)) {
         cfg_ui <- plot_cfg_box()
@@ -3068,11 +3233,13 @@ server <- function(input, output, session) {
         )
       }
 
+      selected_param_default <- if (length(params)) params[1] else character(0)
       update_selectize_adaptive(
         "param",
         choices = params,
-        selected = if (length(params)) params[1] else character(0)
+        selected = selected_param_default
       )
+      last_param_selection(if (length(selected_param_default)) as.character(selected_param_default[[1]]) else "")
 
       if (length(params)) {
         first_cfg <- cfg[cfg$Parameter == params[1], , drop = FALSE]
@@ -3425,6 +3592,26 @@ server <- function(input, output, session) {
     params
   }
 
+  resolve_sig_stack_params <- function(selected = NULL) {
+    if (is.null(selected)) {
+      selected <- input$stackParams %||% character(0)
+    }
+    scope_df <- tryCatch(scoped_plot_df(), error = function(e) NULL)
+    params <- resolve_stack_params(df = scope_df, selected = selected)
+    if (!length(params)) {
+      params <- resolve_stack_params(selected = selected)
+    }
+    params
+  }
+
+  select_sig_stack_param <- function(current = NULL, params = NULL) {
+    params <- sanitize_param_vector(params)
+    if (!length(params)) return(character(0))
+    current <- sanitize_param_vector(current)
+    current <- intersect(current, params)
+    if (length(current)) current[[1]] else params[[1]]
+  }
+
   update_stack_params_input <- function(params, selected = NULL) {
     params <- sanitize_param_vector(params)
 
@@ -3487,6 +3674,7 @@ server <- function(input, output, session) {
       high_dim <- is_large_param_set(params)
 
       current_param <- isolate(input$param %||% "")
+      preferred_param <- isolate(last_param_selection() %||% "")
       current_x <- isolate(input$corr_param_x %||% "")
       current_y <- isolate(input$corr_param_y %||% "")
       current_adv_anchor <- isolate(input$corr_adv_anchor %||% "")
@@ -3512,10 +3700,24 @@ server <- function(input, output, session) {
       if (strict_norm && !is.null(scope_df)) {
         param_choices <- normalized_ready_params(scope_df, params)
       }
+      if (nzchar(current_param) &&
+          current_param %in% params &&
+          !current_param %in% param_choices) {
+        # Keep current parameter available so it never jumps automatically
+        # outside manual changes or data reload.
+        param_choices <- unique(c(current_param, param_choices))
+      }
+      if (nzchar(preferred_param) &&
+          preferred_param %in% params &&
+          !preferred_param %in% param_choices) {
+        param_choices <- unique(c(preferred_param, param_choices))
+      }
 
       selected_param <- if (nzchar(current_param) && current_param %in% param_choices) {
         current_param
-      } else if (length(param_choices)) {
+      } else if (nzchar(preferred_param) && preferred_param %in% param_choices) {
+        preferred_param
+      } else if (!nzchar(current_param) && length(param_choices)) {
         param_choices[1]
       } else {
         character(0)
@@ -3728,11 +3930,13 @@ server <- function(input, output, session) {
     req(plot_settings())                     # esperamos a tener la hoja  
     
     ## 1Ã‚Â· reiniciar parÃƒÂ¡metro seleccionado  
+    selected_param_default <- if (length(plot_settings()$Parameter)) plot_settings()$Parameter[1] else character(0)
     update_selectize_adaptive(
       "param",
       choices = plot_settings()$Parameter,
-      selected = if (length(plot_settings()$Parameter)) plot_settings()$Parameter[1] else character(0)
+      selected = selected_param_default
     )
+    last_param_selection(if (length(selected_param_default)) as.character(selected_param_default[[1]]) else "")
     
     ## 2Ã‚Â· reiniciar strain / scope  
     updateRadioButtons(session, "scope", selected = "Por Cepa")  
@@ -3754,6 +3958,7 @@ server <- function(input, output, session) {
   observeEvent(
     list(input$ymax, input$ybreak, input$param),
     {  
+      if (isTRUE(axis_sync_inflight())) return()
       if (!is_valid_reactive_key(input$param)) return()
       # clave correcta:  Ã¢â‚¬Å“PARÃ¢â‚¬Â    o  Ã¢â‚¬Å“PAR_NormÃ¢â‚¬Â  
       tgt <- if (isTRUE(input$doNorm) && has_ctrl_selected())
@@ -3814,6 +4019,35 @@ server <- function(input, output, session) {
         selected = default_stack_params(params)
       )
     }
+  })
+
+  output$errbarStatUI <- renderUI({
+    input$app_lang
+    tipo_sel <- input$tipo %||% ""
+    if (!tipo_sel %in% c("Boxplot", "Barras", "Apiladas")) return(NULL)
+
+    lang <- input$app_lang %||% i18n_lang
+    values <- c("SD", "SEM")
+    labels <- tr_text(c("errbar_stat_sd", "errbar_stat_sem"), lang)
+    allow_minmax <- identical(tipo_sel, "Boxplot")
+    if (isTRUE(allow_minmax)) {
+      values <- c(values, "MINMAX")
+      labels <- c(labels, tr_text("errbar_stat_minmax", lang))
+    }
+
+    selected <- normalize_errorbar_stat(
+      input$errbar_stat %||% "SD",
+      allow_minmax = allow_minmax
+    )
+    if (!selected %in% values) selected <- "SD"
+
+    radioButtons(
+      "errbar_stat",
+      tr_text("errbar_stat", lang),
+      choices = named_choices(values, labels),
+      selected = selected,
+      inline = TRUE
+    )
   })
 
   
@@ -4061,10 +4295,11 @@ server <- function(input, output, session) {
     current_sel <- sort(unique(as.character(input$showMedios %||% character(0))))
     target_sel <- sort(unique(as.character(sel %||% character(0))))
     if (identical(current_sel, target_sel)) return()
-    updateCheckboxGroupInput(session,  
-                             inputId  = "showMedios",  
-                             choices  = medias,  
-                             selected = sel  
+    update_checkbox_group_input_if_changed(
+      input_id = "showMedios",
+      choices = medias,
+      selected = sel,
+      freeze_input = TRUE
     )  
   })  
   
@@ -4079,10 +4314,11 @@ server <- function(input, output, session) {
     current_sel <- sort(unique(as.character(input$showGroups %||% character(0))))
     target_sel <- sort(unique(as.character(sel %||% character(0))))
     if (identical(current_sel, target_sel)) return()
-    updateCheckboxGroupInput(session,  
-                             inputId  = "showGroups",  
-                             choices  = grps,  
-                             selected = sel  
+    update_checkbox_group_input_if_changed(
+      input_id = "showGroups",
+      choices = grps,
+      selected = sel,
+      freeze_input = TRUE
     )  
   })  
   
@@ -4274,7 +4510,7 @@ server <- function(input, output, session) {
   )
 
   observeEvent(rm_reps_all_debounced(), {
-    if (isTRUE(replicate_bulk_updating())) return()
+    if (!begin_bulk_update(replicate_bulk_updating)) return()
     drop_all <- rm_reps_all_debounced()
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
     df <- if (use_param) {
@@ -4283,9 +4519,6 @@ server <- function(input, output, session) {
       active_plot_data()
     }
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return()
-
-    replicate_bulk_updating(TRUE)
-    on.exit(replicate_bulk_updating(FALSE), add = TRUE)
 
     scope_sel <- input$scope %||% "Por Cepa"
     if (scope_sel == "Por Cepa") {
@@ -4308,11 +4541,11 @@ server <- function(input, output, session) {
         )
         map_strain <- sync_maps$reps_strain_map
         map_group <- sync_maps$reps_group_map
-        updateCheckboxGroupInput(
-          session,
-          inputId  = paste0("reps_", make.names(m)),
-          choices  = reps,
-          selected = selected
+        update_checkbox_group_input_if_changed(
+          input_id = paste0("reps_", make.names(m)),
+          choices = reps,
+          selected = selected,
+          freeze_input = TRUE
         )
       }
       reps_strain_selected(map_strain)
@@ -4339,11 +4572,11 @@ server <- function(input, output, session) {
         )
         map_strain <- sync_maps$reps_strain_map
         map_group <- sync_maps$reps_group_map
-        updateCheckboxGroupInput(
-          session,
-          inputId  = paste0("reps_grp_", make.names(g)),
-          choices  = reps,
-          selected = selected
+        update_checkbox_group_input_if_changed(
+          input_id = paste0("reps_grp_", make.names(g)),
+          choices = reps,
+          selected = selected,
+          freeze_input = TRUE
         )
       }
       reps_group_selected(map_group)
@@ -4369,14 +4602,38 @@ server <- function(input, output, session) {
         pull(Media)                              |> 
         unique()                                 |> 
         sort()
-      
-      updateSelectInput(session, "sig_group1",
-                        choices  = medios_visibles,
-                        selected = medios_visibles[1])
-      updateSelectInput(session, "sig_group2",
-                        choices  = medios_visibles,
-                        selected = if (length(medios_visibles) > 1)
-                          medios_visibles[2] else medios_visibles[1])
+
+      current_sig1 <- as.character(isolate(input$sig_group1 %||% ""))
+      if (!length(current_sig1) || is.na(current_sig1[[1]])) current_sig1 <- ""
+      current_sig1 <- current_sig1[[1]]
+      selected_sig1 <- if (nzchar(current_sig1) && current_sig1 %in% medios_visibles) {
+        current_sig1
+      } else if (length(medios_visibles)) {
+        medios_visibles[[1]]
+      } else {
+        character(0)
+      }
+
+      current_sig2 <- as.character(isolate(input$sig_group2 %||% ""))
+      if (!length(current_sig2) || is.na(current_sig2[[1]])) current_sig2 <- ""
+      current_sig2 <- current_sig2[[1]]
+      fallback_sig2 <- if (length(medios_visibles) > 1) medios_visibles[[2]] else selected_sig1
+      selected_sig2 <- if (nzchar(current_sig2) && current_sig2 %in% medios_visibles) {
+        current_sig2
+      } else {
+        fallback_sig2
+      }
+
+      update_select_input_if_changed(
+        "sig_group1",
+        choices = medios_visibles,
+        selected = selected_sig1
+      )
+      update_select_input_if_changed(
+        "sig_group2",
+        choices = medios_visibles,
+        selected = selected_sig2
+      )
       
     } else {                                     # Ã¢â€â‚¬Ã¢â€â‚¬ modo Ã¢â‚¬ËœCombinadoÃ¢â‚¬â„¢ Ã¢â€â‚¬Ã¢â€â‚¬
       # Los grupos que siguen visibles despuÃƒÂ©s de los filtros Ã¢â‚¬Å“showGroupsÃ¢â‚¬Â
@@ -4393,34 +4650,73 @@ server <- function(input, output, session) {
           unique() |>
           sort()
       }
-      
-      updateSelectInput(session, "sig_group1",
-                        choices  = grupos_visibles,
-                        selected = grupos_visibles[1])
-      updateSelectInput(session, "sig_group2",
-                        choices  = grupos_visibles,
-                        selected = if (length(grupos_visibles) > 1)
-                          grupos_visibles[2] else grupos_visibles[1])
+
+      current_sig1 <- as.character(isolate(input$sig_group1 %||% ""))
+      if (!length(current_sig1) || is.na(current_sig1[[1]])) current_sig1 <- ""
+      current_sig1 <- current_sig1[[1]]
+      selected_sig1 <- if (nzchar(current_sig1) && current_sig1 %in% grupos_visibles) {
+        current_sig1
+      } else if (length(grupos_visibles)) {
+        grupos_visibles[[1]]
+      } else {
+        character(0)
+      }
+
+      current_sig2 <- as.character(isolate(input$sig_group2 %||% ""))
+      if (!length(current_sig2) || is.na(current_sig2[[1]])) current_sig2 <- ""
+      current_sig2 <- current_sig2[[1]]
+      fallback_sig2 <- if (length(grupos_visibles) > 1) grupos_visibles[[2]] else selected_sig1
+      selected_sig2 <- if (nzchar(current_sig2) && current_sig2 %in% grupos_visibles) {
+        current_sig2
+      } else {
+        fallback_sig2
+      }
+
+      update_select_input_if_changed(
+        "sig_group1",
+        choices = grupos_visibles,
+        selected = selected_sig1
+      )
+      update_select_input_if_changed(
+        "sig_group2",
+        choices = grupos_visibles,
+        selected = selected_sig2
+      )
     }
   })
   # -------------------------------------------------------------------------
 
   observe({
-    params <- resolve_stack_params()
-    current <- isolate(input$sig_param)
+    req(plot_settings())
+    if (!identical(input$tipo %||% "", "Apiladas")) {
+      update_selectize_adaptive(
+        "sig_param",
+        choices = character(0),
+        selected = character(0),
+        server = FALSE
+      )
+      return()
+    }
+
+    params <- resolve_sig_stack_params()
+    current <- select_sig_stack_param(isolate(input$sig_param), params)
     if (!length(params)) {
       update_selectize_adaptive(
         "sig_param",
         choices = character(0),
-        selected = character(0)
+        selected = character(0),
+        server = FALSE
       )
       return()
     }
-    if (is.null(current) || !current %in% params) current <- params[1]
     update_selectize_adaptive(
       "sig_param",
       choices = params,
-      selected = current
+      selected = current,
+      server = FALSE,
+      options = list(
+        placeholder = tr_text("select_params_prompt", input$app_lang %||% i18n_lang)
+      )
     )
   })
   
@@ -4428,12 +4724,51 @@ server <- function(input, output, session) {
   # -- actualizar listas de Control / Pareo cuando cambian los grupos visibles --  
   observeEvent(input$showGroups, {  
     grps <- input$showGroups  
-    updateSelectInput(session, "controlGroup", choices = grps,  
-                      selected = if (length(grps)) grps[1] else NULL)  
-    updateSelectInput(session, "group1", choices = grps,  
-                      selected = if (length(grps)) grps[1] else NULL)  
-    updateSelectInput(session, "group2", choices = grps,  
-                      selected = if (length(grps) > 1) grps[2] else NULL)  
+    current_ctrl <- as.character(isolate(input$controlGroup %||% ""))
+    if (!length(current_ctrl) || is.na(current_ctrl[[1]])) current_ctrl <- ""
+    current_ctrl <- current_ctrl[[1]]
+    selected_ctrl <- if (nzchar(current_ctrl) && current_ctrl %in% grps) {
+      current_ctrl
+    } else if (length(grps)) {
+      grps[[1]]
+    } else {
+      character(0)
+    }
+
+    current_g1 <- as.character(isolate(input$group1 %||% ""))
+    if (!length(current_g1) || is.na(current_g1[[1]])) current_g1 <- ""
+    current_g1 <- current_g1[[1]]
+    selected_g1 <- if (nzchar(current_g1) && current_g1 %in% grps) {
+      current_g1
+    } else {
+      selected_ctrl
+    }
+
+    current_g2 <- as.character(isolate(input$group2 %||% ""))
+    if (!length(current_g2) || is.na(current_g2[[1]])) current_g2 <- ""
+    current_g2 <- current_g2[[1]]
+    fallback_g2 <- if (length(grps) > 1) grps[[2]] else selected_ctrl
+    selected_g2 <- if (nzchar(current_g2) && current_g2 %in% grps) {
+      current_g2
+    } else {
+      fallback_g2
+    }
+
+    update_select_input_if_changed(
+      "controlGroup",
+      choices = grps,
+      selected = selected_ctrl
+    )
+    update_select_input_if_changed(
+      "group1",
+      choices = grps,
+      selected = selected_g1
+    )
+    update_select_input_if_changed(
+      "group2",
+      choices = grps,
+      selected = selected_g2
+    )
   }, ignoreNULL = FALSE)  
   
   # --- Defaults de escala y labels -----------------------------------
@@ -4441,7 +4776,8 @@ server <- function(input, output, session) {
     req(plot_settings(), input$param)
     
     cfg <- plot_settings() %>%
-      dplyr::filter(Parameter == input$param)
+      dplyr::filter(Parameter == input$param) %>%
+      dplyr::slice(1)
     if (!nrow(cfg)) return()
 
     axis_sync_inflight(TRUE)
@@ -4451,18 +4787,26 @@ server <- function(input, output, session) {
       }, once = TRUE)
     }, add = TRUE)
     
+    cfg_ymax <- suppressWarnings(as.numeric(cfg$Y_Max[[1]]))
+    cfg_ybreak <- suppressWarnings(as.numeric(cfg$Interval[[1]]))
+    stored_lims <- ylims[[as.character(input$param)]]
+    stored_ymax <- suppressWarnings(as.numeric(stored_lims$ymax %||% NA_real_))
+    stored_ybreak <- suppressWarnings(as.numeric(stored_lims$ybreak %||% NA_real_))
+    target_ymax <- if (is.finite(stored_ymax)) stored_ymax else cfg_ymax
+    target_ybreak <- if (is.finite(stored_ybreak)) stored_ybreak else cfg_ybreak
+
     # 1Ã‚Â· refrescar las cajas
     updateNumericInput(session, "ymax",
                        label  = paste0("Y max (", input$param, "):"),
-                       value  = cfg$Y_Max)
+                       value  = target_ymax)
     updateNumericInput(session, "ybreak",
                        label  = paste0("Int Y (", input$param, "):"),
-                       value  = cfg$Interval)
+                       value  = target_ybreak)
     
     # 2Ã‚Â· sincronizar ylims con el Excel
     ylims[[ input$param ]] <- list(
-      ymax   = cfg$Y_Max,
-      ybreak = cfg$Interval
+      ymax   = target_ymax,
+      ybreak = target_ybreak
     )
   }, ignoreNULL = TRUE)
   
@@ -4594,6 +4938,7 @@ server <- function(input, output, session) {
     list(input$doNorm, input$ctrlMedium, input$param),
     {
       req(plot_settings(), input$param)
+      if (isTRUE(axis_sync_inflight())) return()
 
       tgt <- if (isTRUE(input$doNorm) && has_ctrl_selected())
         paste0(input$param, "_Norm") else input$param
@@ -7146,13 +7491,9 @@ server <- function(input, output, session) {
 
   qc_apply_tech_selection <- function(selector_state, selected_map) {
     if (!length(selector_state)) return(invisible(NULL))
+    if (!begin_bulk_update(qc_tech_bulk_updating)) return(invisible(NULL))
     next_map <- setNames(vector("list", length(selector_state)), names(selector_state))
     current_map <- isolate(qc_tech_selected())
-
-    qc_tech_bulk_updating(TRUE)
-    session$onFlushed(function() {
-      qc_tech_bulk_updating(FALSE)
-    }, once = TRUE)
 
     for (key in names(selector_state)) {
       info <- selector_state[[key]]
@@ -7162,12 +7503,11 @@ server <- function(input, output, session) {
       next_map[[key]] <- next_sel
       current_input <- normalize_rep_selection(intersect(as.character(input[[info$id]] %||% character(0)), info$choices))
       if (identical(current_input, next_sel)) next
-      shiny::freezeReactiveValue(input, info$id)
-      updateCheckboxGroupInput(
-        session,
-        inputId = info$id,
+      update_checkbox_group_input_if_changed(
+        input_id = info$id,
         choices = info$choices,
-        selected = next_sel
+        selected = next_sel,
+        freeze_input = TRUE
       )
     }
 
@@ -7524,16 +7864,14 @@ server <- function(input, output, session) {
 
   qc_apply_replicate_selection <- function(selector_state, selected_map) {
     if (!length(selector_state)) return(invisible(NULL))
-    if (isTRUE(replicate_bulk_updating())) return(invisible(NULL))
-    replicate_bulk_updating(TRUE)
-    on.exit(replicate_bulk_updating(FALSE), add = TRUE)
+    if (!begin_bulk_update(replicate_bulk_updating)) return(invisible(NULL))
     map_strain <- reps_strain_selected()
     map_group <- reps_group_selected()
     for (g in names(selector_state)) {
       info <- selector_state[[g]]
       next_sel <- selected_map[[g]]
       if (is.null(next_sel)) next_sel <- info$selected
-      next_sel <- intersect(as.character(next_sel), info$choices)
+      next_sel <- normalize_rep_selection(intersect(as.character(next_sel), info$choices))
       strain_g <- as.character(info$strain %||% "")
       media_g <- as.character(info$media %||% g)
       sync_maps <- set_synced_media_selection(
@@ -7545,11 +7883,15 @@ server <- function(input, output, session) {
       )
       map_strain <- sync_maps$reps_strain_map
       map_group <- sync_maps$reps_group_map
-      updateCheckboxGroupInput(
-        session,
-        inputId = info$id,
+      current_input <- normalize_rep_selection(
+        intersect(as.character(input[[info$id]] %||% character(0)), info$choices)
+      )
+      if (identical(current_input, next_sel)) next
+      update_checkbox_group_input_if_changed(
+        input_id = info$id,
         choices = info$choices,
-        selected = next_sel
+        selected = next_sel,
+        freeze_input = TRUE
       )
     }
     reps_strain_selected(map_strain)
@@ -9213,8 +9555,15 @@ server <- function(input, output, session) {
 
   resolve_prefixed_param_col <- function(df, prefix, param_name) {
     if (is.null(df) || !is.data.frame(df) || is.null(param_name)) return(NULL)
-    base <- trimws(as.character(sub("_Norm$", "", param_name)))
+    param_chr <- trimws(as.character(param_name[[1]]))
+    use_norm <- grepl("_Norm$", param_chr)
+    base <- trimws(as.character(sub("_Norm$", "", param_chr)))
     if (!nzchar(base)) return(NULL)
+    if (use_norm) {
+      direct_norm <- paste0(prefix, base, "_Norm")
+      if (direct_norm %in% names(df)) return(direct_norm)
+    }
+    if (use_norm && identical(prefix, "SD_")) return(NULL)
     direct <- paste0(prefix, base)
     if (direct %in% names(df)) return(direct)
 
@@ -9229,6 +9578,13 @@ server <- function(input, output, session) {
     if (!any(pref_idx)) return(NULL)
     candidates <- nms[pref_idx]
     stripped <- sub(paste0("^", prefix), "", candidates)
+    if (use_norm) {
+      tgt_norm <- norm_key(paste0(base, "_Norm"))
+      keys_norm <- vapply(stripped, norm_key, character(1))
+      hit_norm <- which(keys_norm == tgt_norm)
+      if (length(hit_norm)) return(candidates[[hit_norm[[1]]]])
+    }
+    if (use_norm && identical(prefix, "SD_")) return(NULL)
     tgt <- norm_key(base)
     keys <- vapply(stripped, norm_key, character(1))
     hit <- which(keys == tgt)
@@ -9276,18 +9632,32 @@ server <- function(input, output, session) {
     stack_levels      <- if (length(order_levels)) order_levels else params_apilar
 
     summary_mode_active <- isTRUE(is_summary_mode())
+    errorbar_stat <- normalize_errorbar_stat(input$errbar_stat %||% "SD", allow_minmax = FALSE)
     if (summary_mode_active) {
       stack_parts <- lapply(params_apilar, function(pm) {
         sd_col <- resolve_prefixed_param_col(df_f, "SD_", pm)
-        df_f %>%
+        n_col <- resolve_prefixed_param_col(df_f, "N_", pm)
+        df_pm <- df_f
+        df_pm$.err_sd_source <- if (!is.null(sd_col) && sd_col %in% names(df_pm)) {
+          suppressWarnings(as.numeric(df_pm[[sd_col]]))
+        } else {
+          NA_real_
+        }
+        df_pm$.err_n_source <- if (!is.null(n_col) && n_col %in% names(df_pm)) {
+          suppressWarnings(as.numeric(df_pm[[n_col]]))
+        } else {
+          NA_real_
+        }
+        df_pm %>%
           group_by(.data[[eje_x]]) %>%
           summarise(
             Mean = mean(.data[[pm]], na.rm = TRUE),
-            SD = if (!is.null(sd_col) && sd_col %in% names(df_f)) {
-              mean(.data[[sd_col]], na.rm = TRUE)
-            } else {
-              sd(.data[[pm]], na.rm = TRUE)
-            },
+            SD = calculate_errorbar_height(
+              .data[[pm]],
+              stat = errorbar_stat,
+              sd_values = .data$.err_sd_source,
+              n_values = .data$.err_n_source
+            ),
             .groups = "drop"
           ) %>%
           mutate(Parametro = pm)
@@ -9306,7 +9676,7 @@ server <- function(input, output, session) {
         group_by(.data[[eje_x]], Parametro) |>
         summarise(
           Mean = mean(Valor, na.rm = TRUE),
-          SD   = sd  (Valor, na.rm = TRUE),
+          SD = calculate_errorbar_height(Valor, stat = errorbar_stat),
           .groups = "drop"
         ) |>
         mutate(
@@ -9541,7 +9911,7 @@ server <- function(input, output, session) {
 
         label_info <- list()
         y_txt_vals <- numeric(length(sigs))
-        default_param <- input$sig_param
+        default_param <- select_sig_stack_param(input$sig_param, params_apilar)
         use_param_color <- isTRUE(input$sig_label_param_color)
 
         for (i in seq_along(sigs)) {
@@ -9858,13 +10228,6 @@ server <- function(input, output, session) {
       if (!nzchar(raw_param_input) || !raw_param_input %in% params_all) {
         raw_param_input <- params_all[[1]]
       }
-      if (!identical(raw_param_input, as.character(input$param %||% ""))) {
-        update_selectize_adaptive(
-          "param",
-          choices = params_all,
-          selected = raw_param_input
-        )
-      }
     }
 
     # Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Nuevo bloque para normalizaciÃƒÂ³n Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
@@ -9872,7 +10235,7 @@ server <- function(input, output, session) {
     is_norm  <- isTRUE(input$doNorm)  
     msg_no_data_sel <- tr_text("no_data_selection", lang)
     add_whisker_caps <- draw_whisker_caps
-    add_black_t_errorbar <- function(p, summary_df, x_col, cap_width = 0.18, lw = 0.8) {
+    add_black_t_errorbar <- function(p, summary_df, x_col, cap_width = 0.18, lw = 0.8, symmetric = FALSE) {
       if (!is.data.frame(summary_df) || !nrow(summary_df)) return(p)
       if (!all(c(x_col, "Mean", "SD") %in% names(summary_df))) return(p)
       lw_num <- suppressWarnings(as.numeric(lw))
@@ -9882,16 +10245,18 @@ server <- function(input, output, session) {
       err_df <- summary_df %>%
         mutate(
           x_val = .data[[x_col]],
-          ystart = suppressWarnings(as.numeric(Mean)),
-          yend = ystart + ifelse(is.finite(SD), pmax(SD, 0), 0)
+          ymid = suppressWarnings(as.numeric(Mean)),
+          yerr = ifelse(is.finite(SD), pmax(SD, 0), 0),
+          ymin = if (isTRUE(symmetric)) ymid - yerr else ymid,
+          ymax = ymid + yerr
         ) %>%
-        filter(!is.na(x_val), is.finite(ystart), is.finite(yend), yend > ystart)
+        filter(!is.na(x_val), is.finite(ymin), is.finite(ymax), ymax > ymin)
       if (!nrow(err_df)) return(p)
-      p +
+      p_out <- p +
         geom_linerange(
           data = err_df,
           inherit.aes = FALSE,
-          aes(x = x_val, ymin = ystart, ymax = yend),
+          aes(x = x_val, ymin = ymin, ymax = ymax),
           linewidth = lw_num,
           colour = "black",
           show.legend = FALSE
@@ -9899,12 +10264,25 @@ server <- function(input, output, session) {
         geom_errorbar(
           data = err_df,
           inherit.aes = FALSE,
-          aes(x = x_val, ymin = yend, ymax = yend),
+          aes(x = x_val, ymin = ymax, ymax = ymax),
           width = cap_num,
           linewidth = lw_num,
           colour = "black",
           show.legend = FALSE
         )
+      if (isTRUE(symmetric)) {
+        p_out <- p_out +
+          geom_errorbar(
+            data = err_df,
+            inherit.aes = FALSE,
+            aes(x = x_val, ymin = ymin, ymax = ymin),
+            width = cap_num,
+            linewidth = lw_num,
+            colour = "black",
+            show.legend = FALSE
+          )
+      }
+      p_out
     }
     downsample_points_by_group <- function(df, group_col, cap_total = 7000L, min_per_group = 80L) {
       if (!is.data.frame(df) || !nrow(df) || !group_col %in% names(df)) return(df)
@@ -10304,6 +10682,8 @@ server <- function(input, output, session) {
           apply_square_legend_right = apply_square_legend_right,
           legend_right_enabled = legend_right_enabled,
           add_whisker_caps = add_whisker_caps,
+          add_black_t_errorbar = add_black_t_errorbar,
+          resolve_prefixed_param_col = resolve_prefixed_param_col,
           downsample_points_by_group = downsample_points_by_group
         ))
       )
@@ -10923,7 +11303,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$repsGrpSelectAll, {
-    if (isTRUE(replicate_bulk_updating())) return()
+    if (!begin_bulk_update(replicate_bulk_updating)) return()
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
     df <- if (use_param) {
       param_rep_df()
@@ -10957,17 +11337,18 @@ server <- function(input, output, session) {
       all_groups <- sort(unique(all_groups))
     }
 
-    replicate_bulk_updating(TRUE)
-    on.exit(replicate_bulk_updating(FALSE), add = TRUE)
-
-    updateCheckboxGroupInput(
-      session,
-      inputId = "showGroups",
-      choices = all_groups,
-      selected = all_groups
-    )
-    updateCheckboxInput(session, "toggleGroups", value = TRUE)
-    updateTextInput(session, "orderGroups", value = paste(all_groups, collapse = ","))
+    current_groups <- sort(unique(as.character(input$showGroups %||% character(0))))
+    target_groups <- sort(unique(as.character(all_groups %||% character(0))))
+    if (!identical(current_groups, target_groups)) {
+      update_checkbox_group_input_if_changed(
+        input_id = "showGroups",
+        choices = all_groups,
+        selected = all_groups,
+        freeze_input = TRUE
+      )
+    }
+    update_checkbox_input_if_changed("toggleGroups", value = TRUE)
+    update_text_input_if_changed("orderGroups", paste(all_groups, collapse = ","))
 
     drop_all <- as.character(input$rm_reps_all %||% character(0))
     grp_id <- paste(df$Strain, df$Media, sep = "-")
@@ -10989,19 +11370,27 @@ server <- function(input, output, session) {
       )
       map_strain <- sync_maps$reps_strain_map
       map_group <- sync_maps$reps_group_map
-      updateCheckboxGroupInput(
-        session,
-        inputId = paste0("reps_grp_", make.names(g)),
+      current_input <- normalize_rep_selection(
+        intersect(as.character(input[[paste0("reps_grp_", make.names(g))]] %||% character(0)), reps)
+      )
+      if (identical(current_input, selected)) next
+      update_checkbox_group_input_if_changed(
+        input_id = paste0("reps_grp_", make.names(g)),
         choices = reps,
-        selected = selected
+        selected = selected,
+        freeze_input = TRUE
       )
     }
-    reps_group_selected(map_group)
-    reps_strain_selected(map_strain)
+    if (!identical(map_group, isolate(reps_group_selected()))) {
+      reps_group_selected(map_group)
+    }
+    if (!identical(map_strain, isolate(reps_strain_selected()))) {
+      reps_strain_selected(map_strain)
+    }
   }, ignoreInit = TRUE)
 
   observeEvent(input$repsStrainSelectAll, {
-    if (isTRUE(replicate_bulk_updating())) return()
+    if (!begin_bulk_update(replicate_bulk_updating)) return()
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
     df <- if (use_param) {
       param_rep_df()
@@ -11020,17 +11409,18 @@ server <- function(input, output, session) {
       dplyr::pull(Media)
     if (!length(medias)) return()
 
-    replicate_bulk_updating(TRUE)
-    on.exit(replicate_bulk_updating(FALSE), add = TRUE)
-
-    updateCheckboxGroupInput(
-      session,
-      inputId = "showMedios",
-      choices = medias,
-      selected = medias
-    )
-    updateCheckboxInput(session, "toggleMedios", value = TRUE)
-    updateTextInput(session, "orderMedios", value = paste(medias, collapse = ","))
+    current_medias <- sort(unique(as.character(input$showMedios %||% character(0))))
+    target_medias <- sort(unique(as.character(medias %||% character(0))))
+    if (!identical(current_medias, target_medias)) {
+      update_checkbox_group_input_if_changed(
+        input_id = "showMedios",
+        choices = medias,
+        selected = medias,
+        freeze_input = TRUE
+      )
+    }
+    update_checkbox_input_if_changed("toggleMedios", value = TRUE)
+    update_text_input_if_changed("orderMedios", paste(medias, collapse = ","))
 
     drop_all <- as.character(input$rm_reps_all %||% character(0))
     map_strain <- reps_strain_selected()
@@ -11047,15 +11437,23 @@ server <- function(input, output, session) {
       )
       map_strain <- sync_maps$reps_strain_map
       map_group <- sync_maps$reps_group_map
-      updateCheckboxGroupInput(
-        session,
-        inputId = paste0("reps_", make.names(m)),
+      current_input <- normalize_rep_selection(
+        intersect(as.character(input[[paste0("reps_", make.names(m))]] %||% character(0)), reps)
+      )
+      if (identical(current_input, selected)) next
+      update_checkbox_group_input_if_changed(
+        input_id = paste0("reps_", make.names(m)),
         choices = reps,
-        selected = selected
+        selected = selected,
+        freeze_input = TRUE
       )
     }
-    reps_strain_selected(map_strain)
-    reps_group_selected(map_group)
+    if (!identical(map_strain, isolate(reps_strain_selected()))) {
+      reps_strain_selected(map_strain)
+    }
+    if (!identical(map_group, isolate(reps_group_selected()))) {
+      reps_group_selected(map_group)
+    }
   }, ignoreInit = TRUE)
 
   plotly_tooltip_fields <- function(tipo) {
@@ -12378,6 +12776,13 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("param")))      updateSelectizeInput(session, "param", selected = v, server = TRUE)
     if (!is.null(v <- get_val("doNorm")))     updateCheckboxInput(session, "doNorm",    value = tolower(v) == "true")
     if (!is.null(v <- get_val("ctrlMedium"))) updateSelectInput(session, "ctrlMedium", selected = if (v == "NULL") character(0) else v)
+    if (!is.null(v <- get_val("errbar_stat"))) {
+      updateRadioButtons(
+        session,
+        "errbar_stat",
+        selected = normalize_errorbar_stat(v, allow_minmax = identical(input$tipo %||% "", "Boxplot"))
+      )
+    }
     if (!is.null(v <- get_val("errbar_size")))updateNumericInput(session, "errbar_size", value = as.numeric(v))
     if (!is.null(v <- get_val("ymax")))       updateNumericInput(session, "ymax",       value = as.numeric(v))
     if (!is.null(v <- get_val("ybreak")))     updateNumericInput(session, "ybreak",     value = as.numeric(v))

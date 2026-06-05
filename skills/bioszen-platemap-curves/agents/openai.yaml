@@ -1,0 +1,4 @@
+interface:
+  display_name: "BIOSZEN Platemap + Curves"
+  short_description: "Create platemaps from data files, repair parameter typos, and validate BIOSZEN-compatible curves"
+  default_prompt: "Use $bioszen-platemap-curves to build a BIOSZEN-compatible platemap from any readable data file, fix one-to-one parameter-name typos, and validate exact Well alignment before upload."

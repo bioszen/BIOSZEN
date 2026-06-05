@@ -320,6 +320,57 @@ sanitize_stack_summary <- function(df, mean_col = "Mean", sd_col = "SD") {
   df
 }
 
+normalize_errorbar_stat <- function(value, default = "SD", allow_minmax = TRUE) {
+  allowed <- c("SD", "SEM")
+  if (isTRUE(allow_minmax)) allowed <- c(allowed, "MINMAX")
+  default_chr <- toupper(trimws(as.character(default)))
+  if (!default_chr %in% allowed) default_chr <- "SD"
+  if (is.null(value) || !length(value)) return(default_chr)
+
+  value_chr <- toupper(trimws(as.character(value[[1]])))
+  if (is.na(value_chr) || !nzchar(value_chr)) return(default_chr)
+  if (value_chr %in% c("SEM", "SE", "SE_MEAN", "STANDARD ERROR", "STANDARD ERROR OF MEAN")) {
+    return("SEM")
+  }
+  if (value_chr %in% c("SD", "STD", "STDDEV", "STANDARD DEVIATION")) {
+    return("SD")
+  }
+  if (isTRUE(allow_minmax) &&
+      value_chr %in% c("MINMAX", "MIN-MAX", "MIN_MAX", "MIN/MAX", "RANGE", "MINIMUM/MAXIMUM", "WHISKERS", "ORIGINAL")) {
+    return("MINMAX")
+  }
+  default_chr
+}
+
+calculate_errorbar_height <- function(values, stat = "SD", sd_values = NULL, n_values = NULL) {
+  stat <- normalize_errorbar_stat(stat, allow_minmax = FALSE)
+  vals <- suppressWarnings(as.numeric(values))
+  vals <- vals[is.finite(vals)]
+
+  sd_vec <- if (is.null(sd_values)) numeric(0) else suppressWarnings(as.numeric(sd_values))
+  sd_vec <- sd_vec[is.finite(sd_vec) & sd_vec >= 0]
+  sd_val <- if (length(sd_vec)) {
+    mean(sd_vec, na.rm = TRUE)
+  } else if (length(vals) > 1) {
+    stats::sd(vals, na.rm = TRUE)
+  } else {
+    NA_real_
+  }
+
+  if (!is.finite(sd_val) || sd_val < 0) return(NA_real_)
+  if (identical(stat, "SD")) return(sd_val)
+
+  n_vec <- if (is.null(n_values)) numeric(0) else suppressWarnings(as.numeric(n_values))
+  n_vec <- n_vec[is.finite(n_vec) & n_vec > 0]
+  n_val <- if (length(n_vec)) {
+    mean(n_vec, na.rm = TRUE)
+  } else {
+    length(vals)
+  }
+  if (!is.finite(n_val) || n_val <= 0) return(NA_real_)
+  sd_val / sqrt(n_val)
+}
+
 # Decide if normalized data should be consumed in reactive pipelines.
 # We only enable strict normalization after a non-empty control medium exists.
 should_use_normalized_data <- function(do_norm = FALSE, ctrl_medium = NULL) {
@@ -422,6 +473,21 @@ normalize_params <- function(df, params = character(0), do_norm = FALSE, ctrl_me
     }
 
     out[[paste0(p, "_Norm")]] <- norm_vec
+
+    sd_col <- paste0("SD_", p)
+    if (sd_col %in% names(df)) {
+      sd_vec <- suppressWarnings(as.numeric(df[[sd_col]]))
+      sd_norm <- rep(NA_real_, length(sd_vec))
+      can_norm_sd <- is.finite(sd_vec) & sd_vec >= 0 &
+        is.finite(base_vec) & base_vec != 0
+      sd_norm[can_norm_sd] <- sd_vec[can_norm_sd] / abs(base_vec[can_norm_sd])
+      out[[paste0(sd_col, "_Norm")]] <- sd_norm
+    }
+
+    n_col <- paste0("N_", p)
+    if (n_col %in% names(df)) {
+      out[[paste0(n_col, "_Norm")]] <- suppressWarnings(as.numeric(df[[n_col]]))
+    }
   }
 
   raw_fallback_params <- unique(raw_fallback_params)

@@ -205,16 +205,29 @@ build_barras_plot_impl <- function(ctx) {
       } else {
         df_raw
       }
+      errorbar_stat <- normalize_errorbar_stat(input$errbar_stat %||% "SD", allow_minmax = FALSE)
       sd_col <- resolve_prefixed_param_col(df_raw, "SD_", param_sel)
+      n_col <- resolve_prefixed_param_col(df_raw, "N_", param_sel)
+      df_raw$.err_sd_source <- if (!is.null(sd_col) && sd_col %in% names(df_raw)) {
+        suppressWarnings(as.numeric(df_raw[[sd_col]]))
+      } else {
+        NA_real_
+      }
+      df_raw$.err_n_source <- if (!is.null(n_col) && n_col %in% names(df_raw)) {
+        suppressWarnings(as.numeric(df_raw[[n_col]]))
+      } else {
+        NA_real_
+      }
       resumen <- df_raw %>%
         group_by(Label) %>%
         summarise(
           Mean = mean(.data[[param_sel]], na.rm = TRUE),
-          SD = if (!is.null(sd_col) && sd_col %in% names(df_raw)) {
-            mean(.data[[sd_col]], na.rm = TRUE)
-          } else {
-            sd(.data[[param_sel]], na.rm = TRUE)
-          },
+          SD = calculate_errorbar_height(
+            .data[[param_sel]],
+            stat = errorbar_stat,
+            sd_values = .data$.err_sd_source,
+            n_values = .data$.err_n_source
+          ),
           .groups = "drop"
         ) %>%
         mutate(SD = ifelse(is.finite(SD), pmax(SD, 0), 0))
@@ -407,16 +420,29 @@ build_barras_plot_impl <- function(ctx) {
     } else {
       df_raw
     }
+    errorbar_stat <- normalize_errorbar_stat(input$errbar_stat %||% "SD", allow_minmax = FALSE)
     sd_col <- resolve_prefixed_param_col(df_raw, "SD_", param_sel)
+    n_col <- resolve_prefixed_param_col(df_raw, "N_", param_sel)
+    df_raw$.err_sd_source <- if (!is.null(sd_col) && sd_col %in% names(df_raw)) {
+      suppressWarnings(as.numeric(df_raw[[sd_col]]))
+    } else {
+      NA_real_
+    }
+    df_raw$.err_n_source <- if (!is.null(n_col) && n_col %in% names(df_raw)) {
+      suppressWarnings(as.numeric(df_raw[[n_col]]))
+    } else {
+      NA_real_
+    }
     resumen <- df_raw %>%
       group_by(Media) %>%
       summarise(
         Mean = mean(.data[[param_sel]], na.rm = TRUE),
-        SD = if (!is.null(sd_col) && sd_col %in% names(df_raw)) {
-          mean(.data[[sd_col]], na.rm = TRUE)
-        } else {
-          sd(.data[[param_sel]], na.rm = TRUE)
-        },
+        SD = calculate_errorbar_height(
+          .data[[param_sel]],
+          stat = errorbar_stat,
+          sd_values = .data$.err_sd_source,
+          n_values = .data$.err_n_source
+        ),
         .groups = "drop"
       ) %>%
       mutate(SD = ifelse(is.finite(SD), pmax(SD, 0), 0))

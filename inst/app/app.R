@@ -13,9 +13,12 @@ configure_shiny_upload_limit <- function() {
 }
 
 resolve_app_parent_env <- function() {
-  # Use globalenv() so symbols attached by library() during app bootstrap
-  # (e.g., ggplot2::theme_update) are resolvable in sourced app files.
-  # Using a package/namespace parent can hide attached package symbols.
+  if ("package:BIOSZEN" %in% search()) {
+    return(as.environment("package:BIOSZEN"))
+  }
+  if (requireNamespace("BIOSZEN", quietly = TRUE)) {
+    return(asNamespace("BIOSZEN"))
+  }
   globalenv()
 }
 

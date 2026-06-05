@@ -1696,6 +1696,10 @@ ui <- fluidPage(
                  ## ─── Boxplot *y* Barras (tamaño de puntos) ────────────────
                  conditionalPanel(
                    condition = "['Boxplot','Barras','Violin','Apiladas'].indexOf(input.tipo) >= 0",
+                   conditionalPanel(
+                     condition = "['Boxplot','Barras','Apiladas'].indexOf(input.tipo) >= 0",
+                     uiOutput("errbarStatUI"),
+                   ),
                    numericInput("pt_size", tr("point_size"), value = 3,
                                 min = 0.5, max = 20,  step = 0.5),
                    numericInput("errbar_size", tr("errbar_size"),
@@ -2295,13 +2299,6 @@ ui <- fluidPage(
                         });
                       }
 
-                      $(document).on('click', '.shiny-notification .close, .shiny-notification .btn-close', function () {
-                        var box = $(this).closest('.shiny-notification');
-                        var hasProgress = box.find('.progress, .shiny-progress').length > 0;
-                        if (hasProgress && window.__bioszen_growth_running && window.Shiny && typeof Shiny.setInputValue === 'function') {
-                          Shiny.setInputValue('growth_progress_closed', Date.now(), {priority: 'event'});
-                        }
-                      });
                     })();
                   ")),
                   # solo mostramos cuando el usuario haya subido exactamente 1 archivo

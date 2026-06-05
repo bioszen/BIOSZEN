@@ -87,8 +87,24 @@ build_boxplot_plot_impl <- function(ctx) {
         return(ggplot() + theme_void() + annotate("text", 0, 0, label = msg_no_data_sel))
       }
       scope_df[[param_sel]] <- suppressWarnings(as.numeric(scope_df[[param_sel]]))
+      errorbar_stat <- normalize_errorbar_stat(input$errbar_stat %||% "SD", allow_minmax = TRUE)
+      sd_col <- resolve_prefixed_param_col(scope_df, "SD_", param_sel)
+      n_col <- resolve_prefixed_param_col(scope_df, "N_", param_sel)
       df_plot <- scope_df %>%
-        transmute(Label, Valor = .data[[param_sel]]) %>%
+        transmute(
+          Label,
+          Valor = .data[[param_sel]],
+          .err_sd_source = if (!is.null(sd_col) && sd_col %in% names(scope_df)) {
+            suppressWarnings(as.numeric(.data[[sd_col]]))
+          } else {
+            NA_real_
+          },
+          .err_n_source = if (!is.null(n_col) && n_col %in% names(scope_df)) {
+            suppressWarnings(as.numeric(.data[[n_col]]))
+          } else {
+            NA_real_
+          }
+        ) %>%
         filter(is.finite(Valor), !is.na(Label))
 
       if (nrow(df_plot) == 0) {
@@ -119,12 +135,26 @@ build_boxplot_plot_impl <- function(ctx) {
           q1 = stats::quantile(Valor, 0.25, na.rm = TRUE, names = FALSE),
           median = stats::median(Valor, na.rm = TRUE),
           q3 = stats::quantile(Valor, 0.75, na.rm = TRUE, names = FALSE),
-          lower = min(Valor, na.rm = TRUE),
-          upper = max(Valor, na.rm = TRUE),
+          Mean = mean(Valor, na.rm = TRUE),
+          min_val = min(Valor, na.rm = TRUE),
+          max_val = max(Valor, na.rm = TRUE),
+          SD = calculate_errorbar_height(
+            Valor,
+            stat = errorbar_stat,
+            sd_values = .data$.err_sd_source,
+            n_values = .data$.err_n_source
+          ),
           .groups = "drop"
         ) %>%
-        mutate(group = as.character(Label)) %>%
-        dplyr::select(group, q1, median, q3, lower, upper)
+        mutate(
+          SD = ifelse(is.finite(SD), pmax(SD, 0), 0),
+          lower = if (identical(errorbar_stat, "MINMAX")) min_val else Mean - SD,
+          upper = if (identical(errorbar_stat, "MINMAX")) max_val else Mean + SD,
+          group = as.character(Label)
+        ) %>%
+        dplyr::select(Label, group, q1, median, q3, lower, upper, Mean, SD, min_val, max_val)
+      data_max <- suppressWarnings(max(c(df_plot$Valor, box_stats$upper), na.rm = TRUE))
+      ymax_plot <- if (is.finite(data_max) && data_max > ymax) data_max else ymax
       pal <- palette_for_labels(df_labels, levels(df_plot$Label))
       flip_plot <- isTRUE(input$plot_flip)
       x_ang <- get_x_angle(
@@ -139,9 +169,19 @@ build_boxplot_plot_impl <- function(ctx) {
       if (input$colorMode == "Blanco y Negro") {
         p <- p +
           geom_boxplot(
+            data = box_stats,
+            aes(
+              x = Label,
+              ymin = lower,
+              lower = q1,
+              middle = median,
+              upper = q3,
+              ymax = upper
+            ),
+            stat = "identity",
+            inherit.aes = FALSE,
             fill = "white", colour = "black", width = input$box_w,
             linewidth = input$errbar_size,
-            coef = box_coef,
             outlier.shape = NA,
             na.rm = TRUE,
             show.legend = show_legend,
@@ -160,9 +200,20 @@ build_boxplot_plot_impl <- function(ctx) {
       } else {
         p <- p +
           geom_boxplot(
-            aes(fill = Label), width = input$box_w, colour = "black",
+            data = box_stats,
+            aes(
+              x = Label,
+              ymin = lower,
+              lower = q1,
+              middle = median,
+              upper = q3,
+              ymax = upper,
+              fill = Label
+            ),
+            stat = "identity",
+            inherit.aes = FALSE,
+            width = input$box_w, colour = "black",
             linewidth = input$errbar_size,
-            coef = box_coef,
             alpha = 0.5,
             outlier.shape = NA,
             na.rm = TRUE,
@@ -253,6 +304,12 @@ build_boxplot_plot_impl <- function(ctx) {
         summarise(y_top = max(Valor, na.rm = TRUE), .groups = "drop") %>%
         mutate(y_top = ifelse(is.finite(y_top), y_top, NA_real_)) %>%
         rename(group = Label)
+      err_tops <- box_stats %>%
+        transmute(group = Label, y_err_top = upper)
+      sig_tops <- sig_tops %>%
+        left_join(err_tops, by = "group") %>%
+        mutate(y_top = pmax(y_top, y_err_top, na.rm = TRUE)) %>%
+        dplyr::select(group, y_top)
       p <- apply_sig_layers(
         p,
         group_tops = sig_tops,
@@ -284,8 +341,23 @@ build_boxplot_plot_impl <- function(ctx) {
       return(ggplot() + theme_void() + annotate("text", 0, 0, label = msg_no_data_sel))
     }
     scope_df[[param_sel]] <- suppressWarnings(as.numeric(scope_df[[param_sel]]))
+    errorbar_stat <- normalize_errorbar_stat(input$errbar_stat %||% "SD", allow_minmax = TRUE)
+    sd_col <- resolve_prefixed_param_col(scope_df, "SD_", param_sel)
+    n_col <- resolve_prefixed_param_col(scope_df, "N_", param_sel)
     df <- scope_df %>%
-      filter(is.finite(.data[[param_sel]]), !is.na(Media))
+      filter(is.finite(.data[[param_sel]]), !is.na(Media)) %>%
+      mutate(
+        .err_sd_source = if (!is.null(sd_col) && sd_col %in% names(scope_df)) {
+          suppressWarnings(as.numeric(.data[[sd_col]]))
+        } else {
+          NA_real_
+        },
+        .err_n_source = if (!is.null(n_col) && n_col %in% names(scope_df)) {
+          suppressWarnings(as.numeric(.data[[n_col]]))
+        } else {
+          NA_real_
+        }
+      )
 
     if (nrow(df) == 0) {
       return(ggplot() + theme_void() +
@@ -314,12 +386,26 @@ build_boxplot_plot_impl <- function(ctx) {
         q1 = stats::quantile(.data[[param_sel]], 0.25, na.rm = TRUE, names = FALSE),
         median = stats::median(.data[[param_sel]], na.rm = TRUE),
         q3 = stats::quantile(.data[[param_sel]], 0.75, na.rm = TRUE, names = FALSE),
-        lower = min(.data[[param_sel]], na.rm = TRUE),
-        upper = max(.data[[param_sel]], na.rm = TRUE),
+        Mean = mean(.data[[param_sel]], na.rm = TRUE),
+        min_val = min(.data[[param_sel]], na.rm = TRUE),
+        max_val = max(.data[[param_sel]], na.rm = TRUE),
+        SD = calculate_errorbar_height(
+          .data[[param_sel]],
+          stat = errorbar_stat,
+          sd_values = .data$.err_sd_source,
+          n_values = .data$.err_n_source
+        ),
         .groups = "drop"
       ) %>%
-      mutate(group = as.character(Media)) %>%
-      dplyr::select(group, q1, median, q3, lower, upper)
+      mutate(
+        SD = ifelse(is.finite(SD), pmax(SD, 0), 0),
+        lower = if (identical(errorbar_stat, "MINMAX")) min_val else Mean - SD,
+        upper = if (identical(errorbar_stat, "MINMAX")) max_val else Mean + SD,
+        group = as.character(Media)
+      ) %>%
+      dplyr::select(Media, group, q1, median, q3, lower, upper, Mean, SD, min_val, max_val)
+    data_max <- suppressWarnings(max(c(df[[param_sel]], box_stats$upper), na.rm = TRUE))
+    ymax_plot <- if (is.finite(data_max) && data_max > ymax) data_max else ymax
     flip_plot <- isTRUE(input$plot_flip)
     x_ang <- get_x_angle(
       n = nlevels(factor(df$Media)),
@@ -331,9 +417,19 @@ build_boxplot_plot_impl <- function(ctx) {
     if (colourMode == "Blanco y Negro") {
       p <- ggplot(df, aes(Media, .data[[param_sel]])) +
         geom_boxplot(
+          data = box_stats,
+          aes(
+            x = Media,
+            ymin = lower,
+            lower = q1,
+            middle = median,
+            upper = q3,
+            ymax = upper
+          ),
+          stat = "identity",
+          inherit.aes = FALSE,
           fill = "white", colour = "black", width = input$box_w,
           linewidth = input$errbar_size,
-          coef = box_coef,
           outlier.shape = NA,
           na.rm = TRUE,
           show.legend = show_legend,
@@ -355,9 +451,20 @@ build_boxplot_plot_impl <- function(ctx) {
       pal <- palette_for_levels(media_levels)
       p <- ggplot(df, aes(Media, .data[[param_sel]], fill = Media)) +
         geom_boxplot(
+          data = box_stats,
+          aes(
+            x = Media,
+            ymin = lower,
+            lower = q1,
+            middle = median,
+            upper = q3,
+            ymax = upper,
+            fill = Media
+          ),
+          stat = "identity",
+          inherit.aes = FALSE,
           width = input$box_w, colour = "black",
           linewidth = input$errbar_size,
-          coef = box_coef,
           alpha = 0.5,
           outlier.shape = NA,
           na.rm = TRUE,
@@ -444,6 +551,12 @@ build_boxplot_plot_impl <- function(ctx) {
       summarise(y_top = max(.data[[param_sel]], na.rm = TRUE), .groups = "drop") %>%
       mutate(y_top = ifelse(is.finite(y_top), y_top, NA_real_)) %>%
       rename(group = Media)
+    err_tops <- box_stats %>%
+      transmute(group = Media, y_err_top = upper)
+    sig_tops <- sig_tops %>%
+      left_join(err_tops, by = "group") %>%
+      mutate(y_top = pmax(y_top, y_err_top, na.rm = TRUE)) %>%
+      dplyr::select(group, y_top)
     p <- apply_sig_layers(
       p,
       group_tops = sig_tops,
@@ -462,6 +575,9 @@ build_boxplot_plot_impl <- function(ctx) {
     )
     if (flip_plot) {
       p <- suppressMessages(p + coord_flip(clip = "off"))
+    }
+    if (!is.null(box_stats)) {
+      attr(p, "box_stats") <- box_stats
     }
 
     p
