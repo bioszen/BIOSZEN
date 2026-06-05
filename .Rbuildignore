@@ -7,6 +7,7 @@
 ^\.env.*$
 ^\.zenodo\.json$
 ^CITATION\.cff$
+^LICENSE$
 ^inst/app/rsconnect$
 ^inst/app/manifest\.json$
 ^inst/app/Rplots\.pdf$
@@ -23,6 +24,9 @@
 ^CHANGELOG\.md$
 ^Download_R_and_RStudio\.html$
 ^docs$
+^\.codex$
+^\.codex-run$
+^\.local-tools$
 ^setup\.sh$
 ^%$
 ^reflog\.txt$

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Setup script for running R tests in CI or Codex environment
+# Setup script for running R tests in CI or local development environments
 # Installs R 4.3.3 and required packages
 set -e
 

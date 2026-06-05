@@ -5,6 +5,13 @@
 .Rproj.user/
 *.Rproj
 
+# Local Codex/session state
+.codex/
+.codex-run/
+
+# Local helper tools kept outside release/repo scope
+.local-tools/
+
 # R CMD build/check
 *.tar.gz
 *.tgz

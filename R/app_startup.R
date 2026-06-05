@@ -68,7 +68,8 @@ bioszen_configure_package_download <- function() {
 
   if (.Platform$OS.type == "windows" &&
       !nzchar(getOption("download.file.method", ""))) {
-    options(download.file.method = "wininet")
+    method <- if (isTRUE(capabilities("libcurl"))) "libcurl" else "wininet"
+    options(download.file.method = method)
   }
 
   invisible(TRUE)
@@ -88,7 +89,7 @@ bioszen_install_missing_dependencies <- function(root = bioszen_find_source_root
     "Installing BIOSZEN packages for R ", bioszen_r_version_key(),
     " into ", normalizePath(lib, winslash = "/", mustWork = FALSE)
   )
-  install.packages(missing, lib = lib, dependencies = NA)
+  utils::install.packages(missing, lib = lib, dependencies = NA)
 
   still_missing <- bioszen_missing_dependencies(packages)
   if (length(still_missing)) {

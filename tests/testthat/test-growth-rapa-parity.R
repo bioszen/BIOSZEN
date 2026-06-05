@@ -52,9 +52,12 @@ test_that("Rapa workbook subset keeps exact values and order with selective perm
   skip_if_not_installed("dplyr")
   library(dplyr)
 
-  curves_path <- "C:/Users/user/Downloads/Curvas_Rapa_paper.xlsx"
-  params_path <- "C:/Users/user/Downloads/Parametros_Curvas_Rapa_paper.xlsx"
-  skip_if_not(file.exists(curves_path), "Curvas_Rapa_paper.xlsx not available")
+  curves_path <- Sys.getenv("BIOSZEN_RAPA_CURVES_XLSX", unset = "")
+  params_path <- Sys.getenv("BIOSZEN_RAPA_PARAMS_XLSX", unset = "")
+  skip_if_not(
+    nzchar(curves_path) && file.exists(curves_path),
+    "Set BIOSZEN_RAPA_CURVES_XLSX to run the optional Rapa workbook parity test."
+  )
 
   raw <- readxl::read_excel(curves_path, skip = 2, .name_repair = "minimal")
   time_hours <- extract_time_hours(raw[[1]])

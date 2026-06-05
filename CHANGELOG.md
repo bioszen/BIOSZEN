@@ -7,6 +7,14 @@ Semantic Versioning.
 ## [Unreleased]
 - No notable changes yet.
 
+## [2.0.2] - 2026-06-05
+- Prepared the project for the BIOSZEN 2.0.2 release.
+- Declared the required `digest` runtime dependency used by app export logic.
+- Declared optional rich text and mixed-model namespaces (`ggtext`, `lme4`, `lmerTest`) in `Suggests`.
+- Removed generated tracked helper cache/output files from the release surface.
+- Replaced tracked helper/test defaults that pointed at local user folders with explicit path inputs or environment-variable-driven skips.
+- Synchronized release metadata references to `2.0.2` in `DESCRIPTION`, `.zenodo.json`, `CITATION.cff`, and README citation text.
+
 ## [2.0.1] - 2026-04-21
 - Stabilized analysis control persistence so plot-type and advanced palette selections are retained more reliably across UI refreshes.
 - Release hygiene updates:

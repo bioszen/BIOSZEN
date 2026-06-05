@@ -17,6 +17,7 @@
     rstatix::anova_test
     PMCMRplus::kwAllPairsDunnTest
     DescTools::DunnettTest
+    digest::digest
     broom::tidy
     viridis::viridis
     RColorBrewer::brewer.pal
