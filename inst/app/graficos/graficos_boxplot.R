@@ -87,7 +87,11 @@ build_boxplot_plot_impl <- function(ctx) {
         return(ggplot() + theme_void() + annotate("text", 0, 0, label = msg_no_data_sel))
       }
       scope_df[[param_sel]] <- suppressWarnings(as.numeric(scope_df[[param_sel]]))
-      errorbar_stat <- normalize_errorbar_stat(input$errbar_stat %||% "SD", allow_minmax = TRUE)
+      errorbar_stat <- normalize_errorbar_stat(
+        input$errbar_stat %||% default_errorbar_stat_for_plot("Boxplot"),
+        default = default_errorbar_stat_for_plot("Boxplot"),
+        allow_minmax = TRUE
+      )
       sd_col <- resolve_prefixed_param_col(scope_df, "SD_", param_sel)
       n_col <- resolve_prefixed_param_col(scope_df, "N_", param_sel)
       df_plot <- scope_df %>%
@@ -341,7 +345,11 @@ build_boxplot_plot_impl <- function(ctx) {
       return(ggplot() + theme_void() + annotate("text", 0, 0, label = msg_no_data_sel))
     }
     scope_df[[param_sel]] <- suppressWarnings(as.numeric(scope_df[[param_sel]]))
-    errorbar_stat <- normalize_errorbar_stat(input$errbar_stat %||% "SD", allow_minmax = TRUE)
+    errorbar_stat <- normalize_errorbar_stat(
+      input$errbar_stat %||% default_errorbar_stat_for_plot("Boxplot"),
+      default = default_errorbar_stat_for_plot("Boxplot"),
+      allow_minmax = TRUE
+    )
     sd_col <- resolve_prefixed_param_col(scope_df, "SD_", param_sel)
     n_col <- resolve_prefixed_param_col(scope_df, "N_", param_sel)
     df <- scope_df %>%

@@ -263,6 +263,20 @@ specific measurement type.
 - Choose line geometry and confidence interval style.
 - Optional raw replicate trajectories.
 
+### Shared plot appearance controls
+
+- The **Error bar statistic** selector controls deviation bars where available:
+  - `SD`: mean +/- standard deviation.
+  - `SEM`: mean +/- standard error.
+  - `Min-Max`: observed minimum to maximum; available only for Boxplot.
+- The collapsible **Text styling** section is available for individual plots.
+- **Font family** applies to all text in the current graph. Available choices include common publication and system fonts such as Helvetica, Arial, Calibri, Cambria, Segoe UI, Times New Roman, Georgia, Verdana, and related variants.
+- Bold, italic, and underline are applied independently by text part: plot title, axis titles, axis numbers, legend, data labels, and significance text.
+- Each text part can use its own combination of styles; selecting underline for significance text, for example, does not force underline on the title or legend.
+- These choices are applied to the plot preview and included in exported `PNG` and `PDF` files.
+
+![Text styling controls](manual_images/11_text_styling_controls.png)
+
 ### Composition Panel
 
 Recommended steps:
@@ -271,9 +285,11 @@ Recommended steps:
 2. Open **Composition Panel** tab.
 3. Select and order plots.
 4. Configure layout (rows/columns, grid, output size).
-5. Configure style (legend, fonts, text sizes, palette).
+5. Configure style (legend mode, legend side, fonts, text sizes, palette).
 6. Optionally add rich text and per-plot overrides.
 7. Export to `PNG`, `PPTX`, `PDF`.
+
+Composition style controls apply in parallel to all selected plots. The composition **Text styling** section mirrors the individual plot controls: the font family is applied across all plot text, while bold/italic/underline can be selected separately for titles, axes, legends, data labels, and significance text. Composition exports preserve these settings in `PNG`, `PDF`, and `PPTX`.
 
 ![Significance and annotation setup](manual_images/10_significance_annotations.png)
 
@@ -306,6 +322,8 @@ Post hoc routes by selection:
 - Scheffe, Conover, Nemenyi, DSCF: `PMCMRplus`
 
 Curve statistics (`S1`-`S4`):
+
+The **Curve Statistics** accordion appears for Curves plots. Select one or more methods, then click **Run curve statistics** to generate the results table.
 
 - `S1`: `stats::lm` + `splines::ns` + `stats::anova`
 - `S2`: `stats::pnorm` + `stats::pchisq`
@@ -382,6 +400,7 @@ Metadata flow:
 - **Download metadata** to save current state.
 - Re-import metadata in future sessions.
 - Orientation flip state persists across metadata roundtrip.
+- Plot typography choices, error-bar statistic, and curve-statistics method selection persist across metadata roundtrip.
 
 Reproducibility bundle:
 
@@ -406,6 +425,8 @@ Main outputs:
 - Bundle ZIP.
 - Advanced correlation tables.
 - Merged platemap/curves exports (if merge tools were used).
+
+Plot exports preserve the active visual configuration, including font family, per-text-part bold/italic/underline choices, selected error-bar statistic, significance labels, and axis/legend settings. Composition exports preserve the same typography controls across all plots in the layout.
 
 ## 13. Growth Module
 

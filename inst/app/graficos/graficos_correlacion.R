@@ -1,7 +1,34 @@
 # Helpers para gráficos de correlación ---------------------------------------
 
 # Se asegura de que las funciones de correlación estén disponibles
-source("stats/stats_correlation.R")
+.bioszen_source_correlation_stats <- function() {
+  if (exists("run_correlation", mode = "function", inherits = TRUE)) {
+    return(invisible(TRUE))
+  }
+
+  frame_files <- unlist(lapply(sys.frames(), function(frame) {
+    path <- frame$ofile
+    if (is.character(path) && length(path) && nzchar(path[[1]])) path[[1]] else character()
+  }), use.names = FALSE)
+
+  module_dirs <- dirname(normalizePath(frame_files, winslash = "/", mustWork = FALSE))
+  candidates <- unique(c(
+    file.path(module_dirs, "..", "stats", "stats_correlation.R"),
+    file.path("stats", "stats_correlation.R"),
+    file.path("inst", "app", "stats", "stats_correlation.R")
+  ))
+
+  for (candidate in candidates) {
+    if (file.exists(candidate)) {
+      sys.source(candidate, envir = parent.frame())
+      return(invisible(TRUE))
+    }
+  }
+
+  stop("Could not locate stats/stats_correlation.R.", call. = FALSE)
+}
+.bioszen_source_correlation_stats()
+rm(.bioszen_source_correlation_stats)
 
 build_correlation_plot_impl <- function(scope,
                                         scope_df,

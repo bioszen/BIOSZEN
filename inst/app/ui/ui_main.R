@@ -234,6 +234,8 @@ ui <- fluidPage(
       #statsPanel .accordion-header .accordion-button,
       #curveStatsPanel .accordion-header .accordion-button,
       #qcPanel .accordion-header .accordion-button,
+      #plotTextStylePanel .accordion-header .accordion-button,
+      #comboTextStylePanel .accordion-header .accordion-button,
       #repsGlobalPanel .accordion-header .accordion-button,
       #repsPanel .accordion-header .accordion-button,
       #repsGrpPanel .accordion-header .accordion-button {
@@ -459,8 +461,285 @@ ui <- fluidPage(
         }
       }
 
+      function i18nRows() {
+        ensureI18nTranslations();
+        if (Array.isArray(window.i18n_translations)) {
+          return window.i18n_translations;
+        }
+        return Object.keys(window.i18n_translations || {}).map(function (key) {
+          return window.i18n_translations[key];
+        });
+      }
+
+      function lookupTranslation(key, lang) {
+        if (!key || !lang) return null;
+        var rows = i18nRows();
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i];
+          if (!row || String(row._row) !== String(key)) continue;
+          var value = row[lang];
+          if (value !== undefined && value !== null && String(value).length) {
+            return String(value);
+          }
+          var fallback = row.en;
+          if (fallback !== undefined && fallback !== null && String(fallback).length) {
+            return String(fallback);
+          }
+        }
+        return null;
+      }
+
+      function translateFileInputs(lang) {
+        var browseLabel = lookupTranslation('file_browse', lang) || 'Browse...';
+        var emptyLabel = lookupTranslation('file_no_selection', lang) || '';
+        var completeLabel = lookupTranslation('file_upload_complete', lang) || 'Upload complete';
+        var inputs = document.querySelectorAll('input[type=\"file\"].shiny-input-file');
+        for (var i = 0; i < inputs.length; i++) {
+          var input = inputs[i];
+          var container = input.closest('.form-group, .shiny-input-container') || input.parentElement;
+          var button = input.closest('.btn-file') || (container ? container.querySelector('.btn-file') : null);
+          if (button) {
+            var updated = false;
+            for (var j = 0; j < button.childNodes.length; j++) {
+              var node = button.childNodes[j];
+              if (node && node.nodeType === 3 && node.textContent.trim().length) {
+                if (node.textContent !== browseLabel + ' ') {
+                  node.textContent = browseLabel + ' ';
+                }
+                updated = true;
+              }
+            }
+            if (!updated) {
+              button.insertBefore(document.createTextNode(browseLabel + ' '), input);
+            }
+          }
+          if (container) {
+            var display = container.querySelector('input[type=\"text\"][readonly], input.form-control[readonly]');
+            if (display && emptyLabel) {
+              if (display.getAttribute('placeholder') !== emptyLabel) {
+              display.setAttribute('placeholder', emptyLabel);
+              }
+            }
+            var bars = container.querySelectorAll('.progress-bar');
+            for (var k = 0; k < bars.length; k++) {
+              var barText = (bars[k].textContent || '').trim();
+              if (/^(Upload complete|Carga completa)$/.test(barText) && barText !== completeLabel) {
+                bars[k].textContent = completeLabel;
+              }
+            }
+          }
+        }
+      }
+
+      function setInputLabelText(input, text) {
+        if (!input || !text) return;
+        var label = input.closest('label');
+        if (!label && input.id) {
+          label = document.querySelector('label[for=\"' + input.id.replace(/\"/g, '\\\\\"') + '\"]');
+        }
+        if (!label) return;
+
+        var updated = false;
+        for (var i = 0; i < label.childNodes.length; i++) {
+          var node = label.childNodes[i];
+          if (!node) continue;
+          if (node.nodeType === 3 && node.textContent.trim().length) {
+            if (node.textContent !== ' ' + text) node.textContent = ' ' + text;
+            updated = true;
+          } else if (
+            node.nodeType === 1 &&
+            node.tagName &&
+            node.tagName.toLowerCase() !== 'input' &&
+            !node.querySelector('input')
+          ) {
+            if (node.textContent !== text) node.textContent = text;
+            updated = true;
+          }
+        }
+        if (!updated) {
+          label.appendChild(document.createTextNode(' ' + text));
+        }
+      }
+
+      function translateChoiceLabels(lang) {
+        var maps = {
+          scope: {
+            'Por Cepa': 'scope_by_strain',
+            Combinado: 'scope_combined'
+          },
+          tipo: {
+            Boxplot: 'plot_boxplot',
+            Barras: 'plot_bars',
+            Violin: 'plot_violin',
+            Curvas: 'plot_curves',
+            Apiladas: 'plot_stacked',
+            Correlacion: 'plot_correlation',
+            Heatmap: 'plot_heatmap',
+            MatrizCorrelacion: 'plot_corr_matrix'
+          },
+          sig_mode: {
+            bars: 'sig_mode_bars',
+            labels: 'sig_mode_labels'
+          },
+          cur_ci_style: {
+            ribbon: 'curves_ci_ribbon',
+            errorbar: 'curves_ci_errorbar'
+          },
+          curve_geom: {
+            line_points: 'curves_geom_line_points',
+            line_only: 'curves_geom_line_only'
+          },
+          curve_color_mode: {
+            by_group: 'curves_color_by_group',
+            single: 'curves_color_single'
+          }
+        };
+
+        Object.keys(maps).forEach(function (name) {
+          var inputs = document.querySelectorAll('input[name=\"' + name + '\"]');
+          for (var i = 0; i < inputs.length; i++) {
+            var input = inputs[i];
+            var key = maps[name][input.value];
+            var value = lookupTranslation(key, lang);
+            if (value !== null) setInputLabelText(input, value);
+          }
+        });
+      }
+
+      function translateDynamicHeadings(lang) {
+        var mediaText = lang === 'en' ? 'Media' : 'Media';
+        var filterPrefix = lang === 'en' ? 'Filter ' : 'Filtro de ';
+        var repsPrefix = lang === 'en' ? 'Replicates by ' : 'Replicas por ';
+        var nodes = document.querySelectorAll('h4, button.accordion-button, .accordion-button');
+        for (var i = 0; i < nodes.length; i++) {
+          var node = nodes[i];
+          var text = (node.textContent || '').trim();
+          if (/^(Filter|Filtro de)\\s+/.test(text)) {
+            if (text !== filterPrefix + mediaText) node.textContent = filterPrefix + mediaText;
+          } else if (/^(Replicates by|Replicas por)\\s+/.test(text)) {
+            if (text !== repsPrefix + mediaText) node.textContent = repsPrefix + mediaText;
+          }
+        }
+      }
+
+      function replaceTextNodes(node, replacements) {
+        if (!node) return;
+        for (var i = 0; i < node.childNodes.length; i++) {
+          var child = node.childNodes[i];
+          if (!child || child.nodeType !== 3) continue;
+          var text = child.textContent;
+          var next = text;
+          for (var j = 0; j < replacements.length; j++) {
+            next = next.replace(replacements[j][0], replacements[j][1]);
+          }
+          if (next !== text) child.textContent = next;
+        }
+      }
+
+      function translateDataTables(lang) {
+        var show = lookupTranslation('datatable_show', lang) || (lang === 'en' ? 'Show' : 'Mostrar');
+        var entries = lookupTranslation('datatable_entries', lang) || (lang === 'en' ? 'entries' : 'entradas');
+        var search = lookupTranslation('datatable_search', lang) || (lang === 'en' ? 'Search:' : 'Buscar:');
+        var previous = lookupTranslation('datatable_previous', lang) || (lang === 'en' ? 'Previous' : 'Anterior');
+        var next = lookupTranslation('datatable_next', lang) || (lang === 'en' ? 'Next' : 'Siguiente');
+
+        var lengthLabels = document.querySelectorAll('.dataTables_length label');
+        for (var i = 0; i < lengthLabels.length; i++) {
+          replaceTextNodes(lengthLabels[i], [
+            [/Show/g, show],
+            [/Mostrar/g, show],
+            [/entries/g, entries],
+            [/entradas/g, entries]
+          ]);
+        }
+
+        var filterLabels = document.querySelectorAll('.dataTables_filter label');
+        for (var f = 0; f < filterLabels.length; f++) {
+          replaceTextNodes(filterLabels[f], [
+            [/Search:/g, search],
+            [/Buscar:/g, search]
+          ]);
+        }
+
+        var infoNodes = document.querySelectorAll('.dataTables_info');
+        for (var n = 0; n < infoNodes.length; n++) {
+          var info = (infoNodes[n].textContent || '').trim();
+          var match = info.match(/^(Showing|Mostrando)\\s+(\\d+)\\s+(to|a)\\s+(\\d+)\\s+(of|de)\\s+(\\d+)\\s+(entries|entradas)$/);
+          if (match) {
+            var text = lang === 'en'
+              ? 'Showing ' + match[2] + ' to ' + match[4] + ' of ' + match[6] + ' entries'
+              : 'Mostrando ' + match[2] + ' a ' + match[4] + ' de ' + match[6] + ' entradas';
+            if (infoNodes[n].textContent !== text) infoNodes[n].textContent = text;
+          }
+        }
+
+        var prevNodes = document.querySelectorAll('.dataTables_paginate .previous');
+        for (var p = 0; p < prevNodes.length; p++) {
+          if ((prevNodes[p].textContent || '').trim() !== previous) prevNodes[p].textContent = previous;
+        }
+        var nextNodes = document.querySelectorAll('.dataTables_paginate .next');
+        for (var q = 0; q < nextNodes.length; q++) {
+          if ((nextNodes[q].textContent || '').trim() !== next) nextNodes[q].textContent = next;
+        }
+      }
+
+      var translationObserverStarted = false;
+      var translationPending = false;
+
+      function scheduleTranslateStatic(lang) {
+        if (translationPending) return;
+        translationPending = true;
+        setTimeout(function () {
+          translationPending = false;
+          translateStatic(lang || window.BIOSZEN_LANG || localStorage.getItem('appLang') || 'en');
+        }, 100);
+      }
+
+      function startTranslationObserver() {
+        if (translationObserverStarted || !document.body || !window.MutationObserver) return;
+        translationObserverStarted = true;
+        var observer = new MutationObserver(function () {
+          scheduleTranslateStatic();
+        });
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+          characterData: true
+        });
+      }
+
+      function translateStatic(lang) {
+        lang = String(lang || window.BIOSZEN_LANG || localStorage.getItem('appLang') || 'en').toLowerCase();
+        window.BIOSZEN_LANG = lang;
+        document.documentElement.setAttribute('lang', lang);
+        var nodes = document.querySelectorAll('.i18n[data-key], .i18n[data-i18n]');
+        for (var i = 0; i < nodes.length; i++) {
+          var node = nodes[i];
+          var key = node.getAttribute('data-key') || node.getAttribute('data-i18n');
+          var value = lookupTranslation(key, lang);
+          if (value !== null && node.textContent !== value) node.textContent = value;
+        }
+        translateFileInputs(lang);
+        translateChoiceLabels(lang);
+        translateDynamicHeadings(lang);
+        translateDataTables(lang);
+        startTranslationObserver();
+      }
+
+      window.BIOSZEN_translateStatic = translateStatic;
+
       ensureI18nTranslations();
-      $(document).one('shiny:connected', ensureI18nTranslations);
+      document.addEventListener('bioszen:lang-changed', function () {
+        translateStatic();
+      });
+      document.addEventListener('DOMContentLoaded', function () {
+        translateStatic();
+      });
+      if (window.jQuery) {
+        $(document).on('shiny:connected', function () {
+          translateStatic();
+        });
+      }
     })();
   ")),
   tags$script(HTML("
@@ -576,7 +855,7 @@ ui <- fluidPage(
   tags$div(
     id = "startup-loader",
     tags$img(src = "logo_light.png", alt = "BIOSZEN"),
-    tags$div(class = "startup-text", "Loading...")
+    tags$div(class = "startup-text", tr("startup_loading"))
   ),
 
   tags$script(HTML("
@@ -699,8 +978,18 @@ ui <- fluidPage(
         ),
         tags$ul(
           class = "dropdown-menu dropdown-menu-end",
-          tags$li(actionLink("lang_es", tr("lang_es"), class = "dropdown-item")),
-          tags$li(actionLink("lang_en", tr("lang_en"), class = "dropdown-item"))
+          tags$li(actionLink(
+            "lang_es",
+            tr("lang_es"),
+            class = "dropdown-item",
+            onclick = "if(window.BIOSZEN_applyLang){window.BIOSZEN_applyLang('es');} return false;"
+          )),
+          tags$li(actionLink(
+            "lang_en",
+            tr("lang_en"),
+            class = "dropdown-item",
+            onclick = "if(window.BIOSZEN_applyLang){window.BIOSZEN_applyLang('en');} return false;"
+          ))
         )
       ),
       actionButton("btn_light", label = tr("theme_light"),
@@ -740,7 +1029,11 @@ ui <- fluidPage(
 
       function applyLang(lang) {
         if (!lang) return;
+        window.BIOSZEN_LANG = lang;
         localStorage.setItem('appLang', lang);
+        if (window.BIOSZEN_translateStatic) {
+          window.BIOSZEN_translateStatic(lang);
+        }
         var link = document.getElementById('manual_link');
         if (link) {
           var pdf  = (lang === 'en' ? 'MANUAL_EN.pdf' : 'MANUAL_ES.pdf');
@@ -756,6 +1049,13 @@ ui <- fluidPage(
           Shiny.setInputValue('manual_lang', lang, {priority: 'event'});
         });
         setTimeout(function () {
+          if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+            Shiny.setInputValue('app_lang', lang, {priority: 'event'});
+            Shiny.setInputValue('manual_lang', lang, {priority: 'event'});
+          }
+          if (window.BIOSZEN_translateStatic) {
+            window.BIOSZEN_translateStatic(lang);
+          }
           document.dispatchEvent(new Event('bioszen:lang-changed'));
         }, 350);
       }
@@ -894,6 +1194,66 @@ ui <- fluidPage(
         }
         setTimeout(syncSwitchFromLayout, 120);
       });
+    })();
+  ")),
+  tags$script(HTML("
+    (function(){
+      var bioszenCheckboxGroupSyncRegistered = false;
+      function registerBioszenCheckboxGroupSync(){
+        if (bioszenCheckboxGroupSyncRegistered) return true;
+        if (!window.Shiny || typeof Shiny.addCustomMessageHandler !== 'function') return false;
+        bioszenCheckboxGroupSyncRegistered = true;
+        Shiny.addCustomMessageHandler('bioszen-set-checkbox-group-values', function(payload){
+          if (!payload || !payload.id) return;
+          var id = String(payload.id);
+          var selected = Array.isArray(payload.selected) ? payload.selected.map(String) : [];
+          var container = document.getElementById(id);
+          var boxes = [];
+          if (container) {
+            boxes = Array.prototype.slice.call(container.querySelectorAll('input[type=\"checkbox\"]'));
+          }
+          if (!boxes.length) {
+            boxes = Array.prototype.slice.call(document.getElementsByName(id));
+          }
+          boxes.forEach(function(box){
+            var shouldCheck = selected.indexOf(String(box.value)) !== -1;
+            if (box.checked !== shouldCheck) {
+              box.checked = shouldCheck;
+              box.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+          });
+          if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+            Shiny.setInputValue(id, selected, {priority: 'event'});
+          }
+        });
+        return true;
+      }
+      if (!registerBioszenCheckboxGroupSync()) {
+        document.addEventListener('shiny:connected', registerBioszenCheckboxGroupSync, {once: true});
+        var attempts = 0;
+        var retry = window.setInterval(function(){
+          attempts += 1;
+          if (registerBioszenCheckboxGroupSync() || attempts >= 40) {
+            window.clearInterval(retry);
+          }
+        }, 250);
+      }
+      window.BIOSZEN_registerCheckboxGroupSync = registerBioszenCheckboxGroupSync;
+    })();
+  ")),
+  tags$script(HTML("
+    (function(){
+      document.addEventListener('change', function(ev){
+        var target = ev.target;
+        if (!target || (target.id !== 'toggleMedios' && target.id !== 'toggleGroups')) return;
+        if (!ev.isTrusted) return;
+        if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+          Shiny.setInputValue(target.id + '_user_change', {
+            value: !!target.checked,
+            nonce: Date.now()
+          }, {priority: 'event'});
+        }
+      }, true);
     })();
   ")),
   # ------ Handler de descarga Plotly ----------------------------------------
@@ -1058,23 +1418,38 @@ ui <- fluidPage(
   ),
   tags$script(HTML("
     (function () {
+      var plotLoadingTimer = null;
       function setPlotLoading(on) {
         var wrap = document.getElementById('plot-loading-wrap');
         if (!wrap) return;
         if (on) wrap.classList.add('is-loading');
         else wrap.classList.remove('is-loading');
       }
+      function schedulePlotLoading() {
+        if (plotLoadingTimer) clearTimeout(plotLoadingTimer);
+        plotLoadingTimer = setTimeout(function () {
+          plotLoadingTimer = null;
+          setPlotLoading(true);
+        }, 180);
+      }
+      function clearPlotLoading() {
+        if (plotLoadingTimer) {
+          clearTimeout(plotLoadingTimer);
+          plotLoadingTimer = null;
+        }
+        setPlotLoading(false);
+      }
 
       $(document).on('shiny:outputinvalidated', function (ev) {
-        if ((ev && ev.name) === 'plotInteractivo') setPlotLoading(true);
+        if ((ev && ev.name) === 'plotInteractivo') schedulePlotLoading();
       });
 
       $(document).on('shiny:value shiny:error', function (ev) {
-        if ((ev && ev.name) === 'plotInteractivo') setPlotLoading(false);
+        if ((ev && ev.name) === 'plotInteractivo') clearPlotLoading();
       });
 
       $(document).on('shiny:disconnected', function () {
-        setPlotLoading(false);
+        clearPlotLoading();
       });
     })();
   ")),
@@ -1741,6 +2116,85 @@ ui <- fluidPage(
                 numericInput("fs_title",  tr("title_size"),   20, min = 6),
                 numericInput("fs_axis",   tr("axis_size"),     15, min = 6),
                 numericInput("fs_legend", tr("legend_size"),  17, min = 6),
+                tags$div(
+                  class = "plot-text-style-section",
+                  accordion(
+                    id = "plotTextStylePanel",
+                    open = FALSE,
+                    multiple = TRUE,
+                    accordion_panel_safe(
+                      tr("plot_text_style_section"),
+                      selectInput(
+                        "plot_font_family",
+                        tr("plot_font_family"),
+                        choices = bioszen_plot_font_choices(),
+                        selected = "Helvetica"
+                      ),
+                      h5(tr("plot_text_styles_by_target")),
+                      checkboxGroupInput(
+                        "plot_text_style_title",
+                        tr("plot_text_target_title"),
+                        choices = named_choices(
+                          bioszen_plot_text_styles(),
+                          list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                        ),
+                        selected = "bold",
+                        inline = TRUE
+                      ),
+                      checkboxGroupInput(
+                        "plot_text_style_axis_titles",
+                        tr("plot_text_target_axis_titles"),
+                        choices = named_choices(
+                          bioszen_plot_text_styles(),
+                          list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                        ),
+                        selected = "bold",
+                        inline = TRUE
+                      ),
+                      checkboxGroupInput(
+                        "plot_text_style_axis_text",
+                        tr("plot_text_target_axis_text"),
+                        choices = named_choices(
+                          bioszen_plot_text_styles(),
+                          list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                        ),
+                        selected = character(0),
+                        inline = TRUE
+                      ),
+                      checkboxGroupInput(
+                        "plot_text_style_legend",
+                        tr("plot_text_target_legend"),
+                        choices = named_choices(
+                          bioszen_plot_text_styles(),
+                          list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                        ),
+                        selected = character(0),
+                        inline = TRUE
+                      ),
+                      checkboxGroupInput(
+                        "plot_text_style_data_labels",
+                        tr("plot_text_target_data_labels"),
+                        choices = named_choices(
+                          bioszen_plot_text_styles(),
+                          list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                        ),
+                        selected = character(0),
+                        inline = TRUE
+                      ),
+                      checkboxGroupInput(
+                        "plot_text_style_significance",
+                        tr("plot_text_target_significance"),
+                        choices = named_choices(
+                          bioszen_plot_text_styles(),
+                          list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                        ),
+                        selected = character(0),
+                        inline = TRUE
+                      ),
+                      value = "plot_text_style_section"
+                    )
+                  )
+                ),
                 conditionalPanel(
                   condition = "['Boxplot','Barras','Violin'].indexOf(input.tipo) >= 0",
                   checkboxInput("legend_right", tr("legend_right"), FALSE)
@@ -2199,8 +2653,9 @@ ui <- fluidPage(
                        class = "btn btn-success"
                      )
                    ),
-                   DTOutput('statsTable'),
-                   hr(),
+                    DTOutput('statsTable'),
+                    uiOutput("statsFilteredTechTableUI"),
+                    hr(),
                    tags$div(
                       style = "font-size:16px; text-align:center; color:#555;",
                       tr("comments_label"),

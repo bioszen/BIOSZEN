@@ -183,6 +183,27 @@ named_choices <- function(values, labels) {
   out
 }
 
+bioszen_plot_font_choices <- function() {
+  c(
+    "Helvetica", "Arial", "Arial Black", "Arial Narrow",
+    "Calibri", "Cambria", "Candara", "Century Gothic",
+    "Comic Sans MS", "Consolas", "Constantia", "Corbel",
+    "Courier New", "Franklin Gothic Medium", "Garamond",
+    "Georgia", "Impact", "Lucida Console", "Lucida Sans Unicode",
+    "Microsoft Sans Serif", "Palatino Linotype", "Segoe UI",
+    "Segoe UI Light", "Segoe UI Semibold", "Tahoma",
+    "Times New Roman", "Trebuchet MS", "Verdana"
+  )
+}
+
+bioszen_plot_text_targets <- function() {
+  c("title", "axis_titles", "axis_text", "legend", "data_labels", "significance")
+}
+
+bioszen_plot_text_styles <- function() {
+  c("bold", "italic", "underline")
+}
+
 accordion_panel_safe <- function(title, ..., value = NULL) {
   value_chr <- NULL
   if (!is.null(value)) {
@@ -229,8 +250,8 @@ options(shiny.error = function(e = NULL) {
 options(jsonlite.warn_keep_vec_names = FALSE)
 
 ## Fuente y color por defecto para TODO ggplot2
-theme_update(
-  text = element_text(colour = "black", family = "Helvetica")
+ggplot2::theme_update(
+  text = ggplot2::element_text(colour = "black", family = "Helvetica")
 )
 
 #──────── helpers genéricos para objetos sin método broom::tidy() ────────
@@ -240,8 +261,8 @@ theme_update(
 # Canonical statistical/file helper implementations live in helpers.R.
 # Keep this file free of duplicate helper definitions to avoid silent overrides.
 
-theme_light <- bs_theme(version = 5)
-theme_dark  <- bs_theme(version = 5, bootswatch = "cyborg")
+theme_light <- bslib::bs_theme(version = 5)
+theme_dark  <- bslib::bs_theme(version = 5, bootswatch = "cyborg")
 
 tab_compos <- tabPanel(
   title = tr("tab_composition"),
@@ -304,11 +325,84 @@ tab_compos <- tabPanel(
             selected = "right",
             inline = TRUE
           ),
-          selectInput(
-            "combo_font_family",
-            tr("combo_font_family"),
-            choices = c("Helvetica", "Arial", "Calibri", "Times New Roman", "Courier New"),
-            selected = "Helvetica"
+          tags$div(
+            class = "plot-text-style-section",
+            accordion(
+              id = "comboTextStylePanel",
+              open = FALSE,
+              multiple = TRUE,
+              accordion_panel_safe(
+                tr("plot_text_style_section"),
+                selectInput(
+                  "combo_font_family",
+                  tr("combo_font_family"),
+                  choices = bioszen_plot_font_choices(),
+                  selected = "Helvetica"
+                ),
+                h5(tr("plot_text_styles_by_target")),
+                checkboxGroupInput(
+                  "combo_text_style_title",
+                  tr("plot_text_target_title"),
+                  choices = named_choices(
+                    bioszen_plot_text_styles(),
+                    list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                  ),
+                  selected = "bold",
+                  inline = TRUE
+                ),
+                checkboxGroupInput(
+                  "combo_text_style_axis_titles",
+                  tr("plot_text_target_axis_titles"),
+                  choices = named_choices(
+                    bioszen_plot_text_styles(),
+                    list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                  ),
+                  selected = "bold",
+                  inline = TRUE
+                ),
+                checkboxGroupInput(
+                  "combo_text_style_axis_text",
+                  tr("plot_text_target_axis_text"),
+                  choices = named_choices(
+                    bioszen_plot_text_styles(),
+                    list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                  ),
+                  selected = character(0),
+                  inline = TRUE
+                ),
+                checkboxGroupInput(
+                  "combo_text_style_legend",
+                  tr("plot_text_target_legend"),
+                  choices = named_choices(
+                    bioszen_plot_text_styles(),
+                    list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                  ),
+                  selected = character(0),
+                  inline = TRUE
+                ),
+                checkboxGroupInput(
+                  "combo_text_style_data_labels",
+                  tr("plot_text_target_data_labels"),
+                  choices = named_choices(
+                    bioszen_plot_text_styles(),
+                    list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                  ),
+                  selected = character(0),
+                  inline = TRUE
+                ),
+                checkboxGroupInput(
+                  "combo_text_style_significance",
+                  tr("plot_text_target_significance"),
+                  choices = named_choices(
+                    bioszen_plot_text_styles(),
+                    list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                  ),
+                  selected = character(0),
+                  inline = TRUE
+                ),
+                value = "combo_text_style_section"
+              )
+            )
           ),
           checkboxInput("combo_apply_paper_theme", tr("combo_apply_paper_theme"), value = FALSE),
           numericInput("fs_title_all",      tr("combo_plot_title_size"), 20, min = 6),
@@ -629,6 +723,12 @@ order_export_replicates <- function(
   df[ord, , drop = FALSE]
 }
 
+export_nonempty_label <- function(x, fallback = "(blank)") {
+  out <- as.character(x)
+  out[is.na(out) | !nzchar(trimws(out))] <- fallback
+  out
+}
+
 # ── Función para generar el Excel de resumen por parámetro ────────────  
 generate_summary_wb <- function(datos, params, wb = NULL, sheet_suffix = "") {  
   if (is.null(wb)) wb <- createWorkbook()
@@ -648,6 +748,7 @@ generate_summary_wb <- function(datos, params, wb = NULL, sheet_suffix = "") {
         BiologicalReplicate, TechnicalReplicate,
         Valor = !!rlang::sym(param)
       ) %>%
+      dplyr::mutate(Media = export_nonempty_label(.data$Media)) %>%
       dplyr::group_by(Strain, Media, Orden,
                        BiologicalReplicate, TechnicalReplicate) %>%
       dplyr::summarise(Valor = mean(Valor, na.rm = TRUE),
@@ -688,8 +789,12 @@ generate_summary_wb <- function(datos, params, wb = NULL, sheet_suffix = "") {
         tech_col = "TechnicalReplicate"
       ) %>%
         dplyr::select(BiologicalReplicate,
+                      TechnicalReplicate,
                       dplyr::any_of(medias_order)) %>%
-        dplyr::rename(RepBiol = BiologicalReplicate)
+        dplyr::rename(
+          RepBiol = BiologicalReplicate,
+          RepTec = TechnicalReplicate
+        )
       
       writeData(wb, sheet, tab_cepa,  
                 startRow    = fila,  
@@ -756,7 +861,8 @@ add_curves_by_group_sheet <- function(wb, curve_wide, meta_df, sheet_name = "Cur
       values_to = "Valor"  
     ) %>%  
     dplyr::left_join(meta_curves, by = "Well") %>%  
-    dplyr::filter(!is.na(.data$Strain), !is.na(.data$Media), !is.na(.data$BiologicalReplicate))  
+    dplyr::filter(!is.na(.data$Strain), !is.na(.data$Media), !is.na(.data$BiologicalReplicate)) %>%
+    dplyr::mutate(Media = export_nonempty_label(.data$Media))
   if (!nrow(curves_long)) return(wb)  
   
   resumen_curvas <- curves_long %>%  
@@ -2754,6 +2860,13 @@ prepare_platemap <- function(df_datos, cfg, defaults_profile = c("excel", "csv")
     out[out == ""] <- NA_character_
     out
   }
+  repair_headers <- function(x, prefix = "Column") {
+    out <- normalize_text(x)
+    if (is.null(out)) return(out)
+    bad <- is.na(out) | !nzchar(out)
+    if (any(bad)) out[bad] <- paste0(prefix, which(bad))
+    make.unique(out, sep = "_")
+  }
   is_numeric_like <- function(x) {
     x <- normalize_text(x)
     x <- x[!is.na(x)]
@@ -2806,7 +2919,12 @@ prepare_platemap <- function(df_datos, cfg, defaults_profile = c("excel", "csv")
   id_cols <- c("Strain", "Media", "Orden", "BiologicalReplicate", "TechnicalReplicate", "Well", "Replicate")
 
   if (!is.null(df_datos) && !is.null(names(df_datos))) {
-    names(df_datos) <- normalize_text(names(df_datos))
+    raw_headers <- normalize_text(names(df_datos))
+    blank_headers <- is.na(raw_headers) | !nzchar(raw_headers)
+    if (any(blank_headers)) {
+      df_datos <- df_datos[, !blank_headers, drop = FALSE]
+    }
+    names(df_datos) <- repair_headers(names(df_datos), prefix = "Column")
     for (col in c("Strain", "Media", "Well", "TechnicalReplicate", "Replicate")) {
       if (col %in% names(df_datos)) {
         df_datos[[col]] <- normalize_text(df_datos[[col]])
@@ -2828,7 +2946,7 @@ prepare_platemap <- function(df_datos, cfg, defaults_profile = c("excel", "csv")
     }
   }
   if (!is.null(cfg) && !is.null(names(cfg))) {
-    names(cfg) <- normalize_text(names(cfg))
+    names(cfg) <- repair_headers(names(cfg), prefix = "Setting")
     if ("Parameter" %in% names(cfg)) {
       cfg$Parameter <- normalize_text(cfg$Parameter)
     }

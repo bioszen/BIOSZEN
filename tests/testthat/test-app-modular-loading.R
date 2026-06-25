@@ -4,10 +4,25 @@ test_that("inst/app/app.R loads UI and server modules via source_dir", {
 
   txt <- paste(readLines(app_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
 
-  expect_match(txt, "source_dir\\(\"server\"\\s*,\\s*envir\\s*=\\s*app_env\\)", perl = TRUE)
-  expect_match(txt, "source_dir\\(\"ui\"\\s*,\\s*envir\\s*=\\s*app_env\\)", perl = TRUE)
+  expect_match(txt, "resolve_bioszen_app_dir\\s*<-\\s*function\\s*\\(", perl = TRUE)
+  expect_match(txt, "resolve_bioszen_source_root\\s*<-\\s*function\\s*\\(", perl = TRUE)
+  expect_match(txt, "source_dir\\(file\\.path\\(app_dir, \"server\"\\)\\s*,\\s*envir\\s*=\\s*app_env\\)", perl = TRUE)
+  expect_match(txt, "source_dir\\(file\\.path\\(app_dir, \"ui\"\\)\\s*,\\s*envir\\s*=\\s*app_env\\)", perl = TRUE)
+  expect_match(txt, "file\\.path\\(app_dir, \"\\.\\.\"\\)", perl = TRUE)
   expect_no_match(txt, "sys\\.source\\(\"ui/ui_main\\.R\"", perl = TRUE)
   expect_no_match(txt, "sys\\.source\\(\"server/server_main\\.R\"", perl = TRUE)
+})
+
+test_that("inst/app/app.R can be sourced from the package root", {
+  root <- normalizePath(app_test_root(), winslash = "/", mustWork = TRUE)
+  app_file <- normalizePath(app_test_path("app.R"), winslash = "/", mustWork = TRUE)
+  expect_true(file.exists(app_file))
+
+  old_wd <- setwd(root)
+  on.exit(setwd(old_wd), add = TRUE)
+
+  app <- source(app_file, local = new.env(parent = globalenv()))$value
+  expect_s3_class(app, "shiny.appobj")
 })
 
 test_that("shared helpers are defined only in helpers.R", {

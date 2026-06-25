@@ -38,6 +38,26 @@ test_that("flip orientation control is scoped to supported plot types and metada
     srv_txt,
     fixed = TRUE
   ))
+  expect_true(grepl(
+    "default_errorbar_stat_for_plot\\(tipo_sel",
+    srv_txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "Campo\\s*=\\s*\"errbar_stat\"",
+    srv_txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "default_errorbar_stat_for_plot\\(\\s*input\\$tipo",
+    srv_txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "is_norm\\s*<-\\s*isTRUE\\(input\\$doNorm\\)\\s*&&\\s*has_ctrl_selected\\(\\)",
+    srv_txt,
+    perl = TRUE
+  ))
 
   expect_true(grepl(
     "Campo\\s*=\\s*c\\(\"pt_size\",\\s*\"x_angle\",\\s*\"plot_flip\",\\s*\"x_wrap\",\\s*\"x_wrap_lines\"\\)",
@@ -216,6 +236,16 @@ test_that("distribution plot builders toggle CoordFlip only when requested", {
   expect_error(build_boxplot_plot_impl(minmax_ctx), NA)
   expect_equal(minmax_stats$lower, minmax_stats$min_val)
   expect_equal(minmax_stats$upper, minmax_stats$max_val)
+
+  default_stats <- NULL
+  default_ctx <- make_dist_ctx(flip = FALSE, errbar_stat = NULL)
+  default_ctx$add_whisker_caps <- function(p, stats_df, ...) {
+    default_stats <<- stats_df
+    p
+  }
+  expect_error(build_boxplot_plot_impl(default_ctx), NA)
+  expect_equal(default_stats$lower, default_stats$min_val)
+  expect_equal(default_stats$upper, default_stats$max_val)
 
   p_violin_v <- build_violin_plot_impl(make_dist_ctx(flip = FALSE))
   p_violin_h <- build_violin_plot_impl(make_dist_ctx(flip = TRUE))

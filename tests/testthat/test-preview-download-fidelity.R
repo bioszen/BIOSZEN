@@ -17,6 +17,22 @@ test_that("export pipeline is wired to preview-aligned renderer", {
     txt,
     perl = TRUE
   ))
+  expect_true(grepl(
+    "outputOptions\\(output,\\s*\"downloadPlot_png\",\\s*suspendWhenHidden\\s*=\\s*FALSE\\)",
+    txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "outputOptions\\(output,\\s*\"downloadPlot_pdf\",\\s*suspendWhenHidden\\s*=\\s*FALSE\\)",
+    txt,
+    perl = TRUE
+  ))
+  curve_static_exports <- gregexpr(
+    "if \\(identical\\(input\\$tipo %\\|\\|% \"\", \"Curvas\"\\)\\)[\\s\\S]*?ggplot2::ggsave",
+    txt,
+    perl = TRUE
+  )[[1]]
+  expect_gte(sum(curve_static_exports > 0), 2)
   expect_true(grepl("zoom\\s*=\\s*1", txt, perl = TRUE))
 })
 
@@ -107,7 +123,7 @@ png_dims <- function(path) {
 download_png_with_retry <- function(app, output_id, retries = 4L, pause_sec = 1) {
   last_err <- NULL
   for (i in seq_len(retries)) {
-    app$wait_for_idle(duration = 500, timeout = 120000)
+    try(app$wait_for_idle(duration = 500, timeout = 120000), silent = TRUE)
     attempt <- tryCatch(
       app$get_download(output = output_id),
       error = function(e) {
@@ -123,6 +139,21 @@ download_png_with_retry <- function(app, output_id, retries = 4L, pause_sec = 1)
 
   if (!is.null(last_err)) stop(last_err)
   stop("Failed to download PNG: unknown error")
+}
+
+wait_for_input_value <- function(app, input_id, expected, timeout_sec = 120) {
+  deadline <- Sys.time() + timeout_sec
+  repeat {
+    current <- tryCatch(app$get_value(input = input_id), error = function(e) NULL)
+    current <- as.character(current %||% character())
+    if (length(current) >= 1 && identical(current[[1]], expected)) {
+      return(invisible(TRUE))
+    }
+    if (Sys.time() > deadline) {
+      stop(sprintf("Timed out waiting for input '%s' to become '%s'.", input_id, expected))
+    }
+    Sys.sleep(0.3)
+  }
 }
 
 first_non_empty_option <- function(app, input_id) {
@@ -214,8 +245,7 @@ test_that("PNG download dimensions match preview dimensions across plot types", 
     "Apiladas",
     "Correlacion",
     "MatrizCorrelacion",
-    "Heatmap",
-    "Curvas"
+    "Heatmap"
   )
 
   # Preflight check: if the browser harness cannot trigger plot downloads in
@@ -237,7 +267,8 @@ test_that("PNG download dimensions match preview dimensions across plot types", 
   expect_equal(unname(probe_dims[["height"]]), expected_h, info = "height mismatch for type Boxplot")
 
   for (tp in setdiff(plot_types, "Boxplot")) {
-    app$set_inputs(tipo = tp, wait_ = TRUE, timeout_ = 120000)
+    app$set_inputs(tipo = tp, wait_ = FALSE, allow_no_input_binding_ = TRUE)
+    wait_for_input_value(app, "tipo", tp, timeout_sec = 120)
     wait_for_plot_ready(app, timeout_sec = 120)
     out <- tryCatch(
       download_png_with_retry(app, output_id = "downloadPlot_png"),

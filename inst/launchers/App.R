@@ -3,7 +3,7 @@
 # 1) Fix host/port for the launcher
 # 2) Open the app in a browser app window when possible (prefer Chrome; else default browser)
 # 3) Use a local ./R_libs/<R major.minor>
-# 4) Install BIOSZEN from embedded or nearby archives if needed
+# 4) Install BIOSZEN from embedded/nearby archives or extracted sources if needed
 
 options(
   shiny.host = "127.0.0.1",
@@ -182,13 +182,14 @@ read_embedded_payload <- function(path, with_raw = TRUE) {
 
 # -------- version helpers --------
 parse_pkg_version <- function(x) {
+  x <- unname(x)[1]
   if (!is.character(x) || !nzchar(x)) return(NULL)
   tryCatch(package_version(x), error = function(e) NULL)
 }
 
 extract_version_from_filename <- function(path, pkg_name = "BIOSZEN") {
   base <- basename(path)
-  pattern <- paste0("^", pkg_name, "[-_]v?([0-9A-Za-z\\.\\-]+)\\.(tar\\.gz|zip)$")
+  pattern <- paste0("^", pkg_name, "[-_]v?([0-9A-Za-z\\.\\-]+)\\.(tar\\.gz|tgz|tar|zip)$")
   match <- regexec(pattern, base, ignore.case = TRUE)
   parts <- regmatches(base, match)[[1]]
   if (length(parts) >= 2) return(parse_pkg_version(parts[2]))
@@ -235,17 +236,92 @@ read_archive_description_version <- function(archive_path, pkg_name = "BIOSZEN")
   if (is.null(dcf)) return(NULL)
   if (!"Version" %in% colnames(dcf)) return(NULL)
   if ("Package" %in% colnames(dcf)) {
-    pkg <- dcf[1, "Package"]
+    pkg <- unname(dcf[1, "Package"])
     if (nzchar(pkg) && !identical(tolower(pkg), tolower(pkg_name))) return(NULL)
   }
 
-  parse_pkg_version(dcf[1, "Version"])
+  parse_pkg_version(unname(dcf[1, "Version"]))
 }
 
 get_archive_version <- function(archive_path, pkg_name = "BIOSZEN") {
   ver <- extract_version_from_filename(archive_path, pkg_name)
   if (!is.null(ver)) return(ver)
   read_archive_description_version(archive_path, pkg_name)
+}
+
+extract_version_from_dirname <- function(path, pkg_name = "BIOSZEN") {
+  base <- basename(normalizePath(path, winslash = "/", mustWork = FALSE))
+  pattern <- paste0("^", pkg_name, "[-_]v?([0-9A-Za-z\\.\\-]+)$")
+  match <- regexec(pattern, base, ignore.case = TRUE)
+  parts <- regmatches(base, match)[[1]]
+  if (length(parts) >= 2) return(parse_pkg_version(parts[2]))
+  NULL
+}
+
+read_source_description <- function(source_dir) {
+  desc_path <- file.path(source_dir, "DESCRIPTION")
+  if (!file.exists(desc_path)) return(NULL)
+
+  dcf <- tryCatch(read.dcf(desc_path), error = function(e) NULL)
+  if (is.null(dcf) || nrow(dcf) < 1) return(NULL)
+  dcf
+}
+
+read_source_description_version <- function(source_dir, pkg_name = "BIOSZEN") {
+  dcf <- read_source_description(source_dir)
+  if (is.null(dcf)) return(NULL)
+  if (!"Version" %in% colnames(dcf)) return(NULL)
+  if ("Package" %in% colnames(dcf)) {
+    pkg <- unname(dcf[1, "Package"])
+    if (nzchar(pkg) && !identical(tolower(pkg), tolower(pkg_name))) return(NULL)
+  }
+
+  parse_pkg_version(unname(dcf[1, "Version"]))
+}
+
+get_source_version <- function(source_dir, pkg_name = "BIOSZEN") {
+  ver <- read_source_description_version(source_dir, pkg_name)
+  if (!is.null(ver)) return(ver)
+  extract_version_from_dirname(source_dir, pkg_name)
+}
+
+is_package_source_dir <- function(source_dir, pkg_name = "BIOSZEN") {
+  dcf <- read_source_description(source_dir)
+  if (is.null(dcf) || !"Package" %in% colnames(dcf)) return(FALSE)
+  pkg <- unname(dcf[1, "Package"])
+  nzchar(pkg) && identical(tolower(pkg), tolower(pkg_name))
+}
+
+find_package_source_dirs <- function(base_dir, pkg_name = "BIOSZEN") {
+  if (!dir.exists(base_dir)) return(character(0))
+
+  self <- if (is_package_source_dir(base_dir, pkg_name)) base_dir else character(0)
+  top_dirs <- list.dirs(base_dir, recursive = FALSE, full.names = TRUE)
+  if (!length(top_dirs)) {
+    if (!length(self)) return(character(0))
+    return(normalizePath(self, winslash = "/", mustWork = TRUE))
+  }
+
+  direct <- top_dirs[vapply(top_dirs, is_package_source_dir, logical(1), pkg_name = pkg_name)]
+  versioned_dir <- paste0("^", pkg_name, "([-_].*)?$")
+  source_parents <- top_dirs[grepl(versioned_dir, basename(top_dirs), ignore.case = TRUE)]
+  nested <- unlist(lapply(source_parents, function(parent) {
+    child_dirs <- list.dirs(parent, recursive = FALSE, full.names = TRUE)
+    child_dirs[vapply(child_dirs, is_package_source_dir, logical(1), pkg_name = pkg_name)]
+  }), use.names = FALSE)
+
+  candidates <- unique(c(self, direct, nested))
+  candidates <- candidates[dir.exists(candidates)]
+  normalizePath(candidates, winslash = "/", mustWork = TRUE)
+}
+
+source_dir_info <- function(path, pkg_name = "BIOSZEN") {
+  list(
+    path = path,
+    kind = "source_dir",
+    version = get_source_version(path, pkg_name),
+    mtime = tryCatch(file.info(path)$mtime, error = function(e) as.POSIXct(NA))
+  )
 }
 
 get_local_version <- function(pkg_name, lib_dir) {
@@ -313,6 +389,11 @@ pick_best_archive <- function(infos) {
   best
 }
 
+pick_best_package_candidate <- function(archive_choice, source_choice) {
+  if (is.null(archive_choice)) return(source_choice)
+  archive_choice
+}
+
 # -------- dependency helpers --------
 normalize_dep_field <- function(x) {
   if (is.null(x) || !nzchar(x)) return(character(0))
@@ -345,6 +426,11 @@ get_pkg_dependencies <- function(pkg_name, lib_dir) {
 
 get_archive_dependencies <- function(archive_path) {
   dcf <- read_archive_description(archive_path)
+  deps_from_dcf(dcf)
+}
+
+get_source_dependencies <- function(source_dir) {
+  dcf <- read_source_description(source_dir)
   deps_from_dcf(dcf)
 }
 
@@ -711,6 +797,22 @@ open_app_browser <- function(url) {
 
 options(shiny.launch.browser = open_app_browser)
 
+# -------- helper: install extracted source with R CMD INSTALL --------
+run_r_cmd_install <- function(package_path, lib_dir) {
+  r_bin <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "R.exe" else "R")
+  if (!file.exists(r_bin)) r_bin <- file.path(R.home("bin"), "R")
+  quote_arg <- function(x) shQuote(x, type = if (.Platform$OS.type == "windows") "cmd" else "sh")
+
+  status <- tryCatch(
+    system2(r_bin, c("CMD", "INSTALL", paste0("--library=", quote_arg(lib_dir)), quote_arg(package_path))),
+    error = function(e) {
+      cat("[install] R CMD INSTALL failed to start: ", conditionMessage(e), "\n", sep = "")
+      1L
+    }
+  )
+  identical(status, 0L)
+}
+
 # -------- helper: install from zip by unzip --------
 install_from_zip_by_unzip <- function(zip_path, lib_dir, pkg_name = "BIOSZEN") {
   zip_path <- normalizePath(zip_path, winslash = "/", mustWork = TRUE)
@@ -743,6 +845,30 @@ install_from_tarball <- function(tarball_path, lib_dir, pkg_name = "BIOSZEN") {
     FALSE
   })
   if (!ok) stop("Failed to install BIOSZEN from tar.gz: ", tarball_path)
+  invisible(TRUE)
+}
+
+install_from_uncompressed_tar <- function(tar_path, lib_dir, pkg_name = "BIOSZEN") {
+  tar_path <- normalizePath(tar_path, winslash = "/", mustWork = TRUE)
+  lib_dir <- normalizePath(lib_dir, winslash = "/", mustWork = TRUE)
+
+  cat("\n[install] Installing uncompressed source tar via R CMD INSTALL: ", tar_path, "\n", sep = "")
+  ok <- run_r_cmd_install(tar_path, lib_dir)
+  if (!ok) stop("Failed to install BIOSZEN from uncompressed tar: ", tar_path)
+  invisible(TRUE)
+}
+
+install_from_source_dir <- function(source_dir, lib_dir, pkg_name = "BIOSZEN") {
+  source_dir <- normalizePath(source_dir, winslash = "/", mustWork = TRUE)
+  lib_dir <- normalizePath(lib_dir, winslash = "/", mustWork = TRUE)
+
+  if (!is_package_source_dir(source_dir, pkg_name)) {
+    stop("Not a BIOSZEN source directory: ", source_dir)
+  }
+
+  cat("\n[install] Installing source directory via R CMD INSTALL: ", source_dir, "\n", sep = "")
+  ok <- run_r_cmd_install(source_dir, lib_dir)
+  if (!ok) stop("Failed to install BIOSZEN from source directory: ", source_dir)
   invisible(TRUE)
 }
 
@@ -790,50 +916,72 @@ if (!is.null(embedded)) {
 archive_dir <- script_dir
 archives <- c(
   embedded_path,
-  list.files(archive_dir, pattern = "^BIOSZEN[-_].*\\.tar\\.gz$", full.names = TRUE, ignore.case = TRUE),
+  list.files(archive_dir, pattern = "^BIOSZEN[-_].*\\.(tar\\.gz|tgz|tar)$", full.names = TRUE, ignore.case = TRUE),
   list.files(archive_dir, pattern = "^BIOSZEN[-_].*\\.zip$", full.names = TRUE, ignore.case = TRUE)
 )
 archives <- unique(archives[!is.na(archives) & nzchar(archives)])
+source_dirs <- find_package_source_dirs(archive_dir, pkg)
 
 archive_info <- list()
 if (length(archives)) {
   archive_info <- lapply(archives, function(path) {
     list(
       path = path,
+      kind = "archive",
       version = get_archive_version(path, pkg),
       mtime = tryCatch(file.info(path)$mtime, error = function(e) as.POSIXct(NA))
     )
   })
 }
-
-archive_choice <- pick_best_archive(archive_info)
-archive_path <- if (!is.null(archive_choice)) archive_choice$path else NULL
-archive_version <- if (!is.null(archive_choice)) archive_choice$version else NULL
-
-if (is.null(archive_path) && is.null(local_version)) {
-  stop("No BIOSZEN-*.tar.gz or BIOSZEN-*.zip found in: ", archive_dir)
+source_info <- list()
+if (length(source_dirs)) {
+  source_info <- lapply(source_dirs, source_dir_info, pkg_name = pkg)
 }
 
-if (!is.null(archive_path)) {
-  cat("\nArchive candidate: ", archive_path, "\n", sep = "")
-  if (!is.null(archive_version)) {
-    cat("Archive version : ", as.character(archive_version), "\n", sep = "")
+archive_choice <- pick_best_archive(archive_info)
+source_choice <- pick_best_archive(source_info)
+package_choice <- pick_best_package_candidate(archive_choice, source_choice)
+package_path <- if (!is.null(package_choice)) package_choice$path else NULL
+package_kind <- if (!is.null(package_choice) && !is.null(package_choice$kind)) package_choice$kind else ""
+package_version <- if (!is.null(package_choice)) package_choice$version else NULL
+archive_path <- if (identical(package_kind, "archive")) package_path else NULL
+source_dir <- if (identical(package_kind, "source_dir")) package_path else NULL
+
+if (is.null(package_path) && is.null(local_version)) {
+  stop(
+    "No BIOSZEN-*.tar.gz, BIOSZEN-*.tgz, BIOSZEN-*.tar, BIOSZEN-*.zip, ",
+    "or extracted BIOSZEN source folder found in: ",
+    archive_dir
+  )
+}
+
+if (!is.null(package_path)) {
+  candidate_label <- if (identical(package_kind, "source_dir")) "Source directory candidate" else "Archive candidate"
+  cat("\n", candidate_label, ": ", package_path, "\n", sep = "")
+  if (!is.null(package_version)) {
+    cat("Candidate version: ", as.character(package_version), "\n", sep = "")
   } else {
-    cat("Archive version : unknown\n")
+    cat("Candidate version: unknown\n")
   }
 }
 
 install_needed <- FALSE
 if (is.null(local_version)) {
-  install_needed <- !is.null(archive_path)
-} else if (!is.null(archive_version)) {
-  install_needed <- archive_version > local_version
-  if (!install_needed && archive_version == local_version && !is.null(archive_path) && file.exists(archive_path)) {
+  install_needed <- !is.null(package_path)
+} else if (!is.null(package_version)) {
+  install_needed <- package_version > local_version
+  if (
+    !install_needed &&
+    package_version == local_version &&
+    identical(package_kind, "archive") &&
+    !is.null(archive_path) &&
+    file.exists(archive_path)
+  ) {
     install_needed <- !archive_matches_local_install(archive_path, local_lib, pkg)
   }
 }
 
-if (install_needed && !is.null(archive_path) && !file.exists(archive_path)) {
+if (install_needed && identical(package_kind, "archive") && !is.null(archive_path) && !file.exists(archive_path)) {
   embedded_full <- read_embedded_payload(script_path, with_raw = TRUE)
   if (is.null(embedded_full) || is.null(embedded_path) || !identical(archive_path, embedded_path)) {
     stop("Archive not found: ", archive_path)
@@ -846,9 +994,12 @@ if (install_needed && !is.null(archive_path) && !file.exists(archive_path)) {
 
 deps <- character(0)
 deps_source <- ""
-if (install_needed && !is.null(archive_path) && file.exists(archive_path)) {
+if (install_needed && identical(package_kind, "archive") && !is.null(archive_path) && file.exists(archive_path)) {
   deps <- get_archive_dependencies(archive_path)
   deps_source <- "archive"
+} else if (install_needed && identical(package_kind, "source_dir") && !is.null(source_dir) && dir.exists(source_dir)) {
+  deps <- get_source_dependencies(source_dir)
+  deps_source <- "source directory"
 } else if (!is.null(local_version)) {
   deps <- get_pkg_dependencies(pkg, local_lib)
   deps_source <- "installed"
@@ -860,24 +1011,31 @@ ensure_dependencies(deps, local_lib)
 
 if (install_needed) {
   unload_package_namespace(pkg)
+  install_source_label <- if (identical(package_kind, "source_dir")) "source directory" else "archive"
 
-  if (!is.null(local_version) && !is.null(archive_version)) {
-    if (archive_version > local_version) {
-      cat("[install] Updating BIOSZEN: ", as.character(local_version), " -> ", as.character(archive_version), "\n", sep = "")
+  if (!is.null(local_version) && !is.null(package_version)) {
+    if (package_version > local_version) {
+      cat("[install] Updating BIOSZEN: ", as.character(local_version), " -> ", as.character(package_version), "\n", sep = "")
     } else {
-      cat("[install] Installing BIOSZEN from archive.\n")
+      cat("[install] Installing BIOSZEN from ", install_source_label, ".\n", sep = "")
     }
   } else {
-    cat("[install] Installing BIOSZEN from archive.\n")
+    cat("[install] Installing BIOSZEN from ", install_source_label, ".\n", sep = "")
   }
 
-  if (grepl("\\.zip$", archive_path, ignore.case = TRUE)) {
+  if (identical(package_kind, "source_dir")) {
+    install_from_source_dir(source_dir, local_lib, pkg)
+  } else if (grepl("\\.zip$", archive_path, ignore.case = TRUE)) {
     install_from_zip_by_unzip(archive_path, local_lib, pkg)
+  } else if (grepl("\\.tar$", archive_path, ignore.case = TRUE)) {
+    install_from_uncompressed_tar(archive_path, local_lib, pkg)
   } else {
     install_from_tarball(archive_path, local_lib, pkg)
   }
   remove_incomplete_install(local_lib, pkg)
-  write_archive_marker(archive_path, local_lib, pkg)
+  if (identical(package_kind, "archive")) {
+    write_archive_marker(archive_path, local_lib, pkg)
+  }
 } else if (!is.null(local_version)) {
   cat("[install] Local BIOSZEN is up to date; skipping install.\n")
 }

@@ -11,6 +11,15 @@ tab_composition,Panel de Composición
 file_data,Cargar Datos (.xlsx/.xls/.csv):
 file_curves,Cargar Curvas (.xlsx/.xls/.csv)
 file_meta,Cargar metadata diseño (.xlsx)
+file_browse,Examinar...
+file_no_selection,Ningún archivo seleccionado
+startup_loading,Cargando...
+file_upload_complete,Carga completa
+datatable_show,Mostrar
+datatable_entries,entradas
+datatable_search,Buscar:
+datatable_previous,Anterior
+datatable_next,Siguiente
 merge_title,Concatenar Platemaps
 merge_help,"Usa el archivo de datos cargado como base, agrega más platemaps y luego concatena y carga."
 merge_files,Platemaps adicionales (.xlsx)
@@ -141,6 +150,20 @@ base_size,Tamaño base (pts)
 title_size,Tamaño título:
 axis_size,Tamaño ejes:
 legend_size,Tamaño leyenda:
+plot_text_style_section,Estilo de texto
+plot_font_family,Familia tipográfica
+plot_text_styles_by_target,Estilos por tipo de texto
+plot_text_style_targets,1. Elige los textos
+plot_text_target_title,Título del gráfico
+plot_text_target_axis_titles,Títulos de ejes
+plot_text_target_axis_text,Números de ejes
+plot_text_target_legend,Leyenda
+plot_text_target_data_labels,Etiquetas de datos
+plot_text_target_significance,Texto de significancia
+plot_text_styles,2. Aplica estos estilos
+plot_text_style_bold,Negrita
+plot_text_style_italic,Cursiva
+plot_text_style_underline,Subrayado
 legend_right,Leyenda derecha
 axis_line_size,Grosor líneas de eje:
 y_label,Etiqueta eje Y:
@@ -228,9 +251,9 @@ plot_flip,Voltear orientación (horizontal)
 x_wrap,Ajustar etiquetas X
 x_wrap_lines,Máx. líneas:
 y_axis_settings,Ajustes Eje Y
-y_interval,Int Y
+y_interval,Intervalo Y
 interval_hint_general,Sugerencia: Usa intervalos mas grandes para renderizar mas rapido y con menos marcas en los ejes.
-y_max,Y max
+y_max,Máx. Y
 corr_settings,Ajustes Correlación
 corr_param_x,Parámetro eje X:
 corr_param_y,Parámetro eje Y:
@@ -517,6 +540,7 @@ qc_tech_topn_done,Límite de réplicas técnicas aplicado. Réplicas conservadas
 qc_tech_sample_column,Réplicas técnicas
 qc_tech_sample_each,%s cada una
 qc_tech_sample_exception,%s: %s
+filtered_tech_table_title,Detalle de réplicas técnicas filtradas (_filt)
 sig_auto_title,Auto-generar desde test
 sig_auto_help,Construye barras de significancia directamente desde el último resultado estadístico.
 sig_auto_include,Incluir comparaciones:

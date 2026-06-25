@@ -142,9 +142,14 @@ test_that("error bar helper switches between SD and SEM on supplied plot values"
     1
   )
   expect_identical(normalize_errorbar_stat("se"), "SEM")
+  expect_identical(normalize_errorbar_stat("error estandar"), "SEM")
+  expect_identical(normalize_errorbar_stat("desviación estándar"), "SD")
   expect_identical(normalize_errorbar_stat("min-max"), "MINMAX")
+  expect_identical(normalize_errorbar_stat("mínimo y máximo"), "MINMAX")
   expect_identical(normalize_errorbar_stat("min-max", allow_minmax = FALSE), "SD")
   expect_identical(normalize_errorbar_stat("unknown"), "SD")
+  expect_identical(default_errorbar_stat_for_plot("Boxplot"), "MINMAX")
+  expect_identical(default_errorbar_stat_for_plot("Barras"), "SD")
 })
 
 test_that("should_use_normalized_data only activates with an explicit control medium", {

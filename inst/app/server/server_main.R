@@ -288,6 +288,11 @@ server <- function(input, output, session) {
     if (active_sessions == 0 && !keep_running_for_growth) shiny::stopApp()
   })
 
+  plot_text_style_inputs_ready <- reactiveVal(FALSE)
+  session$onFlushed(function() {
+    plot_text_style_inputs_ready(TRUE)
+  }, once = TRUE)
+
   is_session_closing <- function() {
     if (isTRUE(session_closing())) return(TRUE)
     by_closed <- tryCatch(isTRUE(session$closed), error = function(e) FALSE)
@@ -442,6 +447,7 @@ server <- function(input, output, session) {
   last_plot_type <- reactiveVal("Boxplot")
   last_adv_palette_name <- reactiveVal("BuGn")
   last_param_selection <- reactiveVal("")
+  last_stats_scope_snapshot <- reactiveVal(NULL)
 
   observeEvent(input$tipo, {
     current_type <- trimws(as.character(input$tipo %||% ""))
@@ -472,6 +478,7 @@ server <- function(input, output, session) {
     }
   }, ignoreInit = FALSE)
   qc_tech_bulk_updating <- reactiveVal(FALSE)
+  qc_tech_render_from_store <- reactiveVal(FALSE)
   replicate_bulk_updating <- reactiveVal(FALSE)
   qc_tech_tab_inserted <- reactiveVal(FALSE)
   qc_tech_tab_lang <- reactiveVal(NULL)
@@ -695,11 +702,94 @@ server <- function(input, output, session) {
     plot_payload_cache$heatmap <- list()
     plot_payload_cache$corrm <- list()
     plot_payload_cache$order <- list(heatmap = character(0), corrm = character(0))
+    last_stats_scope_snapshot(NULL)
     set_default_labels(input$app_lang %||% i18n_lang, force = TRUE)
   }
   dataset_loading <- reactiveVal(FALSE)
+  filter_selection_sync_inflight <- reactiveVal(FALSE)
+  filter_toggle_sync_inflight <- reactiveVal(FALSE)
   axis_sync_inflight <- reactiveVal(FALSE)
+  plot_settle_tick <- reactiveVal(0L)
   input_update_cache <- new.env(parent = emptyenv())
+  deferred_flag_tokens <- new.env(parent = emptyenv())
+
+  begin_deferred_reactive_flag <- function(flag_rv,
+                                           flag_key,
+                                           flush_cycles = 1L,
+                                           timeout_ms = 500L) {
+    if (!is.function(flag_rv)) return(FALSE)
+    flag_key <- as.character(flag_key %||% "")
+    if (!length(flag_key) || is.na(flag_key[[1]]) || !nzchar(flag_key[[1]])) {
+      return(FALSE)
+    }
+    flag_key <- flag_key[[1]]
+    flush_cycles <- suppressWarnings(as.integer(flush_cycles[[1]]))
+    if (!is.finite(flush_cycles) || flush_cycles < 1L) flush_cycles <- 1L
+    timeout_ms <- suppressWarnings(as.numeric(timeout_ms[[1]]))
+    if (!is.finite(timeout_ms) || timeout_ms < 0) timeout_ms <- 0
+
+    token <- as.numeric(get0(flag_key, envir = deferred_flag_tokens, ifnotfound = 0)) + 1
+    assign(flag_key, token, envir = deferred_flag_tokens)
+    flag_rv(TRUE)
+
+    clear_flag <- function() {
+      current_token <- get0(flag_key, envir = deferred_flag_tokens, ifnotfound = NA_real_)
+      if (identical(as.numeric(current_token), token)) {
+        flag_rv(FALSE)
+        plot_settle_tick(isolate(plot_settle_tick()) + 1L)
+      }
+      invisible(NULL)
+    }
+
+    remaining_flushes <- flush_cycles
+    wait_for_flushes <- function() {
+      current_token <- get0(flag_key, envir = deferred_flag_tokens, ifnotfound = NA_real_)
+      if (!identical(as.numeric(current_token), token)) return(invisible(NULL))
+      remaining_flushes <<- remaining_flushes - 1L
+      if (remaining_flushes <= 0L) {
+        clear_flag()
+      } else {
+        session$onFlushed(wait_for_flushes, once = TRUE)
+      }
+      invisible(NULL)
+    }
+
+    session$onFlushed(wait_for_flushes, once = TRUE)
+    if (timeout_ms > 0 && requireNamespace("later", quietly = TRUE)) {
+      later_fn <- getExportedValue("later", "later")
+      later_fn(clear_flag, delay = timeout_ms / 1000)
+    }
+    TRUE
+  }
+
+  begin_dataset_update <- function() {
+    begin_deferred_reactive_flag(
+      dataset_loading,
+      flag_key = "dataset_loading",
+      flush_cycles = 3L,
+      timeout_ms = 850L
+    )
+  }
+
+  begin_filter_selection_sync <- function() {
+    if (isTRUE(dataset_loading())) return(FALSE)
+    begin_deferred_reactive_flag(
+      filter_selection_sync_inflight,
+      flag_key = "filter_selection_sync_inflight",
+      flush_cycles = 2L,
+      timeout_ms = 450L
+    )
+  }
+
+  begin_axis_input_sync <- function() {
+    begin_deferred_reactive_flag(
+      axis_sync_inflight,
+      flag_key = "axis_sync_inflight",
+      flush_cycles = 1L,
+      timeout_ms = 250L
+    )
+    invisible(TRUE)
+  }
 
   normalize_update_values <- function(values) {
     if (is.null(values)) return(character(0))
@@ -728,13 +818,35 @@ server <- function(input, output, session) {
     TRUE
   }
 
-  begin_bulk_update <- function(flag_rv) {
+  begin_bulk_update <- function(flag_rv,
+                                flag_key,
+                                flush_cycles = 2L,
+                                timeout_ms = 450L) {
     if (!is.function(flag_rv)) return(FALSE)
     if (isTRUE(flag_rv())) return(FALSE)
-    flag_rv(TRUE)
-    session$onFlushed(function() {
-      flag_rv(FALSE)
-    }, once = TRUE)
+    begin_deferred_reactive_flag(
+      flag_rv,
+      flag_key = flag_key,
+      flush_cycles = flush_cycles,
+      timeout_ms = timeout_ms
+    )
+  }
+
+  sync_filter_toggle_input <- function(input_id,
+                                       choices,
+                                       selected) {
+    choices <- sort(unique(as.character(choices %||% character(0))))
+    selected <- sort(unique(as.character(selected %||% character(0))))
+    selected <- intersect(selected, choices)
+    target <- length(choices) > 0L && identical(selected, choices)
+    begin_bulk_update(
+      filter_toggle_sync_inflight,
+      "filter_toggle_sync_inflight",
+      flush_cycles = 2L,
+      timeout_ms = 1000L
+    )
+    shiny::freezeReactiveValue(input, input_id)
+    updateCheckboxInput(session, input_id, value = target)
     TRUE
   }
 
@@ -1162,6 +1274,63 @@ server <- function(input, output, session) {
     !is.na(first) && nzchar(trimws(first))
   }
 
+  plot_metadata_style_input_id <- function(target) {
+    paste0("plot_text_style_", as.character(target %||% ""))
+  }
+
+  plot_metadata_style_value <- function(target) {
+    metadata_text_style_value(input[[plot_metadata_style_input_id(target)]] %||% character(0))
+  }
+
+  plot_metadata_text_size <- function(target) {
+    switch(
+      as.character(target %||% ""),
+      title = input$fs_title,
+      axis_titles = input$fs_axis,
+      axis_text = input$fs_axis,
+      legend = input$fs_legend,
+      data_labels = input$fs_axis,
+      significance = input$sig_textsize %||% input$fs_axis,
+      input$fs_axis
+    )
+  }
+
+  collect_plot_text_style_tbl <- function() {
+    targets <- if (exists("bioszen_plot_text_targets", mode = "function")) {
+      bioszen_plot_text_targets()
+    } else {
+      c("title", "axis_titles", "axis_text", "legend", "data_labels", "significance")
+    }
+    family <- as.character(input$plot_font_family %||% "Helvetica")
+    rows <- lapply(targets, function(target) {
+      style <- plot_metadata_style_value(target)
+      parsed <- metadata_parse_text_style_value(style)
+      data.frame(
+        Text = metadata_text_target_label(target),
+        Target = target,
+        FontFamily = family,
+        Size = as.character(plot_metadata_text_size(target)),
+        Style = style,
+        Bold = as.character("bold" %in% parsed),
+        Italic = as.character("italic" %in% parsed),
+        Underline = as.character("underline" %in% parsed),
+        InputId = plot_metadata_style_input_id(target),
+        SizeInputId = switch(
+          as.character(target),
+          title = "fs_title",
+          axis_titles = "fs_axis",
+          axis_text = "fs_axis",
+          legend = "fs_legend",
+          data_labels = "fs_axis",
+          significance = "sig_textsize",
+          ""
+        ),
+        stringsAsFactors = FALSE
+      )
+    })
+    do.call(rbind, rows)
+  }
+
   # --- Helper: recopilar metadata actual para reproducibilidad ---
   collect_metadata_tbl <- function() {
     base_vals <- list(
@@ -1198,6 +1367,13 @@ server <- function(input, output, session) {
       fs_title       = input$fs_title,
       fs_axis        = input$fs_axis,
       fs_legend      = input$fs_legend,
+      plot_font_family = as.character(input$plot_font_family %||% "Helvetica"),
+      plot_text_style_title = plot_metadata_style_value("title"),
+      plot_text_style_axis_titles = plot_metadata_style_value("axis_titles"),
+      plot_text_style_axis_text = plot_metadata_style_value("axis_text"),
+      plot_text_style_legend = plot_metadata_style_value("legend"),
+      plot_text_style_data_labels = plot_metadata_style_value("data_labels"),
+      plot_text_style_significance = plot_metadata_style_value("significance"),
       axis_line_size = input$axis_line_size,
       yLab           = as.character(input$yLab %||% ""),
       plotTitle      = as.character(input$plotTitle %||% ""),
@@ -1278,11 +1454,16 @@ server <- function(input, output, session) {
       )
     }
     if (input$tipo %in% c("Boxplot", "Barras")) {
+      errbar_default <- default_errorbar_stat_for_plot(
+        input$tipo,
+        allow_minmax = identical(input$tipo, "Boxplot")
+      )
       meta <- add_row(
         meta,
         Campo = "errbar_stat",
         Valor = normalize_errorbar_stat(
-          input$errbar_stat %||% "SD",
+          input$errbar_stat %||% errbar_default,
+          default = errbar_default,
           allow_minmax = identical(input$tipo, "Boxplot")
         )
       )
@@ -1350,7 +1531,11 @@ server <- function(input, output, session) {
           as.character(input$showErrBars),
           as.character(input$stack_outline_only %||% FALSE),
           as.character(input$errbar_param_color %||% FALSE),
-          normalize_errorbar_stat(input$errbar_stat %||% "SD", allow_minmax = FALSE),
+          normalize_errorbar_stat(
+            input$errbar_stat %||% default_errorbar_stat_for_plot("Apiladas", allow_minmax = FALSE),
+            default = default_errorbar_stat_for_plot("Apiladas", allow_minmax = FALSE),
+            allow_minmax = FALSE
+          ),
           as.character(input$errbar_size),
           as.character(input$ymax),
           as.character(input$ybreak)
@@ -1468,11 +1653,15 @@ server <- function(input, output, session) {
     wb <- createWorkbook()
     addWorksheet(wb, "Metadata")
     meta <- collect_metadata_tbl()
+    text_style <- collect_plot_text_style_tbl()
     if (input$tipo == "Curvas" && !is.null(curve_settings())){
       addWorksheet(wb, "CurvasSettings")
       writeData(wb, "CurvasSettings", curve_settings())
     }
     writeData(wb, "Metadata", meta,
+              headerStyle = createStyle(textDecoration = "bold"))
+    addWorksheet(wb, "TextStyle")
+    writeData(wb, "TextStyle", text_style,
               headerStyle = createStyle(textDecoration = "bold"))
     saveWorkbook(wb, file, overwrite = TRUE)
   }
@@ -1481,6 +1670,7 @@ server <- function(input, output, session) {
     if (identical(input$tipo, "Apiladas")) {
       plt <- build_plotly_stack(scope_sel, strain_sel, width = width, height = height)
       plt <- sanitize_plotly_display_labels(plt)
+      plt <- apply_plotly_text_style(plt)
       plt <- apply_margin_inputs_to_plotly(plt, legend_in_margin = TRUE)
       return(plt %>% config(responsive = FALSE))
     }
@@ -1509,6 +1699,7 @@ server <- function(input, output, session) {
 
     if (is.null(plt)) stop("Unable to build preview-aligned plotly object for export.")
     plt <- sanitize_plotly_display_labels(plt)
+    plt <- apply_plotly_text_style(plt)
     plt <- apply_margin_inputs_to_plotly(plt, legend_in_margin = TRUE, expand_canvas = FALSE)
     plt %>% config(responsive = FALSE)
   }
@@ -1520,6 +1711,24 @@ server <- function(input, output, session) {
     eff_height <- effective_plot_height(height)
     scope_sel  <- if (input$scope == "Combinado") "Combinado" else "Por Cepa"
     strain_sel <- if (scope_sel == "Por Cepa") input$strain else NULL
+
+    if (identical(input$tipo %||% "", "Curvas")) {
+      p_static <- build_plot(scope_sel, strain_sel, input$tipo, for_interactive = TRUE)
+      if (inherits(p_static, "ggplot")) {
+        ggplot2::ggsave(
+          filename = file,
+          plot = p_static,
+          width = eff_width / 96,
+          height = eff_height / 96,
+          units = "in",
+          dpi = 96,
+          limitsize = FALSE,
+          bg = "white"
+        )
+        return(invisible(TRUE))
+      }
+      stop("Curve plot export failed.")
+    }
 
     ok <- tryCatch({
       plt <- build_current_plotly_for_export(scope_sel, strain_sel, eff_width, eff_height)
@@ -1560,6 +1769,24 @@ server <- function(input, output, session) {
     eff_height <- effective_plot_height(height)
     scope_sel  <- if (input$scope == "Combinado") "Combinado" else "Por Cepa"
     strain_sel <- if (scope_sel == "Por Cepa") input$strain else NULL
+
+    if (identical(input$tipo %||% "", "Curvas")) {
+      p_static <- build_plot(scope_sel, strain_sel, input$tipo, for_interactive = TRUE)
+      if (inherits(p_static, "ggplot")) {
+        ggplot2::ggsave(
+          filename = file,
+          plot = p_static,
+          width = eff_width / 96,
+          height = eff_height / 96,
+          units = "in",
+          limitsize = FALSE,
+          device = cairo_pdf,
+          bg = "white"
+        )
+        return(invisible(TRUE))
+      }
+      stop("Curve plot export failed.")
+    }
 
     ok <- tryCatch({
       plt <- build_current_plotly_for_export(scope_sel, strain_sel, eff_width, eff_height)
@@ -1620,7 +1847,7 @@ server <- function(input, output, session) {
       ),
       selected = input$corr_norm_target %||% "both"
     )
-  }, ignoreInit = TRUE)
+  }, ignoreInit = FALSE)
 
     refresh_static_choices <- function() {
     lang <- input$app_lang %||% i18n_lang
@@ -1637,30 +1864,36 @@ server <- function(input, output, session) {
     params_now <- plot_cfg_box()$Parameter %||% character(0)
     if (length(params_now) == 0 || identical(params_now, "Parametro_dummy")) {
       type_ids <- c("Curvas")
-      type_labels <- list(tr("plot_curves"))
+      type_labels <- tr_text("plot_curves", lang)
       default_type <- "Curvas"
     } else if (isTRUE(summary_input_mode())) {
       type_ids <- c("Barras", "Curvas", "Apiladas", "Correlacion", "Heatmap", "MatrizCorrelacion")
-      type_labels <- list(
-        tr("plot_bars"),
-        tr("plot_curves"),
-        tr("plot_stacked"),
-        tr("plot_correlation"),
-        tr("plot_heatmap"),
-        tr("plot_corr_matrix")
+      type_labels <- tr_text(
+        c(
+          "plot_bars",
+          "plot_curves",
+          "plot_stacked",
+          "plot_correlation",
+          "plot_heatmap",
+          "plot_corr_matrix"
+        ),
+        lang
       )
       default_type <- "Barras"
     } else {
       type_ids <- c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion", "Heatmap", "MatrizCorrelacion")
-      type_labels <- list(
-        tr("plot_boxplot"),
-        tr("plot_bars"),
-        tr("plot_violin"),
-        tr("plot_curves"),
-        tr("plot_stacked"),
-        tr("plot_correlation"),
-        tr("plot_heatmap"),
-        tr("plot_corr_matrix")
+      type_labels <- tr_text(
+        c(
+          "plot_boxplot",
+          "plot_bars",
+          "plot_violin",
+          "plot_curves",
+          "plot_stacked",
+          "plot_correlation",
+          "plot_heatmap",
+          "plot_corr_matrix"
+        ),
+        lang
       )
       default_type <- "Boxplot"
     }
@@ -1686,7 +1919,7 @@ server <- function(input, output, session) {
       "corr_method",
       choices  = named_choices(
         c("pearson", "spearman", "kendall"),
-        list(tr("corr_method_pearson"), tr("corr_method_spearman"), tr("corr_method_kendall"))
+        tr_text(c("corr_method_pearson", "corr_method_spearman", "corr_method_kendall"), lang)
       ),
       selected = input$corr_method %||% "pearson"
     )
@@ -1696,7 +1929,7 @@ server <- function(input, output, session) {
       "corr_adv_method",
       choices  = named_choices(
         c("pearson", "spearman", "kendall"),
-        list(tr("corr_method_pearson"), tr("corr_method_spearman"), tr("corr_method_kendall"))
+        tr_text(c("corr_method_pearson", "corr_method_spearman", "corr_method_kendall"), lang)
       ),
       selected = input$corr_adv_method %||% "pearson"
     )
@@ -1706,11 +1939,9 @@ server <- function(input, output, session) {
       "corr_adv_data_mode",
       choices = named_choices(
         c("raw", "norm_both", "norm_x", "norm_y"),
-        list(
-          tr("corr_adv_data_raw"),
-          tr("corr_adv_data_norm_both"),
-          tr("corr_adv_data_norm_x"),
-          tr("corr_adv_data_norm_y")
+        tr_text(
+          c("corr_adv_data_raw", "corr_adv_data_norm_both", "corr_adv_data_norm_x", "corr_adv_data_norm_y"),
+          lang
         )
       ),
       selected = input$corr_adv_data_mode %||% "raw"
@@ -1721,11 +1952,7 @@ server <- function(input, output, session) {
       "corr_adv_direction",
       choices = named_choices(
         c("all", "positive", "negative"),
-        list(
-          tr("corr_adv_direction_all"),
-          tr("corr_adv_direction_pos"),
-          tr("corr_adv_direction_neg")
-        )
+        tr_text(c("corr_adv_direction_all", "corr_adv_direction_pos", "corr_adv_direction_neg"), lang)
       ),
       selected = input$corr_adv_direction %||% "all"
     )
@@ -1735,7 +1962,7 @@ server <- function(input, output, session) {
       "corrm_method",
       choices = named_choices(
         c("pearson", "spearman", "kendall"),
-        list(tr("corr_method_pearson"), tr("corr_method_spearman"), tr("corr_method_kendall"))
+        tr_text(c("corr_method_pearson", "corr_method_spearman", "corr_method_kendall"), lang)
       ),
       selected = input$corrm_method %||% input$corr_method %||% "pearson"
     )
@@ -1745,7 +1972,7 @@ server <- function(input, output, session) {
       "corrm_adjust",
       choices = named_choices(
         c("holm", "fdr", "bonferroni", "none"),
-        list(tr("multitest_holm"), tr("multitest_fdr"), tr("multitest_bonferroni"), tr("multitest_none"))
+        tr_text(c("multitest_holm", "multitest_fdr", "multitest_bonferroni", "multitest_none"), lang)
       ),
       selected = input$corrm_adjust %||% "none"
     )
@@ -1755,7 +1982,7 @@ server <- function(input, output, session) {
       "multitest_method",
       choices = named_choices(
         c("holm", "fdr", "bonferroni", "none"),
-        list(tr("multitest_holm"), tr("multitest_fdr"), tr("multitest_bonferroni"), tr("multitest_none"))
+        tr_text(c("multitest_holm", "multitest_fdr", "multitest_bonferroni", "multitest_none"), lang)
       ),
       selected = input$multitest_method %||% "none"
     )
@@ -1765,7 +1992,7 @@ server <- function(input, output, session) {
       "heat_scale_mode",
       choices = named_choices(
         c("none", "row", "column"),
-        list(tr("heatmap_scale_none"), tr("heatmap_scale_row"), tr("heatmap_scale_col"))
+        tr_text(c("heatmap_scale_none", "heatmap_scale_row", "heatmap_scale_col"), lang)
       ),
       selected = input$heat_scale_mode %||% "none"
     )
@@ -1774,7 +2001,7 @@ server <- function(input, output, session) {
       "heat_orientation",
       choices = named_choices(
         c("params_rows", "params_cols"),
-        list(tr("heatmap_orientation_params_rows"), tr("heatmap_orientation_params_cols"))
+        tr_text(c("heatmap_orientation_params_rows", "heatmap_orientation_params_cols"), lang)
       ),
       selected = input$heat_orientation %||% "params_rows"
     )
@@ -1791,7 +2018,7 @@ server <- function(input, output, session) {
       "corr_ci_style",
       choices = named_choices(
         c("band", "dashed"),
-        list(tr("corr_ci_band"), tr("corr_ci_dashed"))
+        tr_text(c("corr_ci_band", "corr_ci_dashed"), lang)
       ),
       selected = input$corr_ci_style %||% "band"
     )
@@ -1801,7 +2028,7 @@ server <- function(input, output, session) {
       "cur_ci_style",
       choices = named_choices(
         c("ribbon", "errorbar"),
-        list(tr("curves_ci_ribbon"), tr("curves_ci_errorbar"))
+        tr_text(c("curves_ci_ribbon", "curves_ci_errorbar"), lang)
       ),
       selected = input$cur_ci_style %||% "ribbon"
     )
@@ -1811,7 +2038,7 @@ server <- function(input, output, session) {
       "curve_geom",
       choices = named_choices(
         c("line_points", "line_only"),
-        list(tr("curves_geom_line_points"), tr("curves_geom_line_only"))
+        tr_text(c("curves_geom_line_points", "curves_geom_line_only"), lang)
       ),
       selected = input$curve_geom %||% "line_points"
     )
@@ -1821,7 +2048,7 @@ server <- function(input, output, session) {
       "curve_color_mode",
       choices = named_choices(
         c("by_group", "single"),
-        list(tr("curves_color_by_group"), tr("curves_color_single"))
+        tr_text(c("curves_color_by_group", "curves_color_single"), lang)
       ),
       selected = input$curve_color_mode %||% "by_group"
     )
@@ -1831,12 +2058,7 @@ server <- function(input, output, session) {
       "curve_stats_methods",
       choices = named_choices(
         c("S1", "S2", "S3", "S4"),
-        list(
-          tr("curves_stats_s1"),
-          tr("curves_stats_s2"),
-          tr("curves_stats_s3"),
-          tr("curves_stats_s4")
-        )
+        tr_text(c("curves_stats_s1", "curves_stats_s2", "curves_stats_s3", "curves_stats_s4"), lang)
       ),
       selected = input$curve_stats_methods %||% c("S1", "S2", "S3", "S4")
     )
@@ -1909,7 +2131,7 @@ server <- function(input, output, session) {
       "adv_pal_type",
       choices = named_choices(
         c("seq", "div", "qual"),
-        list(tr("palette_type_seq"), tr("palette_type_div"), tr("palette_type_qual"))
+        tr_text(c("palette_type_seq", "palette_type_div", "palette_type_qual"), lang)
       ),
       selected = input$adv_pal_type %||% "seq"
     )
@@ -1919,7 +2141,7 @@ server <- function(input, output, session) {
       "adv_pal_filters",
       choices = named_choices(
         c("colorblind", "print", "photocopy"),
-        list(tr("palette_filter_colorblind"), tr("palette_filter_print"), tr("palette_filter_photocopy"))
+        tr_text(c("palette_filter_colorblind", "palette_filter_print", "palette_filter_photocopy"), lang)
       ),
       selected = input$adv_pal_filters %||% character(0)
     )
@@ -1929,7 +2151,7 @@ server <- function(input, output, session) {
       "normTests",
       choices = named_choices(
         c("shapiro", "ks", "ad"),
-        list(tr("norm_shapiro"), tr("norm_ks"), tr("norm_ad"))
+        tr_text(c("norm_shapiro", "norm_ks", "norm_ad"), lang)
       ),
       selected = input$normTests %||% c("shapiro", "ks", "ad")
     )
@@ -1939,12 +2161,7 @@ server <- function(input, output, session) {
       "sigTest",
       choices = named_choices(
         c("ANOVA", "Kruskal-Wallis", "ttest", "wilcox"),
-        list(
-          tr("sigtest_anova"),
-          tr("sigtest_kruskal"),
-          tr("sigtest_ttest"),
-          tr("sigtest_wilcox")
-        )
+        tr_text(c("sigtest_anova", "sigtest_kruskal", "sigtest_ttest", "sigtest_wilcox"), lang)
       ),
       selected = input$sigTest %||% "ANOVA"
     )
@@ -1954,7 +2171,7 @@ server <- function(input, output, session) {
       "compMode",
       choices = named_choices(
         c("all", "control", "pair"),
-        list(tr("comp_all"), tr("comp_control"), tr("comp_pair"))
+        tr_text(c("comp_all", "comp_control", "comp_pair"), lang)
       ),
       selected = input$compMode %||% "all"
     )
@@ -1964,7 +2181,7 @@ server <- function(input, output, session) {
       "sig_mode",
       choices = named_choices(
         c("bars", "labels"),
-        list(tr("sig_mode_bars"), tr("sig_mode_labels"))
+        tr_text(c("sig_mode_bars", "sig_mode_labels"), lang)
       ),
       selected = input$sig_mode %||% "bars"
     )
@@ -1974,7 +2191,7 @@ server <- function(input, output, session) {
       "sig_auto_include",
       choices = named_choices(
         c("significant", "all"),
-        list(tr("sig_auto_significant"), tr("sig_auto_all"))
+        tr_text(c("sig_auto_significant", "sig_auto_all"), lang)
       ),
       selected = input$sig_auto_include %||% "significant"
     )
@@ -1984,7 +2201,7 @@ server <- function(input, output, session) {
       "sig_auto_label_mode",
       choices = named_choices(
         c("stars", "pvalue"),
-        list(tr("sig_auto_label_stars"), tr("sig_auto_label_p"))
+        tr_text(c("sig_auto_label_stars", "sig_auto_label_p"), lang)
       ),
       selected = input$sig_auto_label_mode %||% "stars"
     )
@@ -2108,7 +2325,7 @@ server <- function(input, output, session) {
     }
 
     if (!is.null(input$bundle_label)) {
-      updateTextInput(session, "bundle_label", placeholder = tr_text("bundle_label_placeholder"))
+      updateTextInput(session, "bundle_label", placeholder = tr_text("bundle_label_placeholder", lang))
     }
 
     if (!is.null(input$ov_tipo)) {
@@ -2159,7 +2376,9 @@ server <- function(input, output, session) {
     lang_js <- gsub("\\\\", "\\\\\\\\", as.character(lang))
     lang_js <- gsub("'", "\\\\'", lang_js, fixed = TRUE)
     shinyjs::runjs(sprintf(
-      "(function(){window.BIOSZEN_LANG='%s';document.dispatchEvent(new Event('bioszen:lang-changed'));})();",
+      "(function(){window.BIOSZEN_LANG='%s';if(window.BIOSZEN_translateStatic){window.BIOSZEN_translateStatic('%s');}document.dispatchEvent(new Event('bioszen:lang-changed'));setTimeout(function(){if(window.BIOSZEN_translateStatic){window.BIOSZEN_translateStatic('%s');}},350);})();",
+      lang_js,
+      lang_js,
       lang_js
     ))
     set_default_labels(lang, force = FALSE)
@@ -2218,6 +2437,353 @@ server <- function(input, output, session) {
       bottom + (input$margin_bottom_adj %||% 0),
       left   + (input$margin_left_adj   %||% 0)
     )
+  }
+
+  plot_font_family <- function() {
+    choices <- if (exists("bioszen_plot_font_choices", mode = "function")) {
+      bioszen_plot_font_choices()
+    } else {
+      c("Helvetica", "Arial", "Calibri", "Times New Roman", "Courier New")
+    }
+    family <- as.character(input$plot_font_family %||% "Helvetica")
+    family <- family[!is.na(family) & nzchar(family)]
+    if (!length(family) || !family[[1]] %in% choices) "Helvetica" else family[[1]]
+  }
+
+  plot_text_style_targets <- function() {
+    if (exists("bioszen_plot_text_targets", mode = "function")) {
+      bioszen_plot_text_targets()
+    } else {
+      c("title", "axis_titles", "axis_text", "legend", "data_labels", "significance")
+    }
+  }
+
+  plot_text_style_input_id <- function(target) {
+    paste0("plot_text_style_", as.character(target %||% ""))
+  }
+
+  plot_text_allowed_styles <- function() {
+    styles <- if (exists("bioszen_plot_text_styles", mode = "function")) {
+      bioszen_plot_text_styles()
+    } else {
+      c("bold", "italic", "underline")
+    }
+    as.character(styles)
+  }
+
+  plot_styles_from_face <- function(face = "plain") {
+    face <- tolower(as.character(face %||% "plain"))
+    styles <- character(0)
+    if (grepl("bold", face)) styles <- c(styles, "bold")
+    if (grepl("italic", face)) styles <- c(styles, "italic")
+    styles
+  }
+
+  plot_text_styles_for_target <- function(target, default_face = "plain") {
+    target <- as.character(target %||% "")
+    input_id <- plot_text_style_input_id(target)
+    val <- input[[input_id]]
+    if (is.null(val) && !isTRUE(plot_text_style_inputs_ready())) {
+      val <- plot_styles_from_face(default_face)
+    }
+    intersect(as.character(val %||% character(0)), plot_text_allowed_styles())
+  }
+
+  plot_text_face <- function(target, default = "plain") {
+    styles <- plot_text_styles_for_target(target, default)
+    has_bold <- "bold" %in% styles
+    has_italic <- "italic" %in% styles
+    if (has_bold && has_italic) return("bold.italic")
+    if (has_bold) return("bold")
+    if (has_italic) return("italic")
+    "plain"
+  }
+
+  plot_text_underlined <- function(target) {
+    "underline" %in% plot_text_styles_for_target(target)
+  }
+
+  plotly_underline_state <- function() {
+    list(
+      title = isTRUE(plot_text_underlined("title")),
+      axisTitles = isTRUE(plot_text_underlined("axis_titles")),
+      axisText = isTRUE(plot_text_underlined("axis_text")),
+      legend = isTRUE(plot_text_underlined("legend")),
+      dataLabels = isTRUE(plot_text_underlined("data_labels")),
+      significance = isTRUE(plot_text_underlined("significance"))
+    )
+  }
+
+  update_text_element <- function(el, target, default_face = "plain", size = NULL, colour = "black") {
+    if (is.null(el)) el <- element_text()
+    if (inherits(el, "element_blank")) return(el)
+    if (!inherits(el, "element_text")) el <- element_text()
+    el$family <- plot_font_family()
+    el$face <- plot_text_face(target, default_face)
+    if (!is.null(size)) el$size <- size
+    if (!is.null(colour)) el$colour <- colour
+    el
+  }
+
+  plot_theme_element <- function(p, name, fallback = NULL) {
+    el <- p$theme[[name]]
+    if (!is.null(el)) return(el)
+    if (!is.null(fallback)) {
+      el <- p$theme[[fallback]]
+      if (!is.null(el)) return(el)
+    }
+    el <- theme_get()[[name]]
+    if (!is.null(el)) return(el)
+    if (!is.null(fallback)) theme_get()[[fallback]] else NULL
+  }
+
+  style_plot_text_layers <- function(p) {
+    if (!inherits(p, "ggplot") || !length(p$layers)) return(p)
+    family <- plot_font_family()
+    for (i in seq_along(p$layers)) {
+      layer <- p$layers[[i]]
+      geom_classes <- class(layer$geom)
+      is_text <- any(geom_classes %in% c("GeomText", "GeomLabel", "GeomTextRepel", "GeomLabelRepel"))
+      if (!isTRUE(is_text)) next
+      layer_data <- layer$data
+      target <- if (is.data.frame(layer_data) &&
+                    ".sig_layer" %in% names(layer_data) &&
+                    any(isTRUE(layer_data$.sig_layer) | layer_data$.sig_layer %in% TRUE, na.rm = TRUE)) {
+        "significance"
+      } else {
+        "data_labels"
+      }
+      existing_face <- layer$aes_params$fontface %||% "plain"
+      layer$aes_params$family <- family
+      layer$aes_params$fontface <- plot_text_face(target, existing_face)
+      p$layers[[i]] <- layer
+    }
+    p
+  }
+
+  style_plot_text <- function(p) {
+    if (!inherits(p, "ggplot")) return(p)
+    p <- style_plot_text_layers(p)
+    p + theme(
+      text = element_text(family = plot_font_family()),
+      plot.title = update_text_element(
+        plot_theme_element(p, "plot.title"),
+        "title",
+        default_face = "bold",
+        size = input$fs_title
+      ),
+      axis.title = update_text_element(
+        plot_theme_element(p, "axis.title"),
+        "axis_titles",
+        default_face = "bold",
+        size = input$fs_axis
+      ),
+      axis.title.x = update_text_element(
+        plot_theme_element(p, "axis.title.x", "axis.title"),
+        "axis_titles",
+        default_face = "bold",
+        size = input$fs_axis
+      ),
+      axis.title.y = update_text_element(
+        plot_theme_element(p, "axis.title.y", "axis.title"),
+        "axis_titles",
+        default_face = "bold",
+        size = input$fs_axis
+      ),
+      axis.text = update_text_element(
+        plot_theme_element(p, "axis.text"),
+        "axis_text",
+        default_face = "plain",
+        size = input$fs_axis
+      ),
+      axis.text.x = update_text_element(
+        plot_theme_element(p, "axis.text.x", "axis.text"),
+        "axis_text",
+        default_face = "plain",
+        size = input$fs_axis
+      ),
+      axis.text.y = update_text_element(
+        plot_theme_element(p, "axis.text.y", "axis.text"),
+        "axis_text",
+        default_face = "plain",
+        size = input$fs_axis
+      ),
+      legend.text = update_text_element(
+        plot_theme_element(p, "legend.text"),
+        "legend",
+        default_face = "plain",
+        size = input$fs_legend
+      ),
+      legend.title = update_text_element(
+        plot_theme_element(p, "legend.title"),
+        "legend",
+        default_face = "bold",
+        size = input$fs_legend
+      )
+    )
+  }
+
+  plotly_style_text_value <- function(text, target) {
+    if (is.null(text)) return(text)
+    out <- as.character(text)
+    gsub("</?u\\b[^>]*>", "", out, ignore.case = TRUE)
+  }
+
+  apply_plotly_underline_render_hook <- function(plt) {
+    js <- paste(
+      "function(el, x, data) {",
+      "  var state = data || {};",
+      "  var selectorMap = {",
+      "    title: ['.gtitle'],",
+      "    axisTitles: ['.xtitle', '.ytitle', '.x2title', '.y2title', '.x3title', '.y3title', '.g-xtitle text', '.g-ytitle text'],",
+      "    axisText: ['.xtick text', '.ytick text', '.x2tick text', '.y2tick text', '.x3tick text', '.y3tick text', 'g[class$=\"tick\"] text'],",
+      "    legend: ['.legend text'],",
+      "    dataLabels: ['.textpoint text', '.bartext', '.slicetext', '.funneltext', '.treemaptext', '.sunburstlabel', '.iciclelabel'],",
+      "    significance: ['.annotation text']",
+      "  };",
+      "  var allSelectors = [];",
+      "  Object.keys(selectorMap).forEach(function(key) {",
+      "    selectorMap[key].forEach(function(sel) { allSelectors.push(sel); });",
+      "  });",
+      "  function uniqueNodes(gd, selectors) {",
+      "    var seen = [];",
+      "    var out = [];",
+      "    selectors.forEach(function(sel) {",
+      "      Array.prototype.forEach.call(gd.querySelectorAll(sel), function(node) {",
+      "        if (seen.indexOf(node) === -1) {",
+      "          seen.push(node);",
+      "          out.push(node);",
+      "        }",
+      "      });",
+      "    });",
+      "    return out;",
+      "  }",
+      "  function setUnderline(node, enabled) {",
+      "    if (!node || !node.style) return;",
+      "    if (enabled) {",
+      "      node.style.textDecoration = 'underline';",
+      "      node.style.textDecorationLine = 'underline';",
+      "      node.setAttribute('text-decoration', 'underline');",
+      "    } else {",
+      "      node.style.textDecoration = '';",
+      "      node.style.textDecorationLine = '';",
+      "      node.removeAttribute('text-decoration');",
+      "    }",
+      "  }",
+      "  function apply() {",
+      "    var gd = el.querySelector('.js-plotly-plot') || el;",
+      "    if (!gd || !gd.querySelectorAll) return;",
+      "    uniqueNodes(gd, allSelectors).forEach(function(node) { setUnderline(node, false); });",
+      "    Object.keys(selectorMap).forEach(function(key) {",
+      "      if (!state[key]) return;",
+      "      uniqueNodes(gd, selectorMap[key]).forEach(function(node) { setUnderline(node, true); });",
+      "    });",
+      "  }",
+      "  function attach() {",
+      "    var gd = el.querySelector('.js-plotly-plot') || el;",
+      "    if (!gd) return;",
+      "    if (gd.on && !gd._bioszenUnderlineHooked) {",
+      "      gd._bioszenUnderlineHooked = true;",
+      "      gd.on('plotly_afterplot', apply);",
+      "      gd.on('plotly_relayout', apply);",
+      "      gd.on('plotly_redraw', apply);",
+      "    }",
+      "    apply();",
+      "    setTimeout(apply, 80);",
+      "  }",
+      "  attach();",
+      "}",
+      sep = "\n"
+    )
+    htmlwidgets::onRender(plt, js, data = plotly_underline_state())
+  }
+
+  plotly_font_list <- function(target, size = NULL, color = "black", current = NULL) {
+    font <- if (is.list(current)) current else list()
+    font$family <- plot_font_family()
+    if (!is.null(size)) font$size <- size
+    if (!is.null(color)) font$color <- color
+    styles <- plot_text_styles_for_target(target)
+    if ("italic" %in% styles) font$style <- "italic" else font$style <- NULL
+    if ("bold" %in% styles) font$weight <- "bold" else font$weight <- NULL
+    if ("underline" %in% styles) font$lineposition <- "under" else font$lineposition <- NULL
+    font
+  }
+
+  style_plotly_axis <- function(axis_obj) {
+    axis_obj <- if (is.list(axis_obj)) axis_obj else list()
+    if (is.list(axis_obj$title)) {
+      axis_obj$title$text <- plotly_style_text_value(axis_obj$title$text %||% "", "axis_titles")
+      axis_obj$title$font <- plotly_font_list("axis_titles", size = input$fs_axis, current = axis_obj$title$font)
+    } else if (!is.null(axis_obj$title)) {
+      axis_obj$title <- plotly_style_text_value(axis_obj$title, "axis_titles")
+    }
+    axis_obj$titlefont <- plotly_font_list("axis_titles", size = input$fs_axis, current = axis_obj$titlefont)
+    axis_obj$tickfont <- plotly_font_list("axis_text", size = input$fs_axis, current = axis_obj$tickfont)
+    if (!is.null(axis_obj$ticktext)) {
+      axis_obj$ticktext <- plotly_style_text_value(axis_obj$ticktext, "axis_text")
+    }
+    axis_obj
+  }
+
+  apply_plotly_text_style <- function(plt) {
+    if (is.null(plt) || is.null(plt$x)) return(plt)
+    layout_obj <- plt$x$layout %||% list()
+    layout_obj$font <- plotly_font_list("axis_text", current = layout_obj$font)
+    if (is.list(layout_obj$title)) {
+      layout_obj$title$text <- plotly_style_text_value(layout_obj$title$text %||% "", "title")
+      layout_obj$title$font <- plotly_font_list("title", size = input$fs_title, current = layout_obj$title$font)
+    } else if (!is.null(layout_obj$title)) {
+      layout_obj$title <- list(
+        text = plotly_style_text_value(layout_obj$title, "title"),
+        font = plotly_font_list("title", size = input$fs_title)
+      )
+    }
+    axis_names <- unique(c("xaxis", "yaxis", grep("^[xy]axis[0-9]+$", names(layout_obj), value = TRUE)))
+    for (axis_name in axis_names) {
+      layout_obj[[axis_name]] <- style_plotly_axis(layout_obj[[axis_name]])
+    }
+    legend_obj <- layout_obj$legend %||% list()
+    legend_obj$font <- plotly_font_list("legend", size = input$fs_legend, current = legend_obj$font)
+    if (is.list(legend_obj$title)) {
+      legend_obj$title$font <- plotly_font_list("legend", size = input$fs_legend, current = legend_obj$title$font)
+      legend_obj$title$text <- plotly_style_text_value(legend_obj$title$text %||% "", "legend")
+    }
+    layout_obj$legend <- legend_obj
+    if (!is.null(layout_obj$annotations) && is.list(layout_obj$annotations)) {
+      layout_obj$annotations <- lapply(layout_obj$annotations, function(ann) {
+        if (!is.list(ann)) return(ann)
+        target <- ann$bioszen_text_target %||% "data_labels"
+        color <- ann$font$color %||% "black"
+        ann$font <- plotly_font_list(target, size = ann$font$size, color = color, current = ann$font)
+        if (!is.null(ann$text) && nzchar(as.character(ann$text))) {
+          ann$text <- plotly_style_text_value(ann$text, target)
+        }
+        ann
+      })
+    }
+    plt$x$layout <- layout_obj
+
+    if (!is.null(plt$x$data) && length(plt$x$data)) {
+      plt$x$data <- lapply(plt$x$data, function(tr) {
+        if (!is.list(tr)) return(tr)
+        if (!is.null(tr$name) && nzchar(as.character(tr$name))) {
+          tr$name <- plotly_style_text_value(tr$name, "legend")
+        }
+        mode <- tolower(as.character(tr$mode %||% ""))
+        has_visible_text <- grepl("text", mode, fixed = TRUE) ||
+          !is.null(tr$textposition) ||
+          !is.null(tr$texttemplate)
+        if (isTRUE(has_visible_text)) {
+          tr$textfont <- plotly_font_list("data_labels", current = tr$textfont)
+          if (!is.null(tr$text)) {
+            tr$text <- plotly_style_text_value(tr$text, "data_labels")
+          }
+        }
+        tr
+      })
+    }
+    apply_plotly_underline_render_hook(plt)
   }
 
   # Convierte "A-B" en "A B" y luego introduce saltos de lÃƒÂ­nea
@@ -2478,6 +3044,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(list(sig_list(), input$app_lang), {
+    lang <- input$app_lang %||% i18n_lang
     choices  <- sig_choice_vec(sig_list())
     current  <- isolate(input$sig_current)
     pre_sel  <- sig_preselect()
@@ -2492,7 +3059,7 @@ server <- function(input, output, session) {
       selected = selected,
       options  = list(
         plugins = list("remove_button"),
-        placeholder = tr("sig_current_placeholder")
+        placeholder = tr_text("sig_current_placeholder", lang)
       ),
       server   = TRUE
     )
@@ -2544,7 +3111,7 @@ server <- function(input, output, session) {
         )
       }
     }
-  }, ignoreInit = TRUE)
+  }, ignoreInit = FALSE)
 
   observeEvent(input$sig_update_label, {
     lang <- input$app_lang %||% i18n_lang
@@ -2818,8 +3385,7 @@ server <- function(input, output, session) {
   
   # Ã¢â€â‚¬Ã¢â€â‚¬ Lectura robusta del Excel de metadata+parÃƒÂ¡metros Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   observeEvent(input$dataFile, {
-    dataset_loading(TRUE)
-    on.exit(dataset_loading(FALSE), add = TRUE)
+    begin_dataset_update()
     merged_platemap_path(NULL)
     merged_platemap_name(NULL)
     merged_well_map(NULL)
@@ -3112,6 +3678,7 @@ server <- function(input, output, session) {
       last_param_selection(if (length(selected_param_default)) as.character(selected_param_default[[1]]) else "")
 
       if (length(params)) {
+        lang <- input$app_lang %||% i18n_lang
         cfg_ui <- plot_cfg_box()
         first_cfg <- if (is.data.frame(cfg_ui) && "Parameter" %in% names(cfg_ui)) {
           cfg_ui[cfg_ui$Parameter == params[1], , drop = FALSE]
@@ -3119,10 +3686,10 @@ server <- function(input, output, session) {
           data.frame(Y_Max = NA_real_, Interval = NA_real_)
         }
         updateNumericInput(session, "ymax",
-                           label  = paste0(tr("y_max"), " (", params[1], "):"),
+                           label  = paste0(tr_text("y_max", lang), " (", params[1], "):"),
                            value  = first_cfg$Y_Max)
         updateNumericInput(session, "ybreak",
-                           label  = paste0(tr("y_interval"), " (", params[1], "):"),
+                           label  = paste0(tr_text("y_interval", lang), " (", params[1], "):"),
                            value  = first_cfg$Interval)
       }
 
@@ -3155,8 +3722,7 @@ server <- function(input, output, session) {
       return()
     }
 
-    dataset_loading(TRUE)
-    on.exit(dataset_loading(FALSE), add = TRUE)
+    begin_dataset_update()
 
     ok <- tryCatch({
       # If a merged platemap already exists, keep accumulating from it.
@@ -3245,12 +3811,12 @@ server <- function(input, output, session) {
         first_cfg <- cfg[cfg$Parameter == params[1], , drop = FALSE]
         updateNumericInput(
           session, "ymax",
-          label = paste0(tr("y_max"), " (", params[1], "):"),
+          label = paste0(tr_text("y_max", lang), " (", params[1], "):"),
           value = first_cfg$Y_Max[1]
         )
         updateNumericInput(
           session, "ybreak",
-          label = paste0(tr("y_interval"), " (", params[1], "):"),
+          label = paste0(tr_text("y_interval", lang), " (", params[1], "):"),
           value = first_cfg$Interval[1]
         )
       }
@@ -3306,12 +3872,14 @@ server <- function(input, output, session) {
 
   output$downloadMergedPlatemap <- downloadHandler(
     filename = merged_platemap_filename,
-    content = copy_merged_platemap
+    content = copy_merged_platemap,
+    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   )
 
   output$downloadMergedPlatemapLatest <- downloadHandler(
     filename = merged_platemap_filename,
-    content = copy_merged_platemap
+    content = copy_merged_platemap,
+    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   )
 
   observeEvent(input$mergeCurves, {
@@ -3384,8 +3952,7 @@ server <- function(input, output, session) {
       return()
     }
 
-    dataset_loading(TRUE)
-    on.exit(dataset_loading(FALSE), add = TRUE)
+    begin_dataset_update()
 
     ok <- tryCatch({
       merged_curves <- merge_curve_workbooks_by_well_map(
@@ -3459,12 +4026,14 @@ server <- function(input, output, session) {
 
   output$downloadMergedCurves <- downloadHandler(
     filename = merged_curve_filename,
-    content = copy_merged_curve
+    content = copy_merged_curve,
+    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   )
 
   output$downloadMergedCurvesLatest <- downloadHandler(
     filename = merged_curve_filename,
-    content = copy_merged_curve
+    content = copy_merged_curve,
+    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   )
 
   observeEvent(is_group_data(), {
@@ -3491,7 +4060,7 @@ server <- function(input, output, session) {
         # desarrollo: cuando se ejecuta desde raÃƒÂ­z del proyecto
         p <- file.path("inst", "app", "www")
         if (dir.exists(p)) return(normalizePath(p, winslash = "/", mustWork = TRUE))
-        stop("No se encontrÃƒÂ³ la carpeta 'www'.")
+        stop("No se encontró la carpeta 'www'.")
       }
 
       www_dir <- find_www()
@@ -3510,7 +4079,8 @@ server <- function(input, output, session) {
       parent <- dirname(ref_dir)
       base   <- basename(ref_dir)
       zip::zipr(zipfile = file, files = base, root = parent)
-    }
+    },
+    contentType = "application/zip"
   )
 
   # --- Descargar Manual (PDF) using bundled static files only ---
@@ -3529,7 +4099,7 @@ server <- function(input, output, session) {
         if (dir.exists('www')) return(normalizePath('www', winslash = '/', mustWork = TRUE))
         p <- file.path('inst','app','www')
         if (dir.exists(p)) return(normalizePath(p, winslash = '/', mustWork = TRUE))
-        stop("No se encontrÃƒÂ³ la carpeta 'www'.")
+        stop("No se encontró la carpeta 'www'.")
       }
 
       www_dir <- find_www()
@@ -3538,7 +4108,8 @@ server <- function(input, output, session) {
         stop(sprintf("Missing manual PDF in www: %s", fname_pdf))
       }
       file.copy(src_pdf, file, overwrite = TRUE)
-    }
+    },
+    contentType = "application/pdf"
   )
 
   is_large_param_set <- function(params) {
@@ -3924,45 +4495,13 @@ server <- function(input, output, session) {
     }
   }, ignoreNULL = FALSE)  
   
-  
-  # Ã¢â€â‚¬Ã¢â€â‚¬ Reset general al cargar un nuevo archivo Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
-  observeEvent(input$dataFile, {  
-    req(plot_settings())                     # esperamos a tener la hoja  
-    
-    ## 1Ã‚Â· reiniciar parÃƒÂ¡metro seleccionado  
-    selected_param_default <- if (length(plot_settings()$Parameter)) plot_settings()$Parameter[1] else character(0)
-    update_selectize_adaptive(
-      "param",
-      choices = plot_settings()$Parameter,
-      selected = selected_param_default
-    )
-    last_param_selection(if (length(selected_param_default)) as.character(selected_param_default[[1]]) else "")
-    
-    ## 2Ã‚Â· reiniciar strain / scope  
-    updateRadioButtons(session, "scope", selected = "Por Cepa")  
-    update_selectize_adaptive("strain", choices = NULL, selected = character(0))
-    
-    ## 3Ã‚Â· reiniciar selecciÃƒÂ³n de grÃƒÂ¡ficos  
-    isolate({  
-      strains <- sort(unique(datos_combinados()$Strain))  
-      tipos <- c("Boxplot","Barras","Violin","Curvas","Apiladas")  
-      cepa    <- as.vector(t(outer(strains, tipos,  
-                                   FUN = function(s, t) paste0(s, "_", t))))  
-      combo   <- paste0("Combinado_", tipos)  
-      
-    })  
-  })  
-  
   # Para Boxplot/Barras  
   ## Ã¢â€â‚¬Ã¢â€â‚¬ guardar cambios de YÃ¢â‚¬â€˜axis hechos por el usuario Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
   observeEvent(
-    list(input$ymax, input$ybreak, input$param),
+    list(input$ymax, input$ybreak),
     {  
       if (isTRUE(axis_sync_inflight())) return()
-      if (!is_valid_reactive_key(input$param)) return()
-      # clave correcta:  Ã¢â‚¬Å“PARÃ¢â‚¬Â    o  Ã¢â‚¬Å“PAR_NormÃ¢â‚¬Â  
-      tgt <- if (isTRUE(input$doNorm) && has_ctrl_selected())
-        paste0(input$param, "_Norm") else input$param
+      tgt <- safe_param()
       if (!is_valid_reactive_key(tgt)) return()
       
       ylims[[tgt]] <- list(  
@@ -4035,11 +4574,13 @@ server <- function(input, output, session) {
       labels <- c(labels, tr_text("errbar_stat_minmax", lang))
     }
 
+    default_stat <- default_errorbar_stat_for_plot(tipo_sel, allow_minmax = allow_minmax)
     selected <- normalize_errorbar_stat(
-      input$errbar_stat %||% "SD",
+      input$errbar_stat %||% default_stat,
+      default = default_stat,
       allow_minmax = allow_minmax
     )
-    if (!selected %in% values) selected <- "SD"
+    if (!selected %in% values) selected <- default_stat
 
     radioButtons(
       "errbar_stat",
@@ -4145,17 +4686,20 @@ server <- function(input, output, session) {
     )  
     # 2) poblar filtro de medios  
     medias <- sort(unique(datos_agrupados()$Media))  
+    prev_medias_outer <- isolate(input$showMedios)
+    selected_medias_outer <- if (is.null(prev_medias_outer)) {
+      medias
+    } else {
+      intersect(as.character(prev_medias_outer), medias)
+    }
     output$showMediosUI <- renderUI({  
       input$app_lang
       media_label <- media_label_ui() %||% default_label_text(input$app_lang %||% i18n_lang, "media_label")
-      prev_medias <- isolate(as.character(input$showMedios %||% character(0)))
-      selected_medias <- intersect(prev_medias, medias)
-      if (!length(selected_medias)) selected_medias <- medias
       checkboxGroupInput(
         "showMedios",
         paste0(media_label, ":"),
         choices = medias,
-        selected = selected_medias
+        selected = selected_medias_outer
       )
     })  
     # 3) inicializar orden de medios  
@@ -4168,8 +4712,12 @@ server <- function(input, output, session) {
     
     update_text_input_if_changed("orderMedios", paste(medias_order, collapse = ","))
 
-    update_checkbox_input_if_changed("toggleMedios", value = TRUE)
-    update_checkbox_input_if_changed("toggleGroups", value = TRUE)
+    sync_filter_toggle_input("toggleMedios", choices = medias, selected = selected_medias_outer)
+    sync_filter_toggle_input(
+      "toggleGroups",
+      choices = unique(paste(datos_agrupados()$Strain, datos_agrupados()$Media, sep = "-")),
+      selected = isolate(input$showGroups %||% character(0))
+    )
     
     # ------------------------------------------------------------------  
     
@@ -4286,12 +4834,13 @@ server <- function(input, output, session) {
   
   
   # Ã¢â€â‚¬Ã¢â€â‚¬ Toggle Ã¢â‚¬Å“Por CepaÃ¢â‚¬Â Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
-  observeEvent(input$toggleMedios, {  
+  observeEvent(input$toggleMedios_user_change, {
+    toggle_payload <- input$toggleMedios_user_change
+    toggle_value <- is.list(toggle_payload) && isTRUE(toggle_payload$value)
     df <- datos_agrupados()
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0 || !"Media" %in% names(df)) return()
-    if (is.null(input$showMedios)) return()
     medias <- sort(unique(df$Media))  
-    sel    <- if (isTRUE(input$toggleMedios)) medias else character(0)  
+    sel    <- if (toggle_value) medias else character(0)
     current_sel <- sort(unique(as.character(input$showMedios %||% character(0))))
     target_sel <- sort(unique(as.character(sel %||% character(0))))
     if (identical(current_sel, target_sel)) return()
@@ -4301,16 +4850,17 @@ server <- function(input, output, session) {
       selected = sel,
       freeze_input = TRUE
     )  
-  })  
+  }, ignoreInit = TRUE)
   
   # Ã¢â€â‚¬Ã¢â€â‚¬ Toggle Ã¢â‚¬Å“CombinadoÃ¢â‚¬Â Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
-  observeEvent(input$toggleGroups, {  
+  observeEvent(input$toggleGroups_user_change, {
+    toggle_payload <- input$toggleGroups_user_change
+    toggle_value <- is.list(toggle_payload) && isTRUE(toggle_payload$value)
     df <- datos_agrupados()
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0 ||
         !"Strain" %in% names(df) || !"Media" %in% names(df)) return()
-    if (is.null(input$showGroups)) return()
     grps <- unique(paste(df$Strain, df$Media, sep = "-"))  
-    sel  <- if (isTRUE(input$toggleGroups)) grps else character(0)  
+    sel  <- if (toggle_value) grps else character(0)
     current_sel <- sort(unique(as.character(input$showGroups %||% character(0))))
     target_sel <- sort(unique(as.character(sel %||% character(0))))
     if (identical(current_sel, target_sel)) return()
@@ -4320,7 +4870,40 @@ server <- function(input, output, session) {
       selected = sel,
       freeze_input = TRUE
     )  
-  })  
+  }, ignoreInit = TRUE)
+
+  observeEvent(
+    list(input$showMedios, input$showGroups, datos_agrupados()),
+    {
+      df <- datos_agrupados()
+      if (is.null(df) || !is.data.frame(df) || !nrow(df)) return()
+      if ("Media" %in% names(df)) {
+        sync_filter_toggle_input(
+          "toggleMedios",
+          choices = sort(unique(as.character(df$Media))),
+          selected = input$showMedios %||% character(0)
+        )
+      }
+      if (all(c("Strain", "Media") %in% names(df))) {
+        sync_filter_toggle_input(
+          "toggleGroups",
+          choices = unique(paste(df$Strain, df$Media, sep = "-")),
+          selected = input$showGroups %||% character(0)
+        )
+      }
+    },
+    ignoreInit = TRUE,
+    priority = 90
+  )
+
+  observeEvent(
+    list(input$scope, input$strain, input$showMedios, input$showGroups),
+    {
+      begin_filter_selection_sync()
+    },
+    ignoreInit = TRUE,
+    priority = 100
+  )
   
   
   
@@ -4413,6 +4996,12 @@ server <- function(input, output, session) {
   # --- Inputs dinÃƒÂ¡micos: Combinado ---  
   observeEvent(datos_agrupados(), {
     grps <- unique(paste(datos_agrupados()$Strain, datos_agrupados()$Media, sep = "-"))
+    prev_groups_outer <- isolate(input$showGroups)
+    selected_groups_outer <- if (is.null(prev_groups_outer)) {
+      grps
+    } else {
+      intersect(as.character(prev_groups_outer), grps)
+    }
     # Ã¢â€â‚¬Ã¢â€â‚¬ SERVER  Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     output$groupSel <- renderUI({
       input$app_lang
@@ -4428,11 +5017,7 @@ server <- function(input, output, session) {
         checkboxGroupInput(
           "showGroups", tr("groups_label"),
           choices  = grps,
-          selected = {
-            prev_groups <- isolate(as.character(input$showGroups %||% character(0)))
-            selected_groups <- intersect(prev_groups, grps)
-            if (!length(selected_groups)) grps else selected_groups
-          }
+          selected = selected_groups_outer
         ),
         textInput(
           "orderGroups", tr("order_csv"),
@@ -4440,7 +5025,7 @@ server <- function(input, output, session) {
         )
       )
     })
-    update_checkbox_input_if_changed("toggleGroups", value = TRUE)
+    sync_filter_toggle_input("toggleGroups", choices = grps, selected = selected_groups_outer)
   })
   
   output$repsGrpUI <- renderUI({
@@ -4510,7 +5095,7 @@ server <- function(input, output, session) {
   )
 
   observeEvent(rm_reps_all_debounced(), {
-    if (!begin_bulk_update(replicate_bulk_updating)) return()
+    if (!begin_bulk_update(replicate_bulk_updating, "replicate_bulk_updating")) return()
     drop_all <- rm_reps_all_debounced()
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
     df <- if (use_param) {
@@ -4775,36 +5360,44 @@ server <- function(input, output, session) {
   observeEvent(input$param, {
     req(plot_settings(), input$param)
     
+    raw_param <- as.character(input$param %||% "")
+    if (!length(raw_param) || is.na(raw_param[[1]]) || !nzchar(raw_param[[1]])) return()
+    raw_param <- raw_param[[1]]
     cfg <- plot_settings() %>%
-      dplyr::filter(Parameter == input$param) %>%
+      dplyr::filter(Parameter == raw_param) %>%
       dplyr::slice(1)
     if (!nrow(cfg)) return()
 
-    axis_sync_inflight(TRUE)
-    on.exit({
-      session$onFlushed(function() {
-        axis_sync_inflight(FALSE)
-      }, once = TRUE)
-    }, add = TRUE)
+    begin_axis_input_sync()
     
     cfg_ymax <- suppressWarnings(as.numeric(cfg$Y_Max[[1]]))
     cfg_ybreak <- suppressWarnings(as.numeric(cfg$Interval[[1]]))
-    stored_lims <- ylims[[as.character(input$param)]]
+    tgt <- if (isTRUE(input$doNorm) && has_ctrl_selected()) {
+      paste0(raw_param, "_Norm")
+    } else {
+      raw_param
+    }
+    if (!identical(tgt, raw_param)) {
+      cfg_ymax <- 1
+      cfg_ybreak <- 0.2
+    }
+    stored_lims <- ylims[[tgt]]
     stored_ymax <- suppressWarnings(as.numeric(stored_lims$ymax %||% NA_real_))
     stored_ybreak <- suppressWarnings(as.numeric(stored_lims$ybreak %||% NA_real_))
     target_ymax <- if (is.finite(stored_ymax)) stored_ymax else cfg_ymax
     target_ybreak <- if (is.finite(stored_ybreak)) stored_ybreak else cfg_ybreak
+    lang <- input$app_lang %||% i18n_lang
 
     # 1Ã‚Â· refrescar las cajas
     updateNumericInput(session, "ymax",
-                       label  = paste0("Y max (", input$param, "):"),
+                       label  = paste0(tr_text("y_max", lang), " (", tgt, "):"),
                        value  = target_ymax)
     updateNumericInput(session, "ybreak",
-                       label  = paste0("Int Y (", input$param, "):"),
+                       label  = paste0(tr_text("y_interval", lang), " (", tgt, "):"),
                        value  = target_ybreak)
     
     # 2Ã‚Â· sincronizar ylims con el Excel
-    ylims[[ input$param ]] <- list(
+    ylims[[tgt]] <- list(
       ymax   = target_ymax,
       ybreak = target_ybreak
     )
@@ -4944,12 +5537,14 @@ server <- function(input, output, session) {
         paste0(input$param, "_Norm") else input$param
 
       lims <- get_ylim(tgt)
+      lang <- input$app_lang %||% i18n_lang
 
+      begin_axis_input_sync()
       updateNumericInput(session, "ymax",
-                         label  = paste0("Y max (", tgt, "):"),
+                         label  = paste0(tr_text("y_max", lang), " (", tgt, "):"),
                          value  = lims$ymax)
       updateNumericInput(session, "ybreak",
-                         label  = paste0("Int Y (", tgt, "):"),
+                         label  = paste0(tr_text("y_interval", lang), " (", tgt, "):"),
                          value  = lims$ybreak)
     },
     ignoreInit = TRUE
@@ -4963,6 +5558,22 @@ server <- function(input, output, session) {
     {
       req(input$tipo)
       lang <- input$app_lang %||% i18n_lang
+      cfg <- plot_cfg_box()
+      params <- if (is.data.frame(cfg) && "Parameter" %in% names(cfg)) {
+        vals <- as.character(cfg$Parameter %||% character(0))
+        vals[!is.na(vals) & nzchar(vals) & vals != "Parametro_dummy"]
+      } else {
+        character(0)
+      }
+      param_sel <- trimws(as.character(input$param %||% ""))
+      preferred_param <- trimws(as.character(isolate(last_param_selection() %||% "")))
+      if (!nzchar(param_sel) && nzchar(preferred_param) && (!length(params) || preferred_param %in% params)) {
+        param_sel <- preferred_param
+      }
+      if (!nzchar(param_sel) && length(params)) {
+        param_sel <- params[[1]]
+      }
+
       type_label <- switch(
         input$tipo,
         "Boxplot"     = tr_text("plot_boxplot", lang),
@@ -4973,20 +5584,29 @@ server <- function(input, output, session) {
         "Correlacion" = tr_text("plot_correlation", lang),
         input$tipo
       )
+      if (!nzchar(param_sel) && input$tipo %in% c("Boxplot", "Barras", "Violin", "Apiladas")) return()
       defaultTitle <- switch(
         input$tipo,
-        "Correlacion" = sprintf(
-          tr_text("default_title_corr", lang),
-          type_label,
-          input$corr_param_y %||% "",
-          input$corr_param_x %||% ""
-        ),
+        "Correlacion" = {
+          corr_x <- trimws(as.character(input$corr_param_x %||% ""))
+          corr_y <- trimws(as.character(input$corr_param_y %||% ""))
+          if (!nzchar(corr_x) && length(params)) corr_x <- params[[1]]
+          if (!nzchar(corr_y) && length(params) >= 2) corr_y <- params[[2]]
+          if (!nzchar(corr_y)) corr_y <- corr_x
+          if (!nzchar(corr_x) || !nzchar(corr_y)) return()
+          sprintf(
+            tr_text("default_title_corr", lang),
+            type_label,
+            corr_y,
+            corr_x
+          )
+        },
         if (input$scope == "Combinado")
-          sprintf(tr_text("default_title_combined", lang), type_label, input$param %||% "")
+          sprintf(tr_text("default_title_combined", lang), type_label, param_sel)
         else
-          sprintf(tr_text("default_title_strain", lang), type_label, input$param %||% "", input$strain %||% "")
+          sprintf(tr_text("default_title_strain", lang), type_label, param_sel, input$strain %||% "")
       )
-      updateTextInput(session, "plotTitle", value = defaultTitle)
+      update_text_input_if_changed("plotTitle", defaultTitle)
     }, ignoreInit = FALSE)
   
   
@@ -5326,63 +5946,212 @@ server <- function(input, output, session) {
   # Ã¢â€â‚¬Ã¢â€â‚¬ helpers de filtrado + orden Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
   # (deja los tuyos: order_filter_strain() / order_filter_group())  
   
-  # Ã¢â€â‚¬Ã¢â€â‚¬ Data frame unificado para Significancia Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
+  # Ã¢â€â‚¬Ã¢â€â‚¬ Data frame unificado para Significancia Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  current_stats_scope <- function() {
+    scope_sel <- as.character(input$scope %||% "Por Cepa")
+    if (!length(scope_sel) || is.na(scope_sel[[1]]) || !nzchar(scope_sel[[1]])) {
+      scope_sel <- "Por Cepa"
+    }
+    scope_sel[[1]]
+  }
+
+  current_stats_scope_df <- function() {
+    scope_sel <- current_stats_scope()
+    strain_sel <- if (identical(scope_sel, "Por Cepa")) input$strain %||% NULL else NULL
+    df <- tryCatch(get_scope_df(scope_sel, strain_sel), error = function(e) NULL)
+    if (!is.data.frame(df)) return(tibble::tibble())
+    df
+  }
+
+  record_stats_scope_snapshot <- function(scope, strain = NULL, df = NULL, value_col = NULL) {
+    if (!is.data.frame(df) || !nrow(df)) return(invisible(FALSE))
+    value_col <- as.character(value_col %||% "")
+    value_col_chr <- if (length(value_col) && !is.na(value_col[[1]])) value_col[[1]] else ""
+    if (nzchar(value_col_chr) && value_col_chr %in% names(df)) {
+      vals <- suppressWarnings(as.numeric(df[[value_col_chr]]))
+      if (!any(is.finite(vals))) return(invisible(FALSE))
+    }
+
+    scope_chr <- as.character(scope %||% "")
+    scope_chr <- if (length(scope_chr) && !is.na(scope_chr[[1]]) && nzchar(scope_chr[[1]])) scope_chr[[1]] else "Por Cepa"
+    strain_chr <- as.character(strain %||% "")
+    strain_chr <- if (length(strain_chr) && !is.na(strain_chr[[1]])) strain_chr[[1]] else ""
+
+    stamp <- tryCatch(input_file_stamp(), error = function(e) "")
+    last_stats_scope_snapshot(list(
+      dataset = stamp,
+      scope = scope_chr,
+      strain = strain_chr,
+      value_col = value_col_chr,
+      df = df
+    ))
+    invisible(TRUE)
+  }
+
+  clear_stats_scope_snapshot <- function(scope = NULL, strain = NULL) {
+    snap <- last_stats_scope_snapshot()
+    if (!is.list(snap)) return(invisible(FALSE))
+    if (is.null(scope)) {
+      last_stats_scope_snapshot(NULL)
+      return(invisible(TRUE))
+    }
+
+    stamp <- tryCatch(input_file_stamp(), error = function(e) "")
+    if (!identical(as.character(snap$dataset %||% ""), as.character(stamp %||% ""))) {
+      return(invisible(FALSE))
+    }
+
+    scope_chr <- as.character(scope %||% "")
+    scope_chr <- if (length(scope_chr) && !is.na(scope_chr[[1]]) && nzchar(scope_chr[[1]])) scope_chr[[1]] else "Por Cepa"
+    if (!identical(as.character(snap$scope %||% ""), scope_chr)) return(invisible(FALSE))
+
+    if (identical(scope_chr, "Por Cepa")) {
+      strain_chr <- as.character(strain %||% "")
+      strain_chr <- if (length(strain_chr) && !is.na(strain_chr[[1]])) strain_chr[[1]] else ""
+      snap_strain <- as.character(snap$strain %||% "")
+      if (nzchar(strain_chr) && nzchar(snap_strain) && !identical(snap_strain, strain_chr)) {
+        return(invisible(FALSE))
+      }
+    }
+
+    last_stats_scope_snapshot(NULL)
+    invisible(TRUE)
+  }
+
+  stats_snapshot_df <- function(scope_sel = current_stats_scope(), strain_sel = NULL) {
+    snap <- last_stats_scope_snapshot()
+    if (!is.list(snap) || !is.data.frame(snap$df) || !nrow(snap$df)) return(NULL)
+    stamp <- tryCatch(input_file_stamp(), error = function(e) "")
+    if (!identical(as.character(snap$dataset %||% ""), as.character(stamp %||% ""))) return(NULL)
+
+    scope_chr <- as.character(scope_sel %||% "")
+    scope_chr <- if (length(scope_chr) && !is.na(scope_chr[[1]]) && nzchar(scope_chr[[1]])) scope_chr[[1]] else "Por Cepa"
+    if (!identical(as.character(snap$scope %||% ""), scope_chr)) return(NULL)
+
+    if (identical(scope_chr, "Por Cepa")) {
+      strain_chr <- as.character(strain_sel %||% input$strain %||% "")
+      strain_chr <- if (length(strain_chr) && !is.na(strain_chr[[1]])) strain_chr[[1]] else ""
+      snap_strain <- as.character(snap$strain %||% "")
+      if (nzchar(strain_chr) && nzchar(snap_strain) && !identical(snap_strain, strain_chr)) {
+        return(NULL)
+      }
+    }
+
+    snap$df
+  }
+
+  has_stats_group_data <- function(df, min_groups = 2L) {
+    if (!is.data.frame(df) || !nrow(df) || !"Label" %in% names(df)) return(FALSE)
+    labels <- as.character(df$Label)
+    labels <- labels[!is.na(labels) & nzchar(labels)]
+    dplyr::n_distinct(labels) >= min_groups
+  }
+
+  resolve_stats_param <- function(src = NULL) {
+    params_all <- safe_plot_setting_params()
+    if (!length(params_all)) {
+      return(list(base = "", value = "", normalized = FALSE))
+    }
+
+    current <- trimws(as.character(input$param %||% ""))
+    current <- if (length(current) && !is.na(current[[1]])) current[[1]] else ""
+    preferred <- trimws(as.character(last_param_selection() %||% ""))
+    preferred <- if (length(preferred) && !is.na(preferred[[1]])) preferred[[1]] else ""
+
+    candidates <- unique(c(current, preferred, params_all))
+    candidates <- candidates[!is.na(candidates) & nzchar(candidates)]
+    candidates <- intersect(candidates, params_all)
+    if (!length(candidates)) candidates <- params_all
+
+    normalized <- isTRUE(input$doNorm) && has_ctrl_selected()
+    value_col <- function(base) if (isTRUE(normalized)) paste0(base, "_Norm") else base
+    has_finite <- function(col) {
+      if (!is.data.frame(src) || !col %in% names(src)) return(FALSE)
+      vals <- suppressWarnings(as.numeric(src[[col]]))
+      any(is.finite(vals))
+    }
+
+    if (is.data.frame(src) && nrow(src)) {
+      present <- candidates[vapply(candidates, function(base) value_col(base) %in% names(src), logical(1))]
+      finite <- present[vapply(present, function(base) has_finite(value_col(base)), logical(1))]
+      if (length(finite)) {
+        base <- finite[[1]]
+        return(list(base = base, value = value_col(base), normalized = normalized))
+      }
+      if (length(present)) {
+        base <- present[[1]]
+        return(list(base = base, value = value_col(base), normalized = normalized))
+      }
+    }
+
+    base <- candidates[[1]]
+    list(base = base, value = value_col(base), normalized = normalized)
+  }
+
+  finalize_stats_test_df <- function(df) {
+    if (!is.data.frame(df) || !nrow(df)) {
+      return(tibble::tibble(Label = factor(), Valor = numeric(), BiologicalReplicate = character()))
+    }
+    out <- df %>%
+      dplyr::mutate(
+        Label = as.character(Label),
+        Valor = suppressWarnings(as.numeric(Valor)),
+        BiologicalReplicate = as.character(BiologicalReplicate)
+      ) %>%
+      dplyr::filter(!is.na(Label), nzchar(Label), is.finite(Valor))
+    out$Label <- factor(out$Label, levels = unique(out$Label))
+    out
+  }
+
+  build_stats_observation_df <- function(src, p, scope_sel = current_stats_scope()) {
+    empty_df <- tibble::tibble(Label = character(), Valor = numeric(), BiologicalReplicate = character())
+    if (!is.data.frame(src) || !nrow(src) || !p %in% names(src)) return(empty_df)
+    if (!"BiologicalReplicate" %in% names(src)) {
+      src$BiologicalReplicate <- seq_len(nrow(src))
+    }
+
+    if (identical(scope_sel, "Por Cepa")) {
+      out <- src %>%
+        transmute(Label = Media,
+                  Valor = .data[[p]],
+                  BiologicalReplicate = as.character(BiologicalReplicate))
+    } else {
+      out <- src %>%
+        transmute(Label,
+                  Valor = .data[[p]],
+                  BiologicalReplicate = as.character(BiologicalReplicate))
+    }
+    finalize_stats_test_df(out)
+  }
+
   make_test_df <- function() {
     empty_df <- tibble::tibble(Label = character(), Valor = numeric(), BiologicalReplicate = character())
     if (isTRUE(is_summary_mode())) return(empty_df)
-    p <- input$param
-    if (is.null(p) || !length(p) || is.na(p[1]) || !nzchar(p[1])) return(empty_df)
-    if (isTRUE(input$doNorm) && has_ctrl_selected()) p <- paste0(p, "_Norm")
+    scope_sel <- current_stats_scope()
+    strain_sel <- if (identical(scope_sel, "Por Cepa")) input$strain %||% NULL else NULL
+    src <- current_stats_scope_df()
+    p <- resolve_stats_param(src)$value
+    out <- build_stats_observation_df(src, p, scope_sel)
+    if (has_stats_group_data(out)) return(out)
 
-    src <- active_plot_data()
-    if (!is.data.frame(src) || !nrow(src) || !p %in% names(src)) return(empty_df)
-    if (input$scope == "Por Cepa" &&
-        (is.null(input$strain) || is.na(input$strain) || !nzchar(input$strain))) {
-      return(empty_df)
+    snap_src <- stats_snapshot_df(scope_sel, strain_sel)
+    if (is.data.frame(snap_src) && nrow(snap_src)) {
+      p_snap <- resolve_stats_param(snap_src)$value
+      out_snap <- build_stats_observation_df(snap_src, p_snap, scope_sel)
+      if (has_stats_group_data(out_snap) || !nrow(out)) return(out_snap)
     }
-
-    if (input$scope == "Por Cepa") {
-      src %>%
-        filter(Strain == input$strain) %>%
-        order_filter_strain() %>%
-        filter_reps_strain() %>%
-        transmute(Label = Media,
-                  Valor = .data[[p]],
-                  BiologicalReplicate = as.character(BiologicalReplicate)) %>%
-        filter(is.finite(Valor))
-    } else {
-      src %>%
-        order_filter_group() %>%
-        transmute(Label,
-                  Valor = .data[[p]],
-                  BiologicalReplicate = as.character(BiologicalReplicate)) %>%
-        filter(is.finite(Valor))
-    }
+    out
   }
 
-  make_summary_test_df <- function() {
+  build_summary_stats_df <- function(src, p, scope_sel = current_stats_scope()) {
     empty_df <- tibble::tibble(Label = character(), Mean = numeric(), SD = numeric(), N = numeric())
-    if (!isTRUE(is_summary_mode())) return(empty_df)
-    p <- input$param
-    if (is.null(p) || !length(p) || is.na(p[1]) || !nzchar(p[1])) return(empty_df)
-    if (isTRUE(input$doNorm) && has_ctrl_selected()) p <- paste0(p, "_Norm")
-
-    src <- active_plot_data()
     if (!is.data.frame(src) || !nrow(src) || !p %in% names(src)) return(empty_df)
-    if (input$scope == "Por Cepa" &&
-        (is.null(input$strain) || is.na(input$strain) || !nzchar(input$strain))) {
-      return(empty_df)
-    }
 
-    if (input$scope == "Por Cepa") {
+    if (identical(scope_sel, "Por Cepa")) {
       src <- src %>%
-        filter(Strain == input$strain) %>%
-        order_filter_strain() %>%
-        filter_reps_strain() %>%
         mutate(Label = as.character(Media))
     } else {
       src <- src %>%
-        order_filter_group() %>%
         mutate(Label = as.character(Label))
     }
     if (!nrow(src)) return(empty_df)
@@ -5412,6 +6181,25 @@ server <- function(input, output, session) {
         N = suppressWarnings(as.numeric(N))
       ) %>%
       filter(is.finite(Mean), is.finite(N), N > 1)
+  }
+
+  make_summary_test_df <- function() {
+    empty_df <- tibble::tibble(Label = character(), Mean = numeric(), SD = numeric(), N = numeric())
+    if (!isTRUE(is_summary_mode())) return(empty_df)
+    scope_sel <- current_stats_scope()
+    strain_sel <- if (identical(scope_sel, "Por Cepa")) input$strain %||% NULL else NULL
+    src <- current_stats_scope_df()
+    p <- resolve_stats_param(src)$value
+    out <- build_summary_stats_df(src, p, scope_sel)
+    if (has_stats_group_data(out)) return(out)
+
+    snap_src <- stats_snapshot_df(scope_sel, strain_sel)
+    if (is.data.frame(snap_src) && nrow(snap_src)) {
+      p_snap <- resolve_stats_param(snap_src)$value
+      out_snap <- build_summary_stats_df(snap_src, p_snap, scope_sel)
+      if (has_stats_group_data(out_snap) || !nrow(out)) return(out_snap)
+    }
+    out
   }
 
   summary_welch_pair <- function(m1, s1, n1, m2, s2, n2) {
@@ -5788,10 +6576,10 @@ server <- function(input, output, session) {
   
   # Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Hacer que al pulsar abra el panel Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
   observeEvent(input$runNorm, {  
-    updateCollapse(session, "statsPanel", open = "Analisis EstadÃƒÂ­sticos")  
+    bslib::accordion_panel_open("statsPanel", values = "stats_title", session = session)
   })  
   observeEvent(input$runSig, {  
-    updateCollapse(session, "statsPanel", open = "Analisis EstadÃƒÂ­sticos")  
+    bslib::accordion_panel_open("statsPanel", values = "stats_title", session = session)
   })  
   
   # Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Renderizar tabla de normalidad Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
@@ -5840,6 +6628,8 @@ server <- function(input, output, session) {
     tbl_view <- df2 %>% dplyr::select(-dplyr::any_of(c("is_significant", ".pair_key")))
     datatable(tbl_view, options = list(pageLength = 10, scrollX = TRUE))
   }, server = FALSE)  
+  outputOptions(output, "normTable", suspendWhenHidden = FALSE)
+  outputOptions(output, "sigTable", suspendWhenHidden = FALSE)
 
   advanced_stats_res <- eventReactive(input$runAdvancedStats, {
     lang <- input$app_lang %||% i18n_lang
@@ -6793,7 +7583,8 @@ server <- function(input, output, session) {
       openxlsx::addWorksheet(wb, "correlaciones")
       openxlsx::writeData(wb, "correlaciones", export_tbl)
       openxlsx::saveWorkbook(wb, file, overwrite = TRUE)
-    }
+    },
+    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   )
 
   output$corrAdvDownloadReady <- renderText({
@@ -7128,6 +7919,62 @@ server <- function(input, output, session) {
       options = list(dom = 't')
     )  
   }, server = FALSE)  
+
+  stats_filtered_tech_table_data <- reactive({
+    tipo <- input$tipo %||% ""
+    if (!tipo %in% c("Barras", "Boxplot", "Violin")) return(tibble::tibble())
+
+    tech_map <- qc_tech_selected()
+    if (!is.list(tech_map) || !length(tech_map)) return(tibble::tibble())
+
+    param <- safe_param()
+    if (is.null(param) || !length(param) || is.na(param[[1]]) || !nzchar(param[[1]])) {
+      return(tibble::tibble())
+    }
+
+    df <- param_rep_df()
+    if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(tibble::tibble())
+
+    if (input$scope == "Por Cepa") {
+      df <- df %>%
+        dplyr::filter(Strain == input$strain) %>%
+        order_filter_strain() %>%
+        filter_reps_strain()
+    } else {
+      df <- df %>%
+        order_filter_group() %>%
+        filter_reps_group()
+    }
+    if (!is.data.frame(df) || !nrow(df)) return(tibble::tibble())
+
+    build_technical_filtered_detail_table(
+      df = df,
+      param = param,
+      tech_map = tech_map
+    )
+  })
+
+  output$statsFilteredTechTableUI <- renderUI({
+    tbl <- stats_filtered_tech_table_data()
+    if (!is.data.frame(tbl) || !nrow(tbl)) return(NULL)
+
+    lang <- input$app_lang %||% i18n_lang
+    tagList(
+      tags$hr(),
+      h4(tr_text("filtered_tech_table_title", lang)),
+      DTOutput("statsTechFilteredTable")
+    )
+  })
+
+  output$statsTechFilteredTable <- renderDT({
+    tbl <- stats_filtered_tech_table_data()
+    validate(need(
+      is.data.frame(tbl) && nrow(tbl) > 0,
+      tr_text("no_data_selection", input$app_lang %||% i18n_lang)
+    ))
+    datatable(tbl, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+  }, server = FALSE)
+
   # Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
   
   # Ã¢â€â‚¬Ã¢â€â‚¬ Helper para elegir paleta segÃƒÂºn input$colorMode Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
@@ -7438,7 +8285,10 @@ server <- function(input, output, session) {
       if (!nzchar(input_id) || !length(choices)) next
       current <- input[[input_id]]
       stored <- stored_map[[canonical_key]]
-      selected <- if (!is.null(current)) {
+      prefer_stored <- isTRUE(qc_tech_render_from_store())
+      selected <- if (isTRUE(prefer_stored) && !is.null(stored)) {
+        normalize_rep_selection(intersect(as.character(stored), choices))
+      } else if (!is.null(current)) {
         normalize_rep_selection(intersect(as.character(current), choices))
       } else if (!is.null(stored)) {
         normalize_rep_selection(intersect(as.character(stored), choices))
@@ -7484,6 +8334,14 @@ server <- function(input, output, session) {
       next_map[[key]] <- next_sel
     }
 
+    if (isTRUE(qc_tech_render_from_store())) {
+      target_map <- isolate(qc_tech_selected())
+      if (identical(next_map, target_map)) {
+        qc_tech_render_from_store(FALSE)
+      }
+      return()
+    }
+
     if (!identical(next_map, current_map)) {
       qc_tech_selected(next_map)
     }
@@ -7491,9 +8349,10 @@ server <- function(input, output, session) {
 
   qc_apply_tech_selection <- function(selector_state, selected_map) {
     if (!length(selector_state)) return(invisible(NULL))
-    if (!begin_bulk_update(qc_tech_bulk_updating)) return(invisible(NULL))
+    if (!begin_bulk_update(qc_tech_bulk_updating, "qc_tech_bulk_updating")) return(invisible(NULL))
     next_map <- setNames(vector("list", length(selector_state)), names(selector_state))
     current_map <- isolate(qc_tech_selected())
+    qc_tech_render_from_store(TRUE)
 
     for (key in names(selector_state)) {
       info <- selector_state[[key]]
@@ -7507,12 +8366,31 @@ server <- function(input, output, session) {
         input_id = info$id,
         choices = info$choices,
         selected = next_sel,
-        freeze_input = TRUE
+        freeze_input = FALSE
       )
+      session$sendCustomMessage(
+        "bioszen-set-checkbox-group-values",
+        list(id = info$id, selected = unname(as.character(next_sel)))
+      )
+    }
+
+    extra_keys <- setdiff(names(selected_map), names(next_map))
+    if (length(extra_keys)) {
+      for (extra_key in extra_keys) {
+        next_map[[extra_key]] <- normalize_rep_selection(selected_map[[extra_key]])
+      }
     }
 
     if (!identical(next_map, current_map)) {
       qc_tech_selected(next_map)
+    }
+    param_key <- isolate(qc_tech_param_key())
+    if (length(param_key) && !is.na(param_key[[1]]) && nzchar(param_key[[1]])) {
+      current_store <- isolate(qc_tech_selected_by_param())
+      next_store <- qc_tech_set_param_map(current_store, param_key, next_map)
+      if (!identical(next_store, current_store)) {
+        qc_tech_selected_by_param(next_store)
+      }
     }
     invisible(NULL)
   }
@@ -7864,7 +8742,7 @@ server <- function(input, output, session) {
 
   qc_apply_replicate_selection <- function(selector_state, selected_map) {
     if (!length(selector_state)) return(invisible(NULL))
-    if (!begin_bulk_update(replicate_bulk_updating)) return(invisible(NULL))
+    if (!begin_bulk_update(replicate_bulk_updating, "replicate_bulk_updating")) return(invisible(NULL))
     map_strain <- reps_strain_selected()
     map_group <- reps_group_selected()
     for (g in names(selector_state)) {
@@ -8147,7 +9025,8 @@ server <- function(input, output, session) {
       return()
     }
 
-    tech_df <- qc_apply_tech_selection_df(qc_tech_source_df())
+    source_df <- qc_tech_source_df()
+    tech_df <- qc_apply_tech_selection_df(source_df)
     out_reps <- tryCatch(
       qc_outlier_replicates(
         df = tech_df,
@@ -8169,18 +9048,22 @@ server <- function(input, output, session) {
       return()
     }
 
-    selected_map <- list()
-    changed <- 0L
-    for (key in names(selector_state)) {
-      info <- selector_state[[key]]
-      flagged <- as.character(out_reps$Replicate[
-        out_reps$Group == info$group &
-          out_reps$Subgroup == info$biorep
-      ])
-      next_sel <- setdiff(info$selected, flagged)
-      selected_map[[key]] <- next_sel
-      changed <- changed + length(setdiff(info$selected, next_sel))
-    }
+    current_selector_map <- stats::setNames(
+      lapply(selector_state, function(info) info$selected),
+      names(selector_state)
+    )
+    selection_result <- qc_build_technical_outlier_selection(
+      df = source_df,
+      out_reps = out_reps,
+      group_col = qc_group_var(),
+      current_map = current_selector_map,
+      biorep_col = "BiologicalReplicate",
+      tech_col = "TechnicalReplicate",
+      strain_col = "Strain",
+      media_col = "Media"
+    )
+    selected_map <- selection_result$map
+    changed <- selection_result$changed
 
     if (changed <= 0L) {
       showNotification(tr_text("qc_tech_no_matches", lang), type = "error", duration = 6)
@@ -9688,7 +10571,7 @@ server <- function(input, output, session) {
     df_long <- sanitize_stack_summary(df_long)
     
     if (nrow(df_long) == 0) {
-      return(plot_ly(width  = width %||% input$plot_w, height = height %||% input$plot_h))
+      return(apply_plotly_text_style(plot_ly(width = width %||% input$plot_w, height = height %||% input$plot_h)))
     }
     
     if (isTRUE(input$x_wrap)) {
@@ -9820,15 +10703,15 @@ server <- function(input, output, session) {
         ),
         title = list(
           text = input$plotTitle,
-          font = list(size = input$fs_title, family = "Helvetica"),
+          font = plotly_font_list("title", size = input$fs_title),
           y    = 0.95                     # opcional: tambiÃƒÂ©n puedes mover el tÃƒÂ­tulo un poco hacia abajo
         ),
         yaxis = list(
           titlefont = list(size = input$fs_axis,
-                           family = "Helvetica",
+                           family = plot_font_family(),
                            color  = "black"),
           tickfont  = list(size = input$fs_axis,
-                           family = "Helvetica",
+                           family = plot_font_family(),
                            color  = "black"),
           range     = c(0, input$ymax),
           dtick     = y_tick_step,
@@ -9847,10 +10730,10 @@ server <- function(input, output, session) {
           categoryorder = "array",
           categoryarray = eje_levels,
           titlefont     = list(size = input$fs_axis,
-                               family = "Helvetica",
+                               family = plot_font_family(),
                                color  = "black"),
           tickfont      = list(size = input$fs_axis,
-                               family = "Helvetica",
+                               family = plot_font_family(),
                                color  = "black"),
           tickangle     = -x_ang,
           showline      = TRUE,
@@ -9865,7 +10748,7 @@ server <- function(input, output, session) {
         legend = list(
           title      = list(text = ""),
           traceorder = "normal",
-          font       = list(size = input$fs_legend, family = "Helvetica")
+          font       = plotly_font_list("legend", size = input$fs_legend, color = NULL)
         ),
         shapes = outline_shapes
       )
@@ -9987,7 +10870,7 @@ server <- function(input, output, session) {
         }
       }
     }
-    plt  
+    apply_plotly_text_style(plt)
   }  
   ###############################################################################  
 
@@ -10220,9 +11103,11 @@ server <- function(input, output, session) {
     if (!identical(tipo, "Heatmap")) {
       if (!length(params_all)) {
         return(
-          ggplot() +
-            theme_void() +
-            annotate("text", 0, 0, label = tr_text("no_params_to_show", lang))
+          style_plot_text(
+            ggplot() +
+              theme_void() +
+              annotate("text", 0, 0, label = tr_text("no_params_to_show", lang))
+          )
         )
       }
       if (!nzchar(raw_param_input) || !raw_param_input %in% params_all) {
@@ -10232,7 +11117,7 @@ server <- function(input, output, session) {
 
     # Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Nuevo bloque para normalizaciÃƒÂ³n Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
     rawParam <- enc2utf8(raw_param_input)  
-    is_norm  <- isTRUE(input$doNorm)  
+    is_norm  <- isTRUE(input$doNorm) && has_ctrl_selected()
     msg_no_data_sel <- tr_text("no_data_selection", lang)
     add_whisker_caps <- draw_whisker_caps
     add_black_t_errorbar <- function(p, summary_df, x_col, cap_width = 0.18, lw = 0.8, symmetric = FALSE) {
@@ -10351,10 +11236,16 @@ server <- function(input, output, session) {
     if (tipo %in% c("Boxplot", "Barras", "Violin")) {
       if (is.null(param_sel) || !nzchar(param_sel) || !param_sel %in% names(scope_df)) {
         return(
-          ggplot() +
-            theme_void() +
-            annotate("text", 0, 0, label = tr_text("param_no_data_selection", lang))
+          style_plot_text(
+            ggplot() +
+              theme_void() +
+              annotate("text", 0, 0, label = tr_text("param_no_data_selection", lang))
+          )
         )
+      }
+      recorded_stats_snapshot <- record_stats_scope_snapshot(scope, strain, scope_df, param_sel)
+      if (!isTRUE(recorded_stats_snapshot)) {
+        clear_stats_scope_snapshot(scope, strain)
       }
     }
     
@@ -10364,26 +11255,28 @@ server <- function(input, output, session) {
     # --- 3.x) Stacked bars -----------------------------------------------
     if (tipo == "Apiladas") {
       return(
-        build_apiladas_plot_impl(list(
-          scope = scope,
-          scope_df = scope_df,
-          input = input,
-          lang = lang,
-          ps = ps,
-          fs_title = fs_title,
-          fs_axis = fs_axis,
-          fs_legend = fs_legend,
-          axis_size = axis_size,
-          tr_text = tr_text,
-          is_summary_mode = is_summary_mode,
-          resolve_prefixed_param_col = resolve_prefixed_param_col,
-          wrap_label = wrap_label,
-          get_x_angle = get_x_angle,
-          get_bottom_margin = get_bottom_margin,
-          palette_for_levels = palette_for_levels,
-          margin_adj = margin_adj,
-          apply_sig_layers = apply_sig_layers
-        ))
+        style_plot_text(
+          build_apiladas_plot_impl(list(
+            scope = scope,
+            scope_df = scope_df,
+            input = input,
+            lang = lang,
+            ps = ps,
+            fs_title = fs_title,
+            fs_axis = fs_axis,
+            fs_legend = fs_legend,
+            axis_size = axis_size,
+            tr_text = tr_text,
+            is_summary_mode = is_summary_mode,
+            resolve_prefixed_param_col = resolve_prefixed_param_col,
+            wrap_label = wrap_label,
+            get_x_angle = get_x_angle,
+            get_bottom_margin = get_bottom_margin,
+            palette_for_levels = palette_for_levels,
+            margin_adj = margin_adj,
+            apply_sig_layers = apply_sig_layers
+          ))
+        )
       )
     }
 
@@ -10536,7 +11429,7 @@ server <- function(input, output, session) {
           axis.text.y = element_text(size = fs_axis, colour = "black"),
           panel.grid = element_blank()
         )
-      return(p)
+      return(style_plot_text(p))
     }
 
     # --- 3.x) Correlation matrix ------------------------------------------
@@ -10607,21 +11500,23 @@ server <- function(input, output, session) {
           axis.text.y = element_text(size = fs_axis, colour = "black"),
           panel.grid = element_blank()
         )
-      return(p)
+      return(style_plot_text(p))
     }
 
     # --- 3.x) Correlacion -------------------------------------------------
     if (tipo == "Correlacion") {
       return(
-        build_correlation_plot_impl(
-          scope = scope,
-          scope_df = scope_df,
-          input = input,
-          lang = lang,
-          has_ctrl_selected = has_ctrl_selected,
-          corr_adv_last_pair = corr_adv_last_pair,
-          tr_text = tr_text,
-          margin_adj = margin_adj
+        style_plot_text(
+          build_correlation_plot_impl(
+            scope = scope,
+            scope_df = scope_df,
+            input = input,
+            lang = lang,
+            has_ctrl_selected = has_ctrl_selected,
+            corr_adv_last_pair = corr_adv_last_pair,
+            tr_text = tr_text,
+            margin_adj = margin_adj
+          )
         )
       )
     }
@@ -10631,133 +11526,143 @@ server <- function(input, output, session) {
     # --- 3.x) Curves (Por Cepa and Combinado) ---
     if (tipo == "Curvas") {
       return(
-        build_curvas_plot_impl(list(
-          scope = scope,
-          strain = strain,
-          input = input,
-          lang = lang,
-          curve_data = curve_data,
-          curve_settings = curve_settings,
-          curve_long_df = curve_long_df,
-          curve_summary_mode = curve_summary_mode,
-          order_filter_strain = order_filter_strain,
-          filter_reps_strain = filter_reps_strain,
-          order_filter_group = order_filter_group,
-          filter_reps_group = filter_reps_group,
-          datos_agrupados = datos_agrupados,
-          sanitize_curve_label = sanitize_curve_label,
-          get_bottom_margin = get_bottom_margin,
-          palette_for_labels = palette_for_labels,
-          palette_for_levels = palette_for_levels,
-          margin_adj = margin_adj,
-          tr_text = tr_text
-        ))
+        style_plot_text(
+          build_curvas_plot_impl(list(
+            scope = scope,
+            strain = strain,
+            input = input,
+            lang = lang,
+            curve_data = curve_data,
+            curve_settings = curve_settings,
+            curve_long_df = curve_long_df,
+            curve_summary_mode = curve_summary_mode,
+            order_filter_strain = order_filter_strain,
+            filter_reps_strain = filter_reps_strain,
+            order_filter_group = order_filter_group,
+            filter_reps_group = filter_reps_group,
+            datos_agrupados = datos_agrupados,
+            sanitize_curve_label = sanitize_curve_label,
+            get_bottom_margin = get_bottom_margin,
+            palette_for_labels = palette_for_labels,
+            palette_for_levels = palette_for_levels,
+            margin_adj = margin_adj,
+            tr_text = tr_text
+          ))
+        )
       )
     }
 
     if (tipo == "Boxplot") {
       return(
-        build_boxplot_plot_impl(list(
-          scope = scope,
-          scope_df = scope_df,
-          param_sel = param_sel,
-          input = input,
-          msg_no_data_sel = msg_no_data_sel,
-          ylab = ylab,
-          ymax = ymax,
-          ybreak = ybreak,
-          fs_title = fs_title,
-          fs_axis = fs_axis,
-          axis_size = axis_size,
-          colourMode = colourMode,
-          box_coef = box_coef,
-          for_interactive = for_interactive,
-          wrap_label = wrap_label,
-          palette_for_labels = palette_for_labels,
-          palette_for_levels = palette_for_levels,
-          get_x_angle = get_x_angle,
-          get_bottom_margin = get_bottom_margin,
-          margin_adj = margin_adj,
-          apply_sig_layers = apply_sig_layers,
-          apply_square_legend_right = apply_square_legend_right,
-          legend_right_enabled = legend_right_enabled,
-          add_whisker_caps = add_whisker_caps,
-          add_black_t_errorbar = add_black_t_errorbar,
-          resolve_prefixed_param_col = resolve_prefixed_param_col,
-          downsample_points_by_group = downsample_points_by_group
-        ))
+        style_plot_text(
+          build_boxplot_plot_impl(list(
+            scope = scope,
+            scope_df = scope_df,
+            param_sel = param_sel,
+            input = input,
+            msg_no_data_sel = msg_no_data_sel,
+            ylab = ylab,
+            ymax = ymax,
+            ybreak = ybreak,
+            fs_title = fs_title,
+            fs_axis = fs_axis,
+            axis_size = axis_size,
+            colourMode = colourMode,
+            box_coef = box_coef,
+            for_interactive = for_interactive,
+            wrap_label = wrap_label,
+            palette_for_labels = palette_for_labels,
+            palette_for_levels = palette_for_levels,
+            get_x_angle = get_x_angle,
+            get_bottom_margin = get_bottom_margin,
+            margin_adj = margin_adj,
+            apply_sig_layers = apply_sig_layers,
+            apply_square_legend_right = apply_square_legend_right,
+            legend_right_enabled = legend_right_enabled,
+            add_whisker_caps = add_whisker_caps,
+            add_black_t_errorbar = add_black_t_errorbar,
+            resolve_prefixed_param_col = resolve_prefixed_param_col,
+            downsample_points_by_group = downsample_points_by_group
+          ))
+        )
       )
     }
 
     if (tipo == "Violin") {
       return(
-        build_violin_plot_impl(list(
-          scope = scope,
-          scope_df = scope_df,
-          param_sel = param_sel,
-          input = input,
-          msg_no_data_sel = msg_no_data_sel,
-          ylab = ylab,
-          ymax = ymax,
-          ybreak = ybreak,
-          fs_title = fs_title,
-          fs_axis = fs_axis,
-          axis_size = axis_size,
-          colourMode = colourMode,
-          for_interactive = for_interactive,
-          wrap_label = wrap_label,
-          palette_for_labels = palette_for_labels,
-          palette_for_levels = palette_for_levels,
-          get_x_angle = get_x_angle,
-          get_bottom_margin = get_bottom_margin,
-          margin_adj = margin_adj,
-          apply_sig_layers = apply_sig_layers,
-          apply_square_legend_right = apply_square_legend_right,
-          legend_right_enabled = legend_right_enabled,
-          downsample_points_by_group = downsample_points_by_group,
-          box_stats = box_stats
-        ))
+        style_plot_text(
+          build_violin_plot_impl(list(
+            scope = scope,
+            scope_df = scope_df,
+            param_sel = param_sel,
+            input = input,
+            msg_no_data_sel = msg_no_data_sel,
+            ylab = ylab,
+            ymax = ymax,
+            ybreak = ybreak,
+            fs_title = fs_title,
+            fs_axis = fs_axis,
+            axis_size = axis_size,
+            colourMode = colourMode,
+            for_interactive = for_interactive,
+            wrap_label = wrap_label,
+            palette_for_labels = palette_for_labels,
+            palette_for_levels = palette_for_levels,
+            get_x_angle = get_x_angle,
+            get_bottom_margin = get_bottom_margin,
+            margin_adj = margin_adj,
+            apply_sig_layers = apply_sig_layers,
+            apply_square_legend_right = apply_square_legend_right,
+            legend_right_enabled = legend_right_enabled,
+            downsample_points_by_group = downsample_points_by_group,
+            box_stats = box_stats
+          ))
+        )
       )
     }
 
     if (tipo == "Barras") {
       return(
-        build_barras_plot_impl(list(
-          scope = scope,
-          scope_df = scope_df,
-          param_sel = param_sel,
-          input = input,
-          msg_no_data_sel = msg_no_data_sel,
-          ylab = ylab,
-          ymax = ymax,
-          ybreak = ybreak,
-          fs_title = fs_title,
-          fs_axis = fs_axis,
-          axis_size = axis_size,
-          colourMode = colourMode,
-          wrap_label = wrap_label,
-          get_x_angle = get_x_angle,
-          get_bottom_margin = get_bottom_margin,
-          is_summary_mode = is_summary_mode,
-          resolve_prefixed_param_col = resolve_prefixed_param_col,
-          palette_for_labels = palette_for_labels,
-          palette_for_levels = palette_for_levels,
-          legend_right_enabled = legend_right_enabled,
-          add_black_t_errorbar = add_black_t_errorbar,
-          margin_adj = margin_adj,
-          apply_sig_layers = apply_sig_layers,
-          apply_square_legend_right = apply_square_legend_right,
-          for_interactive = for_interactive,
-          downsample_points_by_group = downsample_points_by_group
-        ))
+        style_plot_text(
+          build_barras_plot_impl(list(
+            scope = scope,
+            scope_df = scope_df,
+            param_sel = param_sel,
+            input = input,
+            msg_no_data_sel = msg_no_data_sel,
+            ylab = ylab,
+            ymax = ymax,
+            ybreak = ybreak,
+            fs_title = fs_title,
+            fs_axis = fs_axis,
+            axis_size = axis_size,
+            colourMode = colourMode,
+            wrap_label = wrap_label,
+            get_x_angle = get_x_angle,
+            get_bottom_margin = get_bottom_margin,
+            is_summary_mode = is_summary_mode,
+            resolve_prefixed_param_col = resolve_prefixed_param_col,
+            palette_for_labels = palette_for_labels,
+            palette_for_levels = palette_for_levels,
+            legend_right_enabled = legend_right_enabled,
+            add_black_t_errorbar = add_black_t_errorbar,
+            margin_adj = margin_adj,
+            apply_sig_layers = apply_sig_layers,
+            apply_square_legend_right = apply_square_legend_right,
+            for_interactive = for_interactive,
+            downsample_points_by_group = downsample_points_by_group
+          ))
+        )
       )
     }
 
     # Ã¢â‚¬â€Ã¢â‚¬â€Ã¢â‚¬â€ fallback para nunca retornar NULL Ã¢â‚¬â€Ã¢â‚¬â€Ã¢â‚¬â€  
     return(
-      ggplot() +
-        theme_void() +
-        annotate("text", 0, 0, label = msg_no_data_sel)
+      style_plot_text(
+        ggplot() +
+          theme_void() +
+          annotate("text", 0, 0, label = msg_no_data_sel)
+      )
     )  
   }  
   
@@ -10882,11 +11787,12 @@ server <- function(input, output, session) {
         annots <- append(annots, list(list(
           x = xmid, y = ytxt,
           xref = "x", yref = "paper",
-          text = label_txt,
+          text = plotly_style_text_value(label_txt, "significance"),
           showarrow = FALSE,
           yanchor = "bottom",
           yshift = yshift_val,
-          font = list(size = text_px, color = "black")
+          font = plotly_font_list("significance", size = text_px, color = "black"),
+          bioszen_text_target = "significance"
         )))
       }
     }
@@ -10911,7 +11817,8 @@ server <- function(input, output, session) {
         showarrow = FALSE,
         yanchor = "bottom",
         yshift = yshift_val,
-        font = list(size = text_px, color = label_color)
+        font = plotly_font_list("significance", size = text_px, color = label_color),
+        bioszen_text_target = "significance"
       )))
     }
 
@@ -11013,7 +11920,7 @@ server <- function(input, output, session) {
 
     # Ajustes globales de fuente/colores
     plt <- plt %>% layout(
-      font      = list(family = "Helvetica", color = "black"),
+      font      = list(family = plot_font_family(), color = "black"),
       hovermode = "closest",
       xaxis     = list(automargin = TRUE),
       yaxis     = list(automargin = TRUE)
@@ -11075,7 +11982,7 @@ server <- function(input, output, session) {
     }
     
     # 4. Devuelve SIEMPRE el objeto plotly resultante
-    return(sanitize_plotly_display_labels(plt))
+    return(apply_plotly_text_style(sanitize_plotly_display_labels(plt)))
   }
 
   run_with_plot_time_limit <- function(expr, seconds = 25) {
@@ -11089,11 +11996,15 @@ server <- function(input, output, session) {
 
   # ---- plot_base: la versiÃƒÂ³n Ã¢â‚¬Å“reactiveÃ¢â‚¬Â que usa la interfaz actual ----  
   plot_base <- reactive({  
+    input$plot_w
+    input$plot_h
     if (isTRUE(is_session_closing())) {
       return(
-        ggplot() +
-          theme_void() +
-          annotate("text", 0, 0, label = tr_text("loading_plot_data", input$app_lang %||% i18n_lang))
+        style_plot_text(
+          ggplot() +
+            theme_void() +
+            annotate("text", 0, 0, label = tr_text("loading_plot_data", input$app_lang %||% i18n_lang))
+        )
       )
     }
     scope_sel  <- if (input$scope == "Combinado") "Combinado" else "Por Cepa"  
@@ -11140,9 +12051,11 @@ server <- function(input, output, session) {
             duration = 6
           )
         }
-        ggplot() +
-          theme_void() +
-          annotate("text", 0, 0, label = if (is_expected_transient && nzchar(msg)) msg else msg_no_data)
+        style_plot_text(
+          ggplot() +
+            theme_void() +
+            annotate("text", 0, 0, label = if (is_expected_transient && nzchar(msg)) msg else msg_no_data)
+        )
       }
     )
   })  
@@ -11303,7 +12216,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$repsGrpSelectAll, {
-    if (!begin_bulk_update(replicate_bulk_updating)) return()
+    if (!begin_bulk_update(replicate_bulk_updating, "replicate_bulk_updating")) return()
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
     df <- if (use_param) {
       param_rep_df()
@@ -11347,7 +12260,7 @@ server <- function(input, output, session) {
         freeze_input = TRUE
       )
     }
-    update_checkbox_input_if_changed("toggleGroups", value = TRUE)
+    sync_filter_toggle_input("toggleGroups", choices = all_groups, selected = all_groups)
     update_text_input_if_changed("orderGroups", paste(all_groups, collapse = ","))
 
     drop_all <- as.character(input$rm_reps_all %||% character(0))
@@ -11387,10 +12300,10 @@ server <- function(input, output, session) {
     if (!identical(map_strain, isolate(reps_strain_selected()))) {
       reps_strain_selected(map_strain)
     }
-  }, ignoreInit = TRUE)
+  }, ignoreInit = FALSE)
 
   observeEvent(input$repsStrainSelectAll, {
-    if (!begin_bulk_update(replicate_bulk_updating)) return()
+    if (!begin_bulk_update(replicate_bulk_updating, "replicate_bulk_updating")) return()
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
     df <- if (use_param) {
       param_rep_df()
@@ -11419,7 +12332,7 @@ server <- function(input, output, session) {
         freeze_input = TRUE
       )
     }
-    update_checkbox_input_if_changed("toggleMedios", value = TRUE)
+    sync_filter_toggle_input("toggleMedios", choices = medias, selected = medias)
     update_text_input_if_changed("orderMedios", paste(medias, collapse = ","))
 
     drop_all <- as.character(input$rm_reps_all %||% character(0))
@@ -11467,36 +12380,26 @@ server <- function(input, output, session) {
 
   output$plotInteractivo <- renderPlotly({
     input$mobile_plot_refresh
-    input$param
-    input$strain
-    input$scope
-    input$doNorm
-    input$ctrlMedium
-    req(input$dataFile)
-    if (input$tipo == "Curvas") {
-      req(cur_data_box(), cur_cfg_box())
+    plot_settle_tick()
+    req(input$dataFile, cancelOutput = TRUE)
+    if (identical(isolate(input$tipo %||% ""), "Curvas")) {
+      req(cur_data_box(), cur_cfg_box(), cancelOutput = TRUE)
     }
     
-    lang <- input$app_lang %||% i18n_lang
-    if (isTRUE(replicate_bulk_updating())) {
-      validate(need(FALSE, tr_text("loading_plot_data", lang)))
-    }
-    if (isTRUE(axis_sync_inflight())) {
-      validate(need(FALSE, tr_text("loading_plot_data", lang)))
-    }
-    if (isTRUE(dataset_loading())) {
-      validate(need(FALSE, tr_text("loading_plot_data", lang)))
-    }
-    if (isTRUE(is_session_closing())) {
-      validate(need(FALSE, tr_text("loading_plot_data", lang)))
-    }
+    if (isTRUE(isolate(replicate_bulk_updating()))) req(FALSE, cancelOutput = TRUE)
+    if (isTRUE(isolate(filter_selection_sync_inflight()))) req(FALSE, cancelOutput = TRUE)
+    if (isTRUE(isolate(axis_sync_inflight()))) req(FALSE, cancelOutput = TRUE)
+    if (isTRUE(isolate(dataset_loading()))) req(FALSE, cancelOutput = TRUE)
+    if (isTRUE(isolate(is_session_closing()))) req(FALSE, cancelOutput = TRUE)
+
+    lang <- isolate(input$app_lang %||% i18n_lang)
     msg_no_data <- tr_text("no_data_plot", lang)
     p <- tryCatch(plot_base_interactive(), error = function(e) NULL)
     validate(need(!is.null(p), msg_no_data))
     if (inherits(p, "ggplot")) {
-      plotly_width <- input$plot_w
-      plotly_height <- input$plot_h
-      tooltip_fields <- plotly_tooltip_fields(input$tipo %||% "")
+      plotly_width <- isolate(input$plot_w)
+      plotly_height <- isolate(input$plot_h)
+      tooltip_fields <- plotly_tooltip_fields(isolate(input$tipo %||% ""))
       plt <- tryCatch(
         run_with_plot_time_limit(
           suppressWarnings(
@@ -11550,7 +12453,8 @@ server <- function(input, output, session) {
         max_entries = 8L
       )
       writeBin(raw, file)
-    }
+    },
+    contentType = "image/png"
   )
 
   # --- Descarga individual PDF ----------------------------------------------
@@ -11575,8 +12479,11 @@ server <- function(input, output, session) {
         max_entries = 8L
       )
       writeBin(raw, file)
-    }
+    },
+    contentType = "application/pdf"
   )
+  outputOptions(output, "downloadPlot_png", suspendWhenHidden = FALSE)
+  outputOptions(output, "downloadPlot_pdf", suspendWhenHidden = FALSE)
 
   observeEvent(input$copy_plot_clipboard, {
     session$sendCustomMessage(
@@ -11664,7 +12571,8 @@ server <- function(input, output, session) {
         }
       )
       write_heatmap_cluster_workbook(payload, file)
-    }
+    },
+    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   )
   
   
@@ -11694,41 +12602,40 @@ server <- function(input, output, session) {
     } else {
       group_map_export <- isolate(reps_group_selected())
     }
-    export_filter <- filter_export_replicates_for_download(
+    filtered_param_data <- build_filtered_param_export_data(
       df = datos,
+      params = params,
       reps_strain_map = strain_map_export,
       reps_group_map = group_map_export,
       drop_all = as.character(isolate(input$rm_reps_all %||% character(0))),
       active_strain = active_strain,
-      tech_selection_map = isolate(qc_tech_selected())
+      tech_selection_map = isolate(qc_tech_selected()),
+      tech_selection_by_param = isolate(qc_tech_selected_by_param()),
+      active_tech_param = isolate(qc_tech_param_key())
     )
 
-    if (isTRUE(export_filter$has_changes) &&
-        is.data.frame(export_filter$df) &&
-        nrow(export_filter$df) > 0) {
-      filtered_params <- detect_filtered_params_for_download(
-        raw_df = datos,
-        filtered_df = export_filter$df,
-        params = params
-      )
-
-      if (length(filtered_params)) {
-        datos_filtered <- renumber_replicates_for_export(export_filter$df)
+    if (length(filtered_param_data)) {
+      curve_filtered_df <- NULL
+      for (param in names(filtered_param_data)) {
+        datos_filtered <- renumber_replicates_for_export(filtered_param_data[[param]])
         wb_sum <- generate_summary_wb(
           datos = datos_filtered,
-          params = filtered_params,
+          params = param,
           wb = wb_sum,
           sheet_suffix = "_filt"
         )
-
-        if (!is.null(cur_wide)) {
-          wb_sum <- add_curves_by_group_sheet(
-            wb = wb_sum,
-            curve_wide = filter_curve_wide_for_export(cur_wide, datos_filtered),
-            meta_df = datos_filtered,
-            sheet_name = "Curvas por grupo_filt"
-          )
+        if (is.null(curve_filtered_df)) {
+          curve_filtered_df <- datos_filtered
         }
+      }
+
+      if (!is.null(cur_wide) && is.data.frame(curve_filtered_df) && nrow(curve_filtered_df)) {
+        wb_sum <- add_curves_by_group_sheet(
+          wb = wb_sum,
+          curve_wide = filter_curve_wide_for_export(cur_wide, curve_filtered_df),
+          meta_df = curve_filtered_df,
+          sheet_name = "Curvas por grupo_filt"
+        )
       }
     }
     openxlsx::saveWorkbook(wb_sum, file, overwrite = TRUE)
@@ -11769,7 +12676,7 @@ server <- function(input, output, session) {
       }
       writeBin(raw, file)
     }
-  )  
+  )
   
   capture_to_raw <- function(ext, writer){
     tmp <- tempfile(fileext = ext)
@@ -11882,6 +12789,8 @@ server <- function(input, output, session) {
       stable_key_value(reps_strain_selected()),
       stable_key_value(reps_group_selected()),
       stable_key_value(as.character(input$rm_reps_all %||% character(0))),
+      stable_key_value(qc_tech_selected()),
+      stable_key_value(qc_tech_selected_by_param()),
       paste(meta$Campo, meta$Valor, sep = "=", collapse = ";"),
       sep = "||"
     )
@@ -11899,6 +12808,7 @@ server <- function(input, output, session) {
       stable_key_value(reps_group_selected()),
       stable_key_value(as.character(input$rm_reps_all %||% character(0))),
       stable_key_value(qc_tech_selected()),
+      stable_key_value(qc_tech_selected_by_param()),
       as.character(isTRUE(input$doNorm)),
       as.character(input$ctrlMedium %||% ""),
       sep = "||"
@@ -11923,6 +12833,8 @@ server <- function(input, output, session) {
       stable_key_value(reps_strain_selected()),
       stable_key_value(reps_group_selected()),
       stable_key_value(as.character(input$rm_reps_all %||% character(0))),
+      stable_key_value(qc_tech_selected()),
+      stable_key_value(qc_tech_selected_by_param()),
       sep = "||"
     )
   }
@@ -12017,7 +12929,7 @@ server <- function(input, output, session) {
       record$files$parametros <- list(
         name = "Parametros_por_grupo.xlsx",
         raw  = raw_params,
-        description = "Archivo de parÃƒÂ¡metros exportado"
+        description = "Archivo de parámetros exportado"
       )
     }
 
@@ -12074,15 +12986,13 @@ server <- function(input, output, session) {
       group1_sel   <- isolate(input$group1)         %||% ""
       group2_sel   <- isolate(input$group2)         %||% ""
 
-      base_df <- if (scope_sel == "Por Cepa") {
-        datos_agrupados() |>
-          dplyr::filter(Strain == strain_sel) |>
-          order_filter_strain() |>
-          filter_reps_strain()
-      } else {
-        datos_agrupados() |>
-          order_filter_group()
-      }
+      base_df <- tryCatch(
+        get_scope_df(
+          scope = scope_sel,
+          strain = if (identical(scope_sel, "Por Cepa")) strain_sel else NULL
+        ),
+        error = function(e) NULL
+      )
       if (is.null(base_df) || !is.data.frame(base_df) || nrow(base_df) == 0) {
         stop("No rows available for statistical export after applying the current filters.")
       }
@@ -12350,7 +13260,8 @@ server <- function(input, output, session) {
         stop(msg, call. = FALSE)
       }
       writeBin(raw, file)
-    }
+    },
+    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   )
 
   observeEvent(input$save_bundle_version, {
@@ -12610,7 +13521,7 @@ server <- function(input, output, session) {
       info_lines <- c(
         paste("Etiqueta:", if (nzchar(v$label_input)) v$label_input else "(sin etiqueta)"),
         paste("Tipo:", v$tipo),
-        paste("ÃƒÂmbito:", v$scope)
+        paste("Ámbito:", v$scope)
       )
       if (nzchar(v$strain)) {
         info_lines <- c(info_lines, paste("Cepa:", v$strain))
@@ -12623,7 +13534,7 @@ server <- function(input, output, session) {
         info_lines <- c(info_lines, paste("Dataset asociado:", dataset_ref))
       }
       if (!is.null(stats_ref)) {
-        info_lines <- c(info_lines, paste("EstadÃƒÂ­sticas:", stats_ref))
+        info_lines <- c(info_lines, paste("Estadísticas:", stats_ref))
       }
       writeLines(info_lines, file.path(ver_dir, "INFO.txt"))
     }
@@ -12673,7 +13584,8 @@ server <- function(input, output, session) {
         stop(msg, call. = FALSE)
       }
       writeBin(raw, file)
-    }
+    },
+    contentType = "application/zip"
   )
   
   output$showImportBtn <- renderUI({
@@ -12698,11 +13610,21 @@ server <- function(input, output, session) {
       if (!length(v)) return(NULL)
       v[[1]]
     }
+    get_val_allow_blank <- function(campo) {
+      if (campo %in% blocked_data_keys) return(NULL)
+      idx <- which(meta$Campo == campo)
+      if (!length(idx)) return(NULL)
+      v <- as.character(meta$Valor[idx[[1]]])
+      if (!length(v) || is.na(v[[1]])) "" else v[[1]]
+    }
     parse_csv_values <- function(x) {
       x <- as.character(x %||% "")
       if (!length(x) || is.na(x[1]) || !nzchar(trimws(x[1]))) return(character(0))
       vals <- trimws(strsplit(x[1], ",", fixed = TRUE)[[1]])
       vals[nzchar(vals)]
+    }
+    parse_style_values <- function(x) {
+      metadata_parse_text_style_value(x)
     }
     parse_bool <- function(x) {
       vals <- as.character(x %||% "")
@@ -12737,6 +13659,24 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("fs_title")))   updateNumericInput(session, "fs_title",   value = as.numeric(v))
     if (!is.null(v <- get_val("fs_axis")))    updateNumericInput(session, "fs_axis",    value = as.numeric(v))
     if (!is.null(v <- get_val("fs_legend")))  updateNumericInput(session, "fs_legend",  value = as.numeric(v))
+    if (!is.null(v <- get_val("plot_font_family"))) updateSelectInput(session, "plot_font_family", selected = v)
+    plot_style_targets <- plot_text_style_targets()
+    restored_style_fields <- character(0)
+    for (target in plot_style_targets) {
+      input_id <- plot_text_style_input_id(target)
+      if (!is.null(v <- get_val_allow_blank(input_id))) {
+        updateCheckboxGroupInput(session, input_id, selected = parse_style_values(v))
+        restored_style_fields <- c(restored_style_fields, target)
+      }
+    }
+    old_targets <- get_val("plot_text_style_targets")
+    old_styles <- get_val("plot_text_styles")
+    if (!is.null(old_targets) && !is.null(old_styles)) {
+      legacy_targets <- parse_csv_values(old_targets)
+      for (target in setdiff(intersect(legacy_targets, plot_style_targets), restored_style_fields)) {
+        updateCheckboxGroupInput(session, plot_text_style_input_id(target), selected = parse_style_values(old_styles))
+      }
+    }
     if (!is.null(v <- get_val("axis_line_size"))) updateNumericInput(session, "axis_line_size", value = as.numeric(v))
     if (!is.null(v <- get_val("yLab")))       updateTextInput(session, "yLab", value = v)
     if (!is.null(v <- get_val("plotTitle")))  updateTextInput(session, "plotTitle", value = v)
@@ -12777,10 +13717,18 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("doNorm")))     updateCheckboxInput(session, "doNorm",    value = tolower(v) == "true")
     if (!is.null(v <- get_val("ctrlMedium"))) updateSelectInput(session, "ctrlMedium", selected = if (v == "NULL") character(0) else v)
     if (!is.null(v <- get_val("errbar_stat"))) {
+      errbar_default <- default_errorbar_stat_for_plot(
+        input$tipo %||% "",
+        allow_minmax = identical(input$tipo %||% "", "Boxplot")
+      )
       updateRadioButtons(
         session,
         "errbar_stat",
-        selected = normalize_errorbar_stat(v, allow_minmax = identical(input$tipo %||% "", "Boxplot"))
+        selected = normalize_errorbar_stat(
+          v,
+          default = errbar_default,
+          allow_minmax = identical(input$tipo %||% "", "Boxplot")
+        )
       )
     }
     if (!is.null(v <- get_val("errbar_size")))updateNumericInput(session, "errbar_size", value = as.numeric(v))
@@ -12907,7 +13855,8 @@ server <- function(input, output, session) {
         stop(msg, call. = FALSE)
       }
       writeBin(raw, file)
-    }
+    },
+    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   )
 
   # --- Carga de metadata de diseno -----------------------------------
@@ -12957,6 +13906,16 @@ server <- function(input, output, session) {
 
       meta$Campo <- as.character(meta$Campo)
       meta$Valor <- as.character(meta$Valor)
+      text_style <- tryCatch(read_excel_tmp(path, sheet = "TextStyle"),
+                             error = function(e) NULL)
+      meta <- metadata_merge_rows(
+        meta,
+        metadata_text_style_sheet_rows(
+          text_style,
+          font_field = "plot_font_family",
+          style_prefix = "plot_text_style_"
+        )
+      )
       meta_tipo  <- extract_meta_type(meta)
       name_tipo  <- if (startsWith(fname, "metadata_"))
         sub("^metadata_", "", sub("\\.xlsx$", "", fname)) else NULL
@@ -13024,7 +13983,8 @@ server <- function(input, output, session) {
         limitsize = FALSE,
         bg = "white"
       )
-    }
+    },
+    contentType = "image/png"
   )
   
   # 5.2 PPTX vectorial editable
@@ -13038,7 +13998,8 @@ server <- function(input, output, session) {
         ph_with(dml(ggobj = combo_plot()),
                 location = ph_location_fullsize())
       print(doc, target = file)
-    }
+    },
+    contentType = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
   )
 
   # 5.3 PDF
@@ -13056,7 +14017,8 @@ server <- function(input, output, session) {
         device = cairo_pdf,
         bg = "white"
       )
-    }
+    },
+    contentType = "application/pdf"
   )
 
   observeEvent(input$copy_combo_clipboard, {

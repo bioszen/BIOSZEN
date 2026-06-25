@@ -264,6 +264,20 @@ tipo específico de medición.
 - Elige geometría de línea e intervalo de confianza.
 - Opción de mostrar trayectorias crudas de réplicas.
 
+### Controles compartidos de apariencia
+
+- El selector **Estadístico de barras de error** controla las barras de desviación cuando están disponibles:
+  - `SD`/`DE`: media +/- desviación estándar.
+  - `SEM`: media +/- error estándar.
+  - `Min-Max`: mínimo observado a máximo observado; disponible solo en Caja.
+- La sección desplegable **Estilo de texto** está disponible para gráficos individuales.
+- **Familia tipográfica** se aplica a todo el texto del gráfico actual. Las opciones incluyen fuentes comunes de publicación y sistema como Helvetica, Arial, Calibri, Cambria, Segoe UI, Times New Roman, Georgia, Verdana y variantes relacionadas.
+- Negrita, cursiva y subrayado se aplican de forma independiente por tipo de texto: título del gráfico, títulos de ejes, números de ejes, leyenda, etiquetas de datos y texto de significancia.
+- Cada tipo de texto puede tener su propia combinación de estilos; subrayar significancia, por ejemplo, no obliga a subrayar el título ni la leyenda.
+- Estos ajustes se aplican a la previsualización y se incluyen al exportar `PNG` y `PDF`.
+
+![Controles de estilo de texto](manual_images/11_text_styling_controls.png)
+
 ### Panel de Composición
 
 Pasos recomendados:
@@ -272,9 +286,11 @@ Pasos recomendados:
 2. Abrir pestaña **Panel de Composición**.
 3. Seleccionar y ordenar gráficos.
 4. Configurar layout (filas/columnas, malla, tamaño final).
-5. Ajustar estilo (leyenda, fuentes, tamaños, paleta).
+5. Ajustar estilo (modo de leyenda, lado de leyenda, fuentes, tamaños, paleta).
 6. Agregar texto enriquecido y overrides opcionales.
 7. Exportar a `PNG`, `PPTX`, `PDF`.
+
+Los controles de estilo de la composición se aplican en paralelo a todos los gráficos seleccionados. La sección **Estilo de texto** de composición replica los controles de gráficos individuales: la familia tipográfica se aplica a todo el texto de todos los gráficos, mientras que negrita/cursiva/subrayado se seleccionan por separado para títulos, ejes, leyendas, etiquetas de datos y texto de significancia. Las exportaciones de composición conservan estos ajustes en `PNG`, `PDF` y `PPTX`.
 
 ![Configuración de significancia y anotaciones](manual_images/10_significance_annotations.png)
 
@@ -307,6 +323,8 @@ Rutas post hoc por selección:
 - Scheffe, Conover, Nemenyi, DSCF: `PMCMRplus`
 
 Estadística de curvas (`S1`-`S4`):
+
+El acordeón **Estadística de curvas** aparece para gráficos de Curvas. Selecciona uno o más métodos y luego usa **Ejecutar estadística de curvas** para generar la tabla de resultados.
 
 - `S1`: `stats::lm` + `splines::ns` + `stats::anova`
 - `S2`: `stats::pnorm` + `stats::pchisq`
@@ -383,6 +401,7 @@ Flujo de metadatos:
 - **Descargar metadatos** para guardar estado actual.
 - Reimportar metadatos en sesiones futuras.
 - El estado de orientación horizontal se conserva en roundtrip.
+- La familia tipográfica, los estilos de texto, el estadístico de barras de error y la selección de métodos de estadística de curvas se conservan en el roundtrip de metadatos.
 
 Bundle reproducible:
 
@@ -407,6 +426,8 @@ Salidas principales:
 - Bundle ZIP.
 - Tabla de correlación avanzada.
 - Exportación de merge platemap/curvas (si se usó merge).
+
+Las exportaciones de gráficos conservan la configuración visual activa, incluyendo familia tipográfica, estilos por tipo de texto (negrita/cursiva/subrayado), estadístico de barras de error seleccionado, etiquetas de significancia y ajustes de ejes/leyenda. Las exportaciones de composición conservan los mismos controles tipográficos en todos los gráficos del layout.
 
 ## 13. Módulo de Crecimiento
 

@@ -202,7 +202,7 @@ not change the BIOSZEN Shiny application.
 
 ## Citation
 
-Szenfeld, B. (2026). BIOSZEN (2.0.2). Zenodo. https://doi.org/10.5281/zenodo.18217522
+Szenfeld, B. (2026). BIOSZEN (2.0.3). Zenodo. https://doi.org/10.5281/zenodo.18217522
 
 ## License
 

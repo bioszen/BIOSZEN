@@ -133,3 +133,92 @@ test_that("technical selection filter falls back to group keys when needed", {
   expect_identical(sort(filtered$TechnicalReplicate), c("T2", "T3"))
   expect_equal(nrow(filtered), 2)
 })
+
+test_that("technical selection filter can match blank-media group keys during export", {
+  df <- data.frame(
+    Strain = c("LysoR-", "LysoR-", "LysoR-"),
+    Media = c("", "", ""),
+    BiologicalReplicate = c("1", "1", "1"),
+    TechnicalReplicate = c("2461", "2462", "2463"),
+    Value = c(1, 2, 30),
+    stringsAsFactors = FALSE
+  )
+
+  filtered <- qc_filter_by_technical_selection(
+    df,
+    tech_map = list("LysoR--||1" = c("2461", "2462")),
+    group_col = NULL,
+    biorep_col = "BiologicalReplicate",
+    tech_col = "TechnicalReplicate",
+    strain_col = "Strain",
+    media_col = "Media"
+  )
+
+  expect_equal(nrow(filtered), 2)
+  expect_identical(sort(filtered$TechnicalReplicate), c("2461", "2462"))
+  expect_false("2463" %in% filtered$TechnicalReplicate)
+})
+
+test_that("technical outlier exclusion builds canonical maps from source rows", {
+  skip_if_not_installed("dplyr")
+  skip_if_not_installed("tibble")
+
+  df <- data.frame(
+    Label = c("LysoR--", "LysoR--", "LysoR--", "Filipina-siNEG"),
+    Strain = c("LysoR-", "LysoR-", "LysoR-", "Filipina"),
+    Media = c("", "", "", "siNEG"),
+    BiologicalReplicate = c("1", "1", "1", "7"),
+    TechnicalReplicate = c("2461", "2462", "2463", "501"),
+    P = c(1, 2, 30, 4),
+    stringsAsFactors = FALSE
+  )
+  out_reps <- tibble::tibble(
+    Group = "LysoR--",
+    Subgroup = "1",
+    Replicate = "2463"
+  )
+
+  result <- qc_build_technical_outlier_selection(
+    df = df,
+    out_reps = out_reps,
+    group_col = "Label",
+    current_map = list("LysoR--||1" = c("2461", "2462", "2463"))
+  )
+
+  expect_equal(result$changed, 1L)
+  expect_identical(result$map[["LysoR--||1"]], c("2461", "2462"))
+  expect_identical(result$map[["Filipina||siNEG||7"]], "501")
+
+  filtered <- qc_filter_by_technical_selection(df, tech_map = result$map, group_col = NULL)
+  expect_false(any(filtered$Label == "LysoR--" & filtered$TechnicalReplicate == "2463"))
+  expect_true(any(filtered$Label == "Filipina-siNEG" & filtered$TechnicalReplicate == "501"))
+})
+
+test_that("technical filtered detail table lists only selected technical replicates", {
+  df <- data.frame(
+    Strain = c("S1", "S1", "S1", "S1"),
+    Media = c("M1", "M1", "M1", "M1"),
+    Orden = c(1, 1, 1, 1),
+    Well = c("A1", "A2", "A3", "A4"),
+    BiologicalReplicate = c("B1", "B1", "B2", "B2"),
+    TechnicalReplicate = c("T1", "T2", "T1", "T2"),
+    P = c(10, 100, 20, 30),
+    stringsAsFactors = FALSE
+  )
+
+  tbl <- build_technical_filtered_detail_table(
+    df = df,
+    param = "P",
+    tech_map = list(
+      "S1||M1||B1" = "T1",
+      "S1||M1||B2" = c("T1", "T2")
+    )
+  )
+
+  expect_equal(nrow(tbl), 3)
+  expect_true(all(c("Version", "Strain", "Media", "RepBiol", "RepTec", "Well", "Parameter", "Valor") %in% names(tbl)))
+  expect_true(all(tbl$Version == "filt"))
+  expect_false(any(tbl$RepBiol == "B1" & tbl$RepTec == "T2"))
+  expect_true(any(tbl$RepBiol == "B1" & tbl$RepTec == "T1"))
+  expect_true(any(tbl$RepBiol == "B2" & tbl$RepTec == "T2"))
+})

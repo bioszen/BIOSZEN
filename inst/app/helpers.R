@@ -173,8 +173,124 @@ metadata_filter_design_only <- function(meta_tbl) {
   meta_tbl[keep, , drop = FALSE]
 }
 
-sanitize <- function(x) {
-  gsub("[/\\\\:*?\"<>|]", "_", x)
+metadata_text_allowed_styles <- function(allowed = NULL) {
+  if (is.null(allowed)) {
+    allowed <- if (exists("bioszen_plot_text_styles", mode = "function")) {
+      bioszen_plot_text_styles()
+    } else {
+      c("bold", "italic", "underline")
+    }
+  }
+  unique(tolower(as.character(allowed)))
+}
+
+metadata_text_style_value <- function(styles, allowed = NULL) {
+  vals <- tolower(trimws(as.character(styles %||% character(0))))
+  vals <- vals[!is.na(vals) & nzchar(vals)]
+  vals <- intersect(vals, metadata_text_allowed_styles(allowed))
+  if (!length(vals)) return("normal")
+  paste(vals, collapse = ",")
+}
+
+metadata_parse_text_style_value <- function(value, allowed = NULL) {
+  vals <- as.character(value %||% "")
+  if (!length(vals) || is.na(vals[[1]]) || !nzchar(trimws(vals[[1]]))) {
+    return(character(0))
+  }
+  vals <- tolower(trimws(unlist(strsplit(vals[[1]], "[,;]", perl = TRUE), use.names = FALSE)))
+  vals <- vals[!is.na(vals) & nzchar(vals)]
+  vals <- vals[!vals %in% c("normal", "plain", "regular", "none")]
+  intersect(vals, metadata_text_allowed_styles(allowed))
+}
+
+metadata_text_target_label <- function(target) {
+  labels <- c(
+    title = "Plot title",
+    composition_title = "Composition title",
+    plot_titles = "Plot titles",
+    axis_titles = "Axis titles",
+    axis_text = "Axis numbers",
+    legend = "Legend",
+    data_labels = "Data labels",
+    significance = "Significance text"
+  )
+  target <- as.character(target %||% "")
+  out <- unname(labels[target])
+  if (!length(out) || is.na(out) || !nzchar(out)) target else out
+}
+
+metadata_text_style_sheet_rows <- function(style_tbl, font_field, style_prefix) {
+  empty <- data.frame(Campo = character(0), Valor = character(0), stringsAsFactors = FALSE)
+  if (is.null(style_tbl) || !is.data.frame(style_tbl) || !nrow(style_tbl)) return(empty)
+
+  col_value <- function(names) {
+    idx <- match(tolower(names), tolower(colnames(style_tbl)))
+    idx <- idx[!is.na(idx)]
+    if (!length(idx)) return(rep(NA_character_, nrow(style_tbl)))
+    as.character(style_tbl[[idx[[1]]]])
+  }
+
+  rows <- empty
+  append_row <- function(campo, valor) {
+    campo <- as.character(campo %||% "")
+    valor <- as.character(valor %||% "")
+    if (!length(campo) || is.na(campo[[1]]) || !nzchar(trimws(campo[[1]]))) return(invisible(NULL))
+    valor <- if (!length(valor) || is.na(valor[[1]])) "" else valor[[1]]
+    rows <<- rbind(
+      rows,
+      data.frame(Campo = campo[[1]], Valor = valor, stringsAsFactors = FALSE)
+    )
+    invisible(NULL)
+  }
+
+  font <- col_value(c("FontFamily", "Fuente", "Font"))
+  font <- font[!is.na(font) & nzchar(trimws(font))]
+  if (length(font)) append_row(font_field, font[[1]])
+
+  input_ids <- col_value(c("InputId", "Campo", "StyleInputId"))
+  styles <- col_value(c("Style", "Estilo"))
+  size_ids <- col_value(c("SizeInputId", "TamanoInputId", "SizeField"))
+  sizes <- col_value(c("Size", "Tamano", "Tamaño"))
+
+  for (i in seq_len(nrow(style_tbl))) {
+    input_id <- input_ids[[i]]
+    if (!is.na(input_id) && nzchar(trimws(input_id)) && startsWith(input_id, style_prefix)) {
+      append_row(input_id, metadata_text_style_value(metadata_parse_text_style_value(styles[[i]])))
+    }
+
+    size_id <- size_ids[[i]]
+    size <- sizes[[i]]
+    if (
+      !is.na(size_id) && nzchar(trimws(size_id)) &&
+      !is.na(size) && nzchar(trimws(size))
+    ) {
+      append_row(size_id, size)
+    }
+  }
+
+  rows[!duplicated(rows$Campo, fromLast = TRUE), , drop = FALSE]
+}
+
+metadata_merge_rows <- function(meta_tbl, extra_tbl) {
+  if (is.null(extra_tbl) || !is.data.frame(extra_tbl) || !nrow(extra_tbl)) return(meta_tbl)
+  if (is.null(meta_tbl) || !is.data.frame(meta_tbl) || !all(c("Campo", "Valor") %in% names(meta_tbl))) {
+    return(extra_tbl)
+  }
+  meta_tbl <- meta_tbl[!as.character(meta_tbl$Campo) %in% as.character(extra_tbl$Campo), , drop = FALSE]
+  rbind(meta_tbl, extra_tbl)
+}
+
+sanitize <- function(x, fallback = "") {
+  if (is.null(x) || !length(x)) return(fallback)
+  out <- as.character(x)
+  out[is.na(out)] <- ""
+  out <- gsub("[/\\\\:*?\"<>|]", "_", out)
+  out <- trimws(out)
+  out <- gsub("_+", "_", out)
+  out <- gsub("^_+|_+$", "", out)
+  empty <- !nzchar(out)
+  if (any(empty)) out[empty] <- fallback
+  out
 }
 
 # Limit axis intervals to avoid generating excessive tick marks that can
@@ -320,6 +436,11 @@ sanitize_stack_summary <- function(df, mean_col = "Mean", sd_col = "SD") {
   df
 }
 
+default_errorbar_stat_for_plot <- function(plot_type = NULL, allow_minmax = TRUE) {
+  type_chr <- if (is.null(plot_type) || !length(plot_type)) "" else toupper(trimws(as.character(plot_type[[1]])))
+  if (isTRUE(allow_minmax) && identical(type_chr, "BOXPLOT")) "MINMAX" else "SD"
+}
+
 normalize_errorbar_stat <- function(value, default = "SD", allow_minmax = TRUE) {
   allowed <- c("SD", "SEM")
   if (isTRUE(allow_minmax)) allowed <- c(allowed, "MINMAX")
@@ -329,14 +450,24 @@ normalize_errorbar_stat <- function(value, default = "SD", allow_minmax = TRUE) 
 
   value_chr <- toupper(trimws(as.character(value[[1]])))
   if (is.na(value_chr) || !nzchar(value_chr)) return(default_chr)
-  if (value_chr %in% c("SEM", "SE", "SE_MEAN", "STANDARD ERROR", "STANDARD ERROR OF MEAN")) {
+  if (value_chr %in% c(
+    "SEM", "SE", "SE_MEAN", "STANDARD ERROR", "STANDARD ERROR OF MEAN",
+    "ERROR ESTANDAR", "ERROR ESTÁNDAR"
+  )) {
     return("SEM")
   }
-  if (value_chr %in% c("SD", "STD", "STDDEV", "STANDARD DEVIATION")) {
+  if (value_chr %in% c(
+    "SD", "STD", "STDDEV", "STANDARD DEVIATION",
+    "DESVIACION ESTANDAR", "DESVIACIÓN ESTÁNDAR"
+  )) {
     return("SD")
   }
   if (isTRUE(allow_minmax) &&
-      value_chr %in% c("MINMAX", "MIN-MAX", "MIN_MAX", "MIN/MAX", "RANGE", "MINIMUM/MAXIMUM", "WHISKERS", "ORIGINAL")) {
+      value_chr %in% c(
+        "MINMAX", "MIN-MAX", "MIN_MAX", "MIN/MAX", "RANGE",
+        "MINIMUM/MAXIMUM", "WHISKERS", "ORIGINAL",
+        "MINIMO/MAXIMO", "MÍNIMO/MÁXIMO", "MINIMO Y MAXIMO", "MÍNIMO Y MÁXIMO"
+      )) {
     return("MINMAX")
   }
   default_chr
@@ -819,16 +950,22 @@ normalize_replicate_selection <- function(values) {
 }
 
 qc_build_tech_selection_key <- function(group, biorep, strain = NULL, media = NULL) {
-  biorep_chr <- if (is.null(biorep) || !length(biorep)) "" else as.character(biorep[[1]])
+  clean_one <- function(value) {
+    if (is.null(value) || !length(value)) return("")
+    out <- as.character(value[[1]])
+    if (is.na(out)) "" else out
+  }
+
+  biorep_chr <- clean_one(biorep)
   if (!nzchar(biorep_chr)) return("")
 
-  strain_chr <- if (is.null(strain) || !length(strain)) "" else as.character(strain[[1]])
-  media_chr <- if (is.null(media) || !length(media)) "" else as.character(media[[1]])
+  strain_chr <- clean_one(strain)
+  media_chr <- clean_one(media)
   if (nzchar(strain_chr) && nzchar(media_chr)) {
     return(paste(strain_chr, media_chr, biorep_chr, sep = "||"))
   }
 
-  group_chr <- if (is.null(group) || !length(group)) "" else as.character(group[[1]])
+  group_chr <- clean_one(group)
   if (!nzchar(group_chr)) return("")
   paste(group_chr, biorep_chr, sep = "||")
 }
@@ -851,25 +988,32 @@ qc_filter_by_technical_selection <- function(
 
   biorep_chr <- as.character(df[[biorep_col]])
   tech_chr <- as.character(df[[tech_col]])
+  strain_chr <- if (has_strain_media) as.character(df[[strain_col]]) else rep("", nrow(df))
+  media_chr <- if (has_strain_media) as.character(df[[media_col]]) else rep("", nrow(df))
+  strain_chr[is.na(strain_chr)] <- ""
+  media_chr[is.na(media_chr)] <- ""
   group_chr <- if (has_group) as.character(df[[group_col]]) else rep("", nrow(df))
+  group_chr[is.na(group_chr)] <- ""
+  derived_group_chr <- if (has_strain_media) paste(strain_chr, media_chr, sep = "-") else rep("", nrow(df))
+  group_key_chr <- group_chr
+  missing_group <- is.na(group_key_chr) | !nzchar(group_key_chr)
+  group_key_chr[missing_group] <- derived_group_chr[missing_group]
 
   valid_key <- !is.na(biorep_chr) & nzchar(biorep_chr)
   if (has_group) {
-    valid_key <- valid_key & !is.na(group_chr) & nzchar(group_chr)
+    valid_key <- valid_key & !is.na(group_key_chr) & nzchar(group_key_chr)
   }
   if (!any(valid_key)) return(df)
 
   key_vals <- rep("", nrow(df))
   if (has_strain_media) {
-    strain_chr <- as.character(df[[strain_col]])
-    media_chr <- as.character(df[[media_col]])
     valid_sm <- valid_key &
-      !is.na(strain_chr) & nzchar(strain_chr) &
-      !is.na(media_chr) & nzchar(media_chr)
+      nzchar(strain_chr) &
+      nzchar(media_chr)
     if (any(valid_sm)) {
       key_vals[valid_sm] <- mapply(
         qc_build_tech_selection_key,
-        group = group_chr[valid_sm],
+        group = group_key_chr[valid_sm],
         biorep = biorep_chr[valid_sm],
         strain = strain_chr[valid_sm],
         media = media_chr[valid_sm],
@@ -882,7 +1026,7 @@ qc_filter_by_technical_selection <- function(
   if (any(missing_idx)) {
     key_vals[missing_idx] <- mapply(
       qc_build_tech_selection_key,
-      group = group_chr[missing_idx],
+      group = group_key_chr[missing_idx],
       biorep = biorep_chr[missing_idx],
       USE.NAMES = FALSE
     )
@@ -903,6 +1047,177 @@ qc_filter_by_technical_selection <- function(
   }
 
   df[keep, , drop = FALSE]
+}
+
+qc_build_technical_outlier_selection <- function(
+  df,
+  out_reps,
+  group_col,
+  current_map = list(),
+  biorep_col = "BiologicalReplicate",
+  tech_col = "TechnicalReplicate",
+  strain_col = "Strain",
+  media_col = "Media"
+) {
+  empty <- list(map = list(), changed = 0L)
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(empty)
+  if (is.null(out_reps) || !is.data.frame(out_reps) || !nrow(out_reps)) return(empty)
+  if (!all(c("Group", "Replicate") %in% names(out_reps))) return(empty)
+  if (!all(c(biorep_col, tech_col) %in% names(df))) return(empty)
+
+  has_group <- !is.null(group_col) && length(group_col) && group_col %in% names(df)
+  has_strain_media <- strain_col %in% names(df) && media_col %in% names(df)
+  if (!has_group && !has_strain_media) return(empty)
+  if (!is.list(current_map)) current_map <- list()
+
+  n <- nrow(df)
+  strain_chr <- if (has_strain_media) as.character(df[[strain_col]]) else rep("", n)
+  media_chr <- if (has_strain_media) as.character(df[[media_col]]) else rep("", n)
+  strain_chr[is.na(strain_chr)] <- ""
+  media_chr[is.na(media_chr)] <- ""
+  group_chr <- if (has_group) as.character(df[[group_col]]) else rep("", n)
+  group_chr[is.na(group_chr)] <- ""
+  derived_group_chr <- if (has_strain_media) paste(strain_chr, media_chr, sep = "-") else rep("", n)
+  group_key_chr <- group_chr
+  missing_group <- is.na(group_key_chr) | !nzchar(group_key_chr)
+  group_key_chr[missing_group] <- derived_group_chr[missing_group]
+
+  combos <- data.frame(
+    Group = group_key_chr,
+    Strain = strain_chr,
+    Media = media_chr,
+    BiologicalReplicate = as.character(df[[biorep_col]]),
+    TechnicalReplicate = as.character(df[[tech_col]]),
+    stringsAsFactors = FALSE
+  )
+  combos <- combos[
+    !is.na(combos$Group) & nzchar(combos$Group) &
+      !is.na(combos$BiologicalReplicate) & nzchar(combos$BiologicalReplicate) &
+      !is.na(combos$TechnicalReplicate) & nzchar(combos$TechnicalReplicate),
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(combos)) return(empty)
+  combos <- unique(combos)
+
+  out_reps <- out_reps %>%
+    dplyr::mutate(
+      Group = as.character(.data$Group),
+      Replicate = as.character(.data$Replicate)
+    )
+  if ("Subgroup" %in% names(out_reps)) {
+    out_reps <- out_reps %>% dplyr::mutate(Subgroup = as.character(.data$Subgroup))
+  }
+
+  split_key <- paste(combos$Group, combos$Strain, combos$Media, combos$BiologicalReplicate, sep = "\r")
+  selection_map <- list()
+  changed <- 0L
+
+  for (split in unique(split_key)) {
+    idx <- split_key == split
+    group_name <- combos$Group[idx][[1]]
+    strain_name <- combos$Strain[idx][[1]]
+    media_name <- combos$Media[idx][[1]]
+    biorep_name <- combos$BiologicalReplicate[idx][[1]]
+    key <- qc_build_tech_selection_key(
+      group = group_name,
+      biorep = biorep_name,
+      strain = strain_name,
+      media = media_name
+    )
+    if (!nzchar(key)) next
+
+    choices <- normalize_replicate_selection(combos$TechnicalReplicate[idx])
+    current <- if (!is.null(current_map[[key]])) {
+      normalize_replicate_selection(intersect(as.character(current_map[[key]]), choices))
+    } else {
+      choices
+    }
+    flagged <- if ("Subgroup" %in% names(out_reps)) {
+      out_reps$Replicate[out_reps$Group == group_name & out_reps$Subgroup == biorep_name]
+    } else {
+      out_reps$Replicate[out_reps$Group == group_name]
+    }
+    flagged <- normalize_replicate_selection(intersect(as.character(flagged), choices))
+    next_sel <- setdiff(current, flagged)
+    selection_map[[key]] <- next_sel
+    changed <- changed + length(setdiff(current, next_sel))
+  }
+
+  list(map = selection_map, changed = as.integer(changed))
+}
+
+build_technical_filtered_detail_table <- function(
+  df,
+  param,
+  tech_map,
+  value_col = "Valor"
+) {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(tibble::tibble())
+  if (!is.list(tech_map) || !length(tech_map)) return(tibble::tibble())
+
+  param_chr <- if (is.null(param)) "" else as.character(param)
+  param_chr <- param_chr[!is.na(param_chr) & nzchar(param_chr)]
+  if (!length(param_chr)) return(tibble::tibble())
+  param_chr <- param_chr[[1]]
+  if (!param_chr %in% names(df)) return(tibble::tibble())
+
+  required <- c("Strain", "Media", "BiologicalReplicate", "TechnicalReplicate")
+  if (!all(required %in% names(df))) return(tibble::tibble())
+
+  filtered <- qc_filter_by_technical_selection(
+    df = df,
+    tech_map = tech_map,
+    group_col = NULL,
+    biorep_col = "BiologicalReplicate",
+    tech_col = "TechnicalReplicate",
+    strain_col = "Strain",
+    media_col = "Media"
+  )
+  if (!is.data.frame(filtered) || nrow(filtered) >= nrow(df)) return(tibble::tibble())
+
+  ord_col <- if ("Orden" %in% names(filtered)) {
+    suppressWarnings(as.numeric(filtered$Orden))
+  } else {
+    rep(NA_real_, nrow(filtered))
+  }
+  well_col <- if ("Well" %in% names(filtered)) {
+    as.character(filtered$Well)
+  } else {
+    rep(NA_character_, nrow(filtered))
+  }
+
+  out <- tibble::tibble(
+    Version = "filt",
+    Strain = as.character(filtered$Strain),
+    Media = as.character(filtered$Media),
+    RepBiol = as.character(filtered$BiologicalReplicate),
+    RepTec = as.character(filtered$TechnicalReplicate),
+    Well = well_col,
+    Parameter = param_chr,
+    Valor = suppressWarnings(as.numeric(filtered[[param_chr]])),
+    .Orden = ord_col
+  )
+
+  bio_levels <- normalize_replicate_selection(out$RepBiol)
+  tech_levels <- normalize_replicate_selection(out$RepTec)
+  out <- out %>%
+    dplyr::mutate(
+      RepBiol = factor(.data$RepBiol, levels = bio_levels),
+      RepTec = factor(.data$RepTec, levels = tech_levels)
+    ) %>%
+    dplyr::arrange(.data$Strain, .data$.Orden, .data$Media, .data$RepBiol, .data$RepTec, .data$Well) %>%
+    dplyr::mutate(
+      RepBiol = as.character(.data$RepBiol),
+      RepTec = as.character(.data$RepTec)
+    ) %>%
+    dplyr::select(-dplyr::all_of(".Orden"))
+
+  if (!identical(value_col, "Valor") && nzchar(as.character(value_col))) {
+    names(out)[names(out) == "Valor"] <- as.character(value_col)
+  }
+
+  out
 }
 
 replicate_selection_group_id <- function(strain, media) {
@@ -1094,6 +1409,65 @@ filter_export_replicates_for_download <- function(
   }
   dropped <- as.integer(nrow(df) - nrow(out))
   list(df = out, has_changes = dropped > 0L, dropped_rows = dropped)
+}
+
+build_filtered_param_export_data <- function(
+  df,
+  params,
+  reps_strain_map = list(),
+  reps_group_map = list(),
+  drop_all = character(0),
+  active_strain = NULL,
+  tech_selection_map = list(),
+  tech_selection_by_param = list(),
+  active_tech_param = NULL
+) {
+  out <- list()
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(out)
+  params <- if (is.null(params)) character(0) else as.character(params)
+  params <- intersect(params, names(df))
+  params <- params[!is.na(params) & nzchar(params)]
+  if (!length(params)) return(out)
+  if (!is.list(tech_selection_by_param)) tech_selection_by_param <- list()
+  active_tech_param <- as.character(active_tech_param %||% "")
+  active_tech_param <- active_tech_param[!is.na(active_tech_param) & nzchar(active_tech_param)]
+  active_tech_param <- if (length(active_tech_param)) active_tech_param[[1]] else ""
+
+  for (param in params) {
+    param_tech_map <- tech_selection_map
+    has_param_store <- !is.null(tech_selection_by_param[[param]]) &&
+      is.list(tech_selection_by_param[[param]])
+    if (has_param_store && length(tech_selection_by_param[[param]])) {
+      param_tech_map <- tech_selection_by_param[[param]]
+    } else if (has_param_store && !identical(param, active_tech_param)) {
+      param_tech_map <- list()
+    }
+
+    filtered <- filter_export_replicates_for_download(
+      df = df,
+      reps_strain_map = reps_strain_map,
+      reps_group_map = reps_group_map,
+      drop_all = drop_all,
+      active_strain = active_strain,
+      tech_selection_map = param_tech_map
+    )
+    if (!isTRUE(filtered$has_changes) ||
+        !is.data.frame(filtered$df) ||
+        !nrow(filtered$df)) {
+      next
+    }
+
+    affected <- detect_filtered_params_for_download(
+      raw_df = df,
+      filtered_df = filtered$df,
+      params = param
+    )
+    if (length(affected)) {
+      out[[param]] <- filtered$df
+    }
+  }
+
+  out
 }
 
 detect_filtered_params_for_download <- function(raw_df, filtered_df, params) {

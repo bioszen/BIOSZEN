@@ -11,6 +11,15 @@ tab_composition,Composition Panel
 file_data,Load Data (.xlsx/.xls/.csv):
 file_curves,Load Curves (.xlsx/.xls/.csv)
 file_meta,Load design metadata (.xlsx)
+file_browse,Browse...
+file_no_selection,No file selected
+startup_loading,Loading...
+file_upload_complete,Upload complete
+datatable_show,Show
+datatable_entries,entries
+datatable_search,Search:
+datatable_previous,Previous
+datatable_next,Next
 merge_title,Platemap Merge
 merge_help,"Use the loaded data file as base, add more platemaps, then merge and load."
 merge_files,Additional platemaps (.xlsx)
@@ -141,6 +150,20 @@ base_size,Base size (pts)
 title_size,Title size:
 axis_size,Axis size:
 legend_size,Legend size:
+plot_text_style_section,Text styling
+plot_font_family,Font family
+plot_text_styles_by_target,Styles by text part
+plot_text_style_targets,1. Choose text parts
+plot_text_target_title,Plot title
+plot_text_target_axis_titles,Axis titles
+plot_text_target_axis_text,Axis numbers
+plot_text_target_legend,Legend
+plot_text_target_data_labels,Data labels
+plot_text_target_significance,Significance text
+plot_text_styles,2. Apply these styles
+plot_text_style_bold,Bold
+plot_text_style_italic,Italic
+plot_text_style_underline,Underline
 legend_right,Legend on right
 axis_line_size,Axis line thickness:
 y_label,Y axis label:
@@ -517,6 +540,7 @@ qc_tech_topn_done,Technical replicate limit applied. Replicates kept: %s. By sub
 qc_tech_sample_column,Technical replicates
 qc_tech_sample_each,%s each
 qc_tech_sample_exception,%s: %s
+filtered_tech_table_title,Filtered technical replicate detail (_filt)
 sig_auto_title,Auto-generate from test
 sig_auto_help,Build significance bars directly from the latest significance test output.
 sig_auto_include,Include comparisons:

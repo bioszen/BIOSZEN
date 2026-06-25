@@ -13,6 +13,11 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     ov_sig_txt = "sig_txt"
   )
 
+  combo_text_style_inputs_ready <- reactiveVal(FALSE)
+  session$onFlushed(function() {
+    combo_text_style_inputs_ready(TRUE)
+  }, once = TRUE)
+
   override_target_ids <- function(ids = names(plot_bank$all)) {
     ids <- as.character(ids %||% character(0))
     if (!length(ids)) return(character(0))
@@ -654,6 +659,9 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     input$combo_axis_line_size;
     input$combo_title; input$combo_title_size; input$combo_legend_scope; input$combo_legend_side
     input$combo_apply_paper_theme; input$combo_font_family
+    input$combo_text_style_title; input$combo_text_style_axis_titles
+    input$combo_text_style_axis_text; input$combo_text_style_legend
+    input$combo_text_style_data_labels; input$combo_text_style_significance
     input$combo_adv_pal_enable; input$combo_adv_pal_type; input$combo_adv_pal_reverse
     input$combo_adv_pal_filters; input$combo_adv_pal_name
     input$combo_layout_grid; input$combo_col_widths; input$combo_row_heights
@@ -674,6 +682,114 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
           axis.text = element_text(colour = "black", family = family),
           legend.text = element_text(colour = "black", family = family)
         )
+    }
+
+    combo_text_style_targets <- function() {
+      if (exists("bioszen_plot_text_targets", mode = "function")) {
+        bioszen_plot_text_targets()
+      } else {
+        c("title", "axis_titles", "axis_text", "legend", "data_labels", "significance")
+      }
+    }
+
+    combo_text_style_input_id <- function(target) {
+      paste0("combo_text_style_", as.character(target %||% ""))
+    }
+
+    combo_text_allowed_styles <- function() {
+      styles <- if (exists("bioszen_plot_text_styles", mode = "function")) {
+        bioszen_plot_text_styles()
+      } else {
+        c("bold", "italic", "underline")
+      }
+      as.character(styles)
+    }
+
+    combo_styles_from_face <- function(face = "plain") {
+      face <- tolower(as.character(face %||% "plain"))
+      styles <- character(0)
+      if (grepl("bold", face)) styles <- c(styles, "bold")
+      if (grepl("italic", face)) styles <- c(styles, "italic")
+      styles
+    }
+
+    combo_text_styles_for_target <- function(target, default_face = "plain") {
+      target <- as.character(target %||% "")
+      input_id <- combo_text_style_input_id(target)
+      val <- input[[input_id]]
+      if (is.null(val) && !isTRUE(combo_text_style_inputs_ready())) {
+        val <- combo_styles_from_face(default_face)
+      }
+      intersect(as.character(val %||% character(0)), combo_text_allowed_styles())
+    }
+
+    combo_text_face <- function(target, default = "plain") {
+      styles <- combo_text_styles_for_target(target, default)
+      has_bold <- "bold" %in% styles
+      has_italic <- "italic" %in% styles
+      if (has_bold && has_italic) return("bold.italic")
+      if (has_bold) return("bold")
+      if (has_italic) return("italic")
+      "plain"
+    }
+
+    combo_text_underlined <- function(target) {
+      "underline" %in% combo_text_styles_for_target(target)
+    }
+
+    combo_text_element <- function(target, default_face = "plain", size = NULL, family = combo_family, colour = "black") {
+      if (isTRUE(combo_text_underlined(target)) && requireNamespace("ggtext", quietly = TRUE)) {
+        el <- ggtext::element_markdown()
+      } else {
+        el <- element_text()
+      }
+      el$family <- family
+      el$face <- combo_text_face(target, default_face)
+      if (!is.null(size)) el$size <- size
+      if (!is.null(colour)) el$colour <- colour
+      el
+    }
+
+    combo_underline_label <- function(text) {
+      txt <- as.character(text %||% "")
+      if (!nzchar(txt)) return(txt)
+      if (grepl("^\\s*<u>.*</u>\\s*$", txt, ignore.case = TRUE)) return(txt)
+      paste0("<u>", txt, "</u>")
+    }
+
+    combo_style_plot_labels <- function(p) {
+      if (!inherits(p, "ggplot") || !requireNamespace("ggtext", quietly = TRUE)) return(p)
+      if (isTRUE(combo_text_underlined("title")) && !is.null(p$labels$title)) {
+        p$labels$title <- combo_underline_label(p$labels$title)
+      }
+      if (isTRUE(combo_text_underlined("axis_titles"))) {
+        if (!is.null(p$labels$x)) p$labels$x <- combo_underline_label(p$labels$x)
+        if (!is.null(p$labels$y)) p$labels$y <- combo_underline_label(p$labels$y)
+      }
+      p
+    }
+
+    combo_style_text_layers <- function(p) {
+      if (!inherits(p, "ggplot") || !length(p$layers)) return(p)
+      for (i in seq_along(p$layers)) {
+        layer <- p$layers[[i]]
+        geom_classes <- class(layer$geom)
+        is_text <- any(geom_classes %in% c("GeomText", "GeomLabel", "GeomTextRepel", "GeomLabelRepel"))
+        if (!isTRUE(is_text)) next
+        layer_data <- layer$data
+        target <- if (is.data.frame(layer_data) &&
+                      ".sig_layer" %in% names(layer_data) &&
+                      any(isTRUE(layer_data$.sig_layer) | layer_data$.sig_layer %in% TRUE, na.rm = TRUE)) {
+          "significance"
+        } else {
+          "data_labels"
+        }
+        existing_face <- layer$aes_params$fontface %||% "plain"
+        layer$aes_params$family <- combo_family
+        layer$aes_params$fontface <- combo_text_face(target, existing_face)
+        p$layers[[i]] <- layer
+      }
+      p
     }
 
     adjust_sig_layers <- function(p, lwd = NULL, txt = NULL) {
@@ -772,10 +888,11 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       }
       p <- p + theme(
         text = element_text(family = combo_family),
-        plot.title = element_text(size = global_title_size, face = "bold", family = combo_family),
-        axis.title = element_text(size = global_axis_title_size, face = "bold", family = combo_family),
-        axis.text = element_text(size = global_axis_text_size, family = combo_family),
-        legend.text = element_text(size = global_legend_size, family = combo_family),
+        plot.title = combo_text_element("title", default_face = "bold", size = global_title_size),
+        axis.title = combo_text_element("axis_titles", default_face = "bold", size = global_axis_title_size),
+        axis.text = combo_text_element("axis_text", default_face = "plain", size = global_axis_text_size),
+        legend.text = combo_text_element("legend", default_face = "plain", size = global_legend_size),
+        legend.title = combo_text_element("legend", default_face = "bold", size = global_legend_size),
         axis.line = element_line(linewidth = global_axis_line_size, colour = "black"),
         axis.ticks = element_line(linewidth = global_axis_line_size, colour = "black")
       )
@@ -788,6 +905,8 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       if (show_legends) {
         p <- force_enable_plot_legend(p, legend_side)
       }
+      p <- combo_style_plot_labels(p)
+      p <- combo_style_text_layers(p)
       p
     })
 
@@ -860,16 +979,17 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     # even when individual plots define axis.title.x/.y or axis.text.x/.y.
     res <- res & theme(
       text = element_text(family = combo_family),
-      plot.title = element_text(size = global_title_size, face = "bold", family = combo_family),
-      axis.title = element_text(size = global_axis_title_size, face = "bold", family = combo_family),
-      axis.title.x = element_text(size = global_axis_title_size, face = "bold", family = combo_family),
-      axis.title.y = element_text(size = global_axis_title_size, face = "bold", family = combo_family),
-      axis.text = element_text(size = global_axis_text_size, family = combo_family),
-      axis.text.x = element_text(size = global_axis_text_size, family = combo_family),
-      axis.text.y = element_text(size = global_axis_text_size, family = combo_family),
+      plot.title = combo_text_element("title", default_face = "bold", size = global_title_size),
+      axis.title = combo_text_element("axis_titles", default_face = "bold", size = global_axis_title_size),
+      axis.title.x = combo_text_element("axis_titles", default_face = "bold", size = global_axis_title_size),
+      axis.title.y = combo_text_element("axis_titles", default_face = "bold", size = global_axis_title_size),
+      axis.text = combo_text_element("axis_text", default_face = "plain", size = global_axis_text_size),
+      axis.text.x = combo_text_element("axis_text", default_face = "plain", size = global_axis_text_size),
+      axis.text.y = combo_text_element("axis_text", default_face = "plain", size = global_axis_text_size),
       axis.ticks = element_line(linewidth = global_axis_line_size, colour = "black"),
       axis.line = element_line(linewidth = global_axis_line_size, colour = "black"),
-      legend.text = element_text(size = global_legend_size, family = combo_family)
+      legend.text = combo_text_element("legend", default_face = "plain", size = global_legend_size),
+      legend.title = combo_text_element("legend", default_face = "bold", size = global_legend_size)
     )
     if (!is.null(pal)) {
       res <- apply_combo_manual_scales(res, pal, pal_fill)
@@ -883,15 +1003,18 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     if (nzchar(trimws(combo_title))) {
       combo_title_size <- suppressWarnings(as.numeric(input$combo_title_size))
       if (!is.finite(combo_title_size) || combo_title_size <= 0) combo_title_size <- 24
+      combo_title_label <- if (isTRUE(combo_text_underlined("title")) &&
+                               requireNamespace("ggtext", quietly = TRUE)) {
+        combo_underline_label(combo_title)
+      } else {
+        combo_title
+      }
+      combo_title_element <- combo_text_element("title", default_face = "bold", size = combo_title_size)
+      combo_title_element$hjust <- 0.5
       res <- res + plot_annotation(
-        title = combo_title,
+        title = combo_title_label,
         theme = theme(
-          plot.title = element_text(
-            size = combo_title_size,
-            face = "bold",
-            family = combo_family,
-            hjust = 0.5
-          )
+          plot.title = combo_title_element
         )
       )
     }
@@ -915,6 +1038,84 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
      height = function() input$combo_height,
      res = 96)
 
+  combo_metadata_style_input_id <- function(target) {
+    paste0("combo_text_style_", as.character(target %||% ""))
+  }
+
+  combo_metadata_style_value <- function(target) {
+    metadata_text_style_value(input[[combo_metadata_style_input_id(target)]] %||% character(0))
+  }
+
+  combo_metadata_text_style_row <- function(text, target, size, size_input_id) {
+    style <- combo_metadata_style_value(target)
+    parsed <- metadata_parse_text_style_value(style)
+    data.frame(
+      Text = text,
+      Target = target,
+      FontFamily = as.character(input$combo_font_family %||% "Helvetica"),
+      Size = as.character(size),
+      Style = style,
+      Bold = as.character("bold" %in% parsed),
+      Italic = as.character("italic" %in% parsed),
+      Underline = as.character("underline" %in% parsed),
+      InputId = combo_metadata_style_input_id(target),
+      SizeInputId = size_input_id,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  collect_combo_text_style_tbl <- function() {
+    do.call(
+      rbind,
+      list(
+        combo_metadata_text_style_row(metadata_text_target_label("composition_title"), "title", input$combo_title_size, "combo_title_size"),
+        combo_metadata_text_style_row(metadata_text_target_label("plot_titles"), "title", input$fs_title_all, "fs_title_all"),
+        combo_metadata_text_style_row(metadata_text_target_label("axis_titles"), "axis_titles", input$fs_axis_title_all, "fs_axis_title_all"),
+        combo_metadata_text_style_row(metadata_text_target_label("axis_text"), "axis_text", input$fs_axis_text_all, "fs_axis_text_all"),
+        combo_metadata_text_style_row(metadata_text_target_label("legend"), "legend", input$fs_legend_all, "fs_legend_all"),
+        combo_metadata_text_style_row(metadata_text_target_label("data_labels"), "data_labels", input$fs_axis_text_all, "fs_axis_text_all"),
+        combo_metadata_text_style_row(metadata_text_target_label("significance"), "significance", input$ov_sig_txt, "ov_sig_txt")
+      )
+    )
+  }
+
+  collect_combo_plot_metadata_tbl <- function() {
+    plot_ids <- names(plot_bank$all)
+    empty <- data.frame(
+      PlotId = character(0),
+      PlotOrder = integer(0),
+      PlotType = character(0),
+      Scope = character(0),
+      Strain = character(0),
+      Campo = character(0),
+      Valor = character(0),
+      stringsAsFactors = FALSE
+    )
+    if (!length(plot_ids)) return(empty)
+
+    rows <- lapply(seq_along(plot_ids), function(i) {
+      id <- plot_ids[[i]]
+      info <- plot_bank$all[[id]]
+      meta <- info$meta
+      if (is.null(meta) || !is.data.frame(meta) || !all(c("Campo", "Valor") %in% names(meta))) {
+        return(NULL)
+      }
+      data.frame(
+        PlotId = id,
+        PlotOrder = i,
+        PlotType = as.character(info$type %||% ""),
+        Scope = as.character(info$scope %||% ""),
+        Strain = as.character(info$strain %||% ""),
+        Campo = as.character(meta$Campo),
+        Valor = as.character(meta$Valor),
+        stringsAsFactors = FALSE
+      )
+    })
+    rows <- Filter(Negate(is.null), rows)
+    if (!length(rows)) return(empty)
+    do.call(rbind, rows)
+  }
+
   collect_combo_meta <- function() {
     plot_ids <- names(plot_bank$all)
     vals <- list(
@@ -931,6 +1132,12 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       combo_height      = input$combo_height,
       combo_apply_paper_theme = input$combo_apply_paper_theme,
       combo_font_family = input$combo_font_family,
+      combo_text_style_title = combo_metadata_style_value("title"),
+      combo_text_style_axis_titles = combo_metadata_style_value("axis_titles"),
+      combo_text_style_axis_text = combo_metadata_style_value("axis_text"),
+      combo_text_style_legend = combo_metadata_style_value("legend"),
+      combo_text_style_data_labels = combo_metadata_style_value("data_labels"),
+      combo_text_style_significance = combo_metadata_style_value("significance"),
       combo_adv_pal_enable = input$combo_adv_pal_enable,
       combo_adv_pal_type = input$combo_adv_pal_type,
       combo_adv_pal_reverse = input$combo_adv_pal_reverse,
@@ -978,8 +1185,18 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       addWorksheet(wb, 'Metadata')
       writeData(wb, 'Metadata', collect_combo_meta(),
                 headerStyle = createStyle(textDecoration = 'bold'))
+      addWorksheet(wb, 'TextStyle')
+      writeData(wb, 'TextStyle', collect_combo_text_style_tbl(),
+                headerStyle = createStyle(textDecoration = 'bold'))
+      plot_meta <- collect_combo_plot_metadata_tbl()
+      if (nrow(plot_meta)) {
+        addWorksheet(wb, 'PlotMetadata')
+        writeData(wb, 'PlotMetadata', plot_meta,
+                  headerStyle = createStyle(textDecoration = 'bold'))
+      }
       saveWorkbook(wb, file, overwrite = TRUE)
-    }
+    },
+    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   )
 
     observeEvent(input$combo_meta, {
@@ -993,7 +1210,18 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
         showNotification(tr("composition_meta_invalid"), type = 'error', duration = 6)
         return()
       }
+      meta$Campo <- as.character(meta$Campo)
       meta$Valor <- as.character(meta$Valor)
+      text_style <- tryCatch(read_excel_tmp(path, sheet = 'TextStyle'),
+                             error = function(e) NULL)
+      meta <- metadata_merge_rows(
+        meta,
+        metadata_text_style_sheet_rows(
+          text_style,
+          font_field = "combo_font_family",
+          style_prefix = "combo_text_style_"
+        )
+      )
       gv <- function(campo) {
         v <- meta$Valor[meta$Campo == campo]
         if (length(v)) v else NULL
@@ -1032,6 +1260,12 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
         updateCheckboxInput(session, 'combo_apply_paper_theme', value = tolower(v) == 'true')
       if (!is.null(v <- gv('combo_font_family')))
         updateSelectInput(session, 'combo_font_family', selected = v)
+      for (target in c("title", "axis_titles", "axis_text", "legend", "data_labels", "significance")) {
+        input_id <- paste0("combo_text_style_", target)
+        if (!is.null(v <- gv(input_id))) {
+          updateCheckboxGroupInput(session, input_id, selected = metadata_parse_text_style_value(v))
+        }
+      }
       if (!is.null(v <- gv('combo_adv_pal_enable')))
         updateCheckboxInput(session, 'combo_adv_pal_enable', value = tolower(v) == 'true')
       if (!is.null(v <- gv('combo_adv_pal_type')))

@@ -99,6 +99,282 @@ wait_for_shiny_connected <- function(app, timeout_sec = 20) {
   FALSE
 }
 
+install_loop_probe <- function(app) {
+  app$get_js(
+    "(function(){
+       if (window.__bioszenLoopProbeInstalled) return 'already-installed';
+       window.__bioszenLoopProbeInstalled = true;
+       window.__bioszenLoopProbe = {
+         invalidated: 0,
+         value: 0,
+         errors: 0,
+         busy: 0,
+         idle: 0
+       };
+       document.addEventListener('shiny:outputinvalidated', function(ev){
+         if (!ev || ev.name === 'plotInteractivo') {
+           window.__bioszenLoopProbe.invalidated += 1;
+         }
+       });
+       document.addEventListener('shiny:value', function(ev){
+         if (!ev || ev.name === 'plotInteractivo') {
+           window.__bioszenLoopProbe.value += 1;
+         }
+       });
+       document.addEventListener('shiny:error', function(ev){
+         if (!ev || ev.name === 'plotInteractivo') {
+           window.__bioszenLoopProbe.errors += 1;
+         }
+       });
+       document.addEventListener('shiny:busy', function(){
+         window.__bioszenLoopProbe.busy += 1;
+       });
+       document.addEventListener('shiny:idle', function(){
+         window.__bioszenLoopProbe.idle += 1;
+       });
+       return 'installed';
+     })()"
+  )
+}
+
+loop_probe_counts <- function(app) {
+  skip_if_not_installed("jsonlite")
+  raw <- app$get_js(
+    "(function(){
+       return JSON.stringify(window.__bioszenLoopProbe || {
+         invalidated: 0,
+         value: 0,
+         errors: 0,
+         busy: 0,
+         idle: 0
+       });
+     })()"
+  )
+  out <- jsonlite::fromJSON(normalize_js_scalar(raw))
+  as.list(out)
+}
+
+wait_for_no_plot_churn <- function(app, quiet_sec = 2.5, timeout_sec = 25, max_plot_events = 1) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  while (Sys.time() < deadline) {
+    before <- loop_probe_counts(app)
+    Sys.sleep(quiet_sec)
+    after <- loop_probe_counts(app)
+    invalidated_delta <- as.numeric(after$invalidated %||% 0) - as.numeric(before$invalidated %||% 0)
+    value_delta <- as.numeric(after$value %||% 0) - as.numeric(before$value %||% 0)
+    error_delta <- as.numeric(after$errors %||% 0) - as.numeric(before$errors %||% 0)
+    if (
+      invalidated_delta <= max_plot_events &&
+        value_delta <= max_plot_events &&
+        identical(error_delta, 0)
+    ) {
+      return(TRUE)
+    }
+  }
+  FALSE
+}
+
+expect_app_idle_without_loop <- function(app, step_name, idle_timeout = 35) {
+  expect_true(
+    wait_for_shiny_connected(app, timeout_sec = 15),
+    info = sprintf("Shiny session disconnected after %s.", step_name)
+  )
+  expect_true(
+    wait_for_plot_idle(app, timeout_sec = idle_timeout),
+    info = sprintf("Plot loading overlay did not settle after %s.", step_name)
+  )
+  expect_true(
+    wait_for_no_plot_churn(app, timeout_sec = idle_timeout),
+    info = sprintf("Plot kept invalidating after %s, suggesting a reactive loop.", step_name)
+  )
+}
+
+send_filter_toggle_user_change <- function(app, input_id, value) {
+  js <- sprintf(
+    "(function(){
+       Shiny.setInputValue('%s_user_change', {
+         value: %s,
+         nonce: Date.now()
+       }, {priority: 'event'});
+       return true;
+     })()",
+    input_id,
+    if (isTRUE(value)) "true" else "false"
+  )
+  app$get_js(js)
+}
+
+wait_for_selected_values <- function(app, input_id, expected, timeout_sec = 30) {
+  expected <- sort(unique(as.character(expected)))
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  while (Sys.time() < deadline) {
+    observed <- tryCatch(
+      unique(as.character(app$get_value(input = input_id))),
+      error = function(e) character(0)
+    )
+    observed <- observed[!is.na(observed) & nzchar(observed)]
+    if (identical(sort(observed), expected)) {
+      return(TRUE)
+    }
+    Sys.sleep(0.5)
+  }
+  FALSE
+}
+
+click_stats_button_with_blank_param <- function(app, button_id) {
+  js <- sprintf(
+     "(function(){
+       if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+         Shiny.setInputValue('param', '', {priority: 'event'});
+         var btn = document.getElementById('%s');
+         if (btn) {
+           btn.click();
+           return true;
+         }
+         var current = 0;
+         if (Shiny.shinyapp && Shiny.shinyapp.$inputValues) {
+           current = Number(Shiny.shinyapp.$inputValues['%s'] || 0);
+         }
+         Shiny.setInputValue('%s', current + 1, {priority: 'event'});
+         return true;
+       }
+       return false;
+     })()",
+    button_id,
+    button_id,
+    button_id
+  )
+  normalize_js_bool(app$get_js(js))
+}
+
+click_stats_button_with_empty_media_filter <- function(app, button_id) {
+  js <- sprintf(
+     "(function(){
+       if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+         Shiny.setInputValue('showMedios', [], {priority: 'event'});
+         var btn = document.getElementById('%s');
+         if (btn) {
+           btn.click();
+           return true;
+         }
+       }
+       return false;
+     })()",
+    button_id
+  )
+  normalize_js_bool(app$get_js(js))
+}
+
+clear_shiny_notifications <- function(app) {
+  invisible(app$get_js(
+    "(function(){
+       Array.from(document.querySelectorAll('.shiny-notification')).forEach(function(el){ el.remove(); });
+       return true;
+     })()"
+  ))
+}
+
+current_notification_text <- function(app) {
+  normalize_js_scalar(app$get_js(
+    "(function(){
+       return Array.from(document.querySelectorAll('.shiny-notification, .shiny-notification-message'))
+         .map(function(el){ return el.innerText || el.textContent || ''; })
+         .join(' ');
+     })()"
+  ))
+}
+
+activate_stats_tab <- function(app, pattern) {
+  js <- sprintf(
+    "(function(){
+       var re = new RegExp(%s, 'i');
+       var links = Array.from(document.querySelectorAll('#statsTabs a, a[data-toggle=\"tab\"], a[data-bs-toggle=\"tab\"]'));
+       var link = links.find(function(a){ return re.test((a.textContent || '').trim()); });
+       if (!link) return false;
+       link.click();
+       return true;
+     })()",
+    jsonlite::toJSON(pattern, auto_unbox = TRUE)
+  )
+  normalize_js_bool(app$get_js(js))
+}
+
+wait_for_stats_output_text <- function(app, output_id, timeout_sec = 45) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  last_text <- ""
+  empty_patterns <- paste(
+    c(
+      "no data", "no hay datos",
+      "no valid", "no hay comparaciones",
+      "not enough", "no hay grupos suficientes",
+      "need at least", "se necesitan"
+    ),
+    collapse = "|"
+  )
+  while (Sys.time() < deadline) {
+    value_raw <- tryCatch(
+      app$get_js(sprintf(
+        "(function(){
+           var values = window.Shiny && Shiny.shinyapp && Shiny.shinyapp.$values;
+           var val = values ? values['%s'] : null;
+           if (!val || !val.x || !Array.isArray(val.x.data)) return '';
+           var rows = (Array.isArray(val.x.data[0])) ? val.x.data[0].length : 0;
+           return JSON.stringify({
+             rows: rows,
+             data: val.x.data.slice(0, Math.min(5, val.x.data.length))
+           });
+         })()",
+        output_id
+      )),
+      error = function(e) ""
+    )
+    value_txt <- normalize_js_scalar(value_raw)
+    if (nzchar(value_txt)) {
+      value_info <- tryCatch(jsonlite::fromJSON(value_txt), error = function(e) NULL)
+      if (!is.null(value_info) && isTRUE(as.numeric(value_info$rows %||% 0) > 0)) {
+        payload_text <- paste(unlist(value_info$data, use.names = FALSE), collapse = " ")
+        payload_text <- gsub("\u00a0", " ", payload_text, fixed = TRUE)
+        payload_text <- trimws(gsub("\\s+", " ", payload_text, perl = TRUE))
+        if (nzchar(payload_text) &&
+            grepl("[[:alnum:]]", payload_text, perl = TRUE) &&
+            !grepl(empty_patterns, payload_text, ignore.case = TRUE, perl = TRUE)) {
+          return(payload_text)
+        }
+      }
+    }
+
+    raw <- tryCatch(
+      app$get_js(sprintf(
+        "(function(){
+           var el = document.getElementById('%s');
+           return el ? el.innerText : '';
+         })()",
+        output_id
+      )),
+      error = function(e) ""
+    )
+    txt <- normalize_js_scalar(raw)
+    last_text <- txt
+    txt <- gsub("\u00a0", " ", txt, fixed = TRUE)
+    txt_compact <- trimws(gsub("\\s+", " ", txt, perl = TRUE))
+    if (nzchar(txt_compact) &&
+        grepl("[[:alnum:]]", txt_compact, perl = TRUE) &&
+        !grepl(empty_patterns, txt_compact, ignore.case = TRUE, perl = TRUE)) {
+      return(txt_compact)
+    }
+    Sys.sleep(0.5)
+  }
+  fail(sprintf("Stats output '%s' did not populate. Last text: %s", output_id, last_text))
+}
+
+expect_nonempty_download <- function(path, label) {
+  expect_true(file.exists(path), info = sprintf("%s download was not created.", label))
+  expect_true(
+    file.info(path)$size > 0,
+    info = sprintf("%s download was empty.", label)
+  )
+}
+
 test_that("browser upload flow keeps searchable selectors and no critical frontend errors", {
   skip_if_shiny_e2e_unavailable()
 
@@ -123,6 +399,177 @@ test_that("browser upload flow keeps searchable selectors and no critical fronte
   param_search <- app$get_html(selector = "#param + .selectize-control .selectize-input input")
   expect_match(strain_search, "id=\"strain-selectized\"", fixed = TRUE)
   expect_match(param_search, "id=\"param-selectized\"", fixed = TRUE)
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("core user processes settle without reload loops", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("jsonlite")
+
+  fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx")
+  expect_true(file.exists(fixture))
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+  install_loop_probe(app)
+
+  app$upload_file(dataFile = normalizePath(fixture), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "strain", timeout = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  expect_app_idle_without_loop(app, "data upload", idle_timeout = 45)
+
+  expect_true(
+    activate_stats_tab(app, "normal|normalidad"),
+    info = "The normality tab should be available after data upload."
+  )
+  expect_true(
+    click_stats_button_with_blank_param(app, "runNorm"),
+    info = "The normality button should be present after data upload."
+  )
+  norm_text <- wait_for_stats_output_text(app, "normTable", timeout_sec = 60)
+  expect_match(norm_text, "Shapiro|Label|Control|Ampicillin", perl = TRUE)
+  expect_app_idle_without_loop(app, "normality after transient blank parameter", idle_timeout = 45)
+
+  medias_before_blank <- unique(as.character(app$get_value(input = "showMedios")))
+  medias_before_blank <- medias_before_blank[!is.na(medias_before_blank) & nzchar(medias_before_blank)]
+  if (length(medias_before_blank) >= 2) {
+    clear_shiny_notifications(app)
+    expect_true(
+      click_stats_button_with_empty_media_filter(app, "runNorm"),
+      info = "Normality should still run when a transient empty media filter races with the visible plot."
+    )
+    Sys.sleep(1.5)
+    stale_filter_norm_text <- wait_for_stats_output_text(app, "normTable", timeout_sec = 60)
+    expect_match(stale_filter_norm_text, "Shapiro|Label|Control|Ampicillin", perl = TRUE)
+    notification_text <- current_notification_text(app)
+    expect_false(
+      grepl("need at least 2 groups|no data available for normality|no hay datos", notification_text, ignore.case = TRUE, perl = TRUE),
+      info = sprintf("Normality incorrectly reported no data after a transient empty media filter: %s", notification_text)
+    )
+    app$set_inputs(showMedios = medias_before_blank, wait_ = TRUE, timeout_ = 90000)
+    expect_app_idle_without_loop(app, "media filter restore after stale normality check", idle_timeout = 45)
+  }
+
+  expect_true(
+    activate_stats_tab(app, "signif|significancia"),
+    info = "The significance tab should be available after data upload."
+  )
+  expect_true(
+    click_stats_button_with_blank_param(app, "runSig"),
+    info = "The significance button should be present after data upload."
+  )
+  expect_app_idle_without_loop(app, "significance after transient blank parameter", idle_timeout = 45)
+  stats_after_blank_param <- app$get_download(output = "downloadStats")
+  expect_nonempty_download(stats_after_blank_param, "statistics after transient blank parameter")
+
+  plot_types <- c("Boxplot", "Barras", "Violin", "Heatmap", "MatrizCorrelacion")
+  for (plot_type in plot_types) {
+    app$set_inputs(
+      tipo = plot_type,
+      wait_ = TRUE,
+      timeout_ = 120000,
+      allow_no_input_binding_ = TRUE
+    )
+    if (identical(plot_type, "Heatmap")) {
+      try(app$wait_for_value(input = "heat_params", timeout = 60000), silent = TRUE)
+    }
+    if (identical(plot_type, "MatrizCorrelacion")) {
+      try(app$wait_for_value(input = "corrm_params", timeout = 60000), silent = TRUE)
+    }
+    expect_app_idle_without_loop(
+      app,
+      sprintf("plot type %s", plot_type),
+      idle_timeout = 45
+    )
+  }
+
+  app$set_inputs(tipo = "Boxplot", wait_ = TRUE, timeout_ = 90000)
+  app$set_inputs(scope = "Combinado", wait_ = TRUE, timeout_ = 90000)
+  app$wait_for_value(input = "showGroups", timeout = 90000)
+  groups <- unique(as.character(app$get_value(input = "showGroups")))
+  groups <- groups[!is.na(groups) & nzchar(groups)]
+  if (length(groups) >= 2) {
+    expected_groups <- groups[-1]
+    app$set_inputs(showGroups = expected_groups, wait_ = TRUE, timeout_ = 90000)
+    expect_app_idle_without_loop(app, "combined group deselection", idle_timeout = 45)
+    Sys.sleep(7)
+    persisted_groups <- unique(as.character(app$get_value(input = "showGroups")))
+    persisted_groups <- persisted_groups[!is.na(persisted_groups) & nzchar(persisted_groups)]
+    expect_equal(
+      sort(persisted_groups),
+      sort(expected_groups),
+      info = "Combined group deselection should not be reselected by filter sync after the plot settles."
+    )
+    expect_app_idle_without_loop(app, "combined group deselection persistence", idle_timeout = 45)
+    app$set_inputs(showGroups = character(0), wait_ = TRUE, timeout_ = 90000)
+    expect_app_idle_without_loop(app, "combined group clear all", idle_timeout = 45)
+    send_filter_toggle_user_change(app, "toggleGroups", TRUE)
+    expect_true(
+      wait_for_selected_values(app, "showGroups", groups, timeout_sec = 45),
+      info = "Combined select-all recovery should restore every group after the selection becomes empty."
+    )
+    expect_app_idle_without_loop(app, "combined group select-all recovery", idle_timeout = 45)
+  }
+
+  app$set_inputs(scope = "Por Cepa", wait_ = TRUE, timeout_ = 90000)
+  app$wait_for_value(input = "showMedios", timeout = 90000)
+  medias <- unique(as.character(app$get_value(input = "showMedios")))
+  medias <- medias[!is.na(medias) & nzchar(medias)]
+  if (length(medias) >= 2) {
+    expected_medias <- medias[-1]
+    app$set_inputs(showMedios = expected_medias, wait_ = TRUE, timeout_ = 90000)
+    expect_app_idle_without_loop(app, "condition deselection", idle_timeout = 45)
+    Sys.sleep(7)
+    persisted_medias <- unique(as.character(app$get_value(input = "showMedios")))
+    persisted_medias <- persisted_medias[!is.na(persisted_medias) & nzchar(persisted_medias)]
+    expect_equal(
+      sort(persisted_medias),
+      sort(expected_medias),
+      info = "Condition deselection should not be reselected by filter sync after the plot settles."
+    )
+    expect_app_idle_without_loop(app, "condition deselection persistence", idle_timeout = 45)
+    app$set_inputs(showMedios = character(0), wait_ = TRUE, timeout_ = 90000)
+    expect_app_idle_without_loop(app, "condition clear all", idle_timeout = 45)
+    send_filter_toggle_user_change(app, "toggleMedios", TRUE)
+    expect_true(
+      wait_for_selected_values(app, "showMedios", medias, timeout_sec = 45),
+      info = "Condition select-all recovery should restore every media after the selection becomes empty."
+    )
+    expect_app_idle_without_loop(app, "condition select-all recovery", idle_timeout = 45)
+  }
+
+  app$set_inputs(doNorm = TRUE, wait_ = TRUE, timeout_ = 90000)
+  try(app$wait_for_value(input = "ctrlMedium", timeout = 60000), silent = TRUE)
+  expect_app_idle_without_loop(app, "normalization enabled", idle_timeout = 45)
+  app$set_inputs(doNorm = FALSE, wait_ = TRUE, timeout_ = 90000)
+  expect_app_idle_without_loop(app, "normalization disabled", idle_timeout = 45)
+
+  app$set_inputs(scope = "Combinado", wait_ = TRUE, timeout_ = 90000)
+  if (length(groups)) {
+    app$set_inputs(showGroups = groups, wait_ = TRUE, timeout_ = 90000)
+  }
+  expect_app_idle_without_loop(app, "download preflight", idle_timeout = 45)
+
+  download_specs <- list(
+    data = "downloadExcel",
+    metadata = "downloadMetadata",
+    statistics = "downloadStats",
+    plot_png = "downloadPlot_png",
+    plot_pdf = "downloadPlot_pdf"
+  )
+  for (label in names(download_specs)) {
+    output_id <- download_specs[[label]]
+    out <- app$get_download(output = output_id)
+    expect_nonempty_download(out, label)
+    expect_app_idle_without_loop(app, sprintf("%s download", label), idle_timeout = 45)
+  }
 
   critical <- find_critical_frontend_logs(app$get_logs())
   expect_equal(

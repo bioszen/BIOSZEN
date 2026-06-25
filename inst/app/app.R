@@ -14,14 +14,62 @@ use_bioszen_standalone_library <- function() {
 
 use_bioszen_standalone_library()
 
-startup_files <- c(
+resolve_bioszen_app_dir <- function() {
+  frame_files <- unlist(lapply(sys.frames(), function(frame) {
+    path <- frame$ofile
+    if (is.character(path) && length(path) && nzchar(path[[1]])) path[[1]] else character()
+  }), use.names = FALSE)
+
+  candidates <- unique(c(
+    dirname(normalizePath(frame_files, winslash = "/", mustWork = FALSE)),
+    normalizePath(getwd(), winslash = "/", mustWork = FALSE),
+    normalizePath(file.path(getwd(), "inst", "app"), winslash = "/", mustWork = FALSE)
+  ))
+  candidates <- candidates[nzchar(candidates)]
+
+  for (candidate in candidates) {
+    if (file.exists(file.path(candidate, "global.R")) &&
+        file.exists(file.path(candidate, "helpers.R")) &&
+        dir.exists(file.path(candidate, "server")) &&
+        dir.exists(file.path(candidate, "ui"))) {
+      return(candidate)
+    }
+  }
+
+  stop("Could not locate the BIOSZEN Shiny app directory.", call. = FALSE)
+}
+
+app_dir <- resolve_bioszen_app_dir()
+
+resolve_bioszen_source_root <- function(app_dir) {
+  candidates <- unique(c(
+    normalizePath(file.path(app_dir, "..", ".."), winslash = "/", mustWork = FALSE),
+    normalizePath(file.path(app_dir, ".."), winslash = "/", mustWork = FALSE),
+    normalizePath(getwd(), winslash = "/", mustWork = FALSE),
+    normalizePath(file.path(getwd(), ".."), winslash = "/", mustWork = FALSE)
+  ))
+  candidates <- candidates[nzchar(candidates)]
+
+  for (candidate in candidates) {
+    if (file.exists(file.path(candidate, "DESCRIPTION"))) {
+      return(candidate)
+    }
+  }
+
+  normalizePath(file.path(app_dir, "..", ".."), winslash = "/", mustWork = FALSE)
+}
+
+source_root <- resolve_bioszen_source_root(app_dir)
+
+startup_files <- unique(c(
+  file.path(source_root, "R", "app_startup.R"),
   file.path("R", "app_startup.R"),
   file.path("..", "..", "R", "app_startup.R")
-)
+))
 startup_file <- startup_files[file.exists(startup_files)][1]
 if (!is.na(startup_file)) {
   sys.source(startup_file, envir = globalenv())
-  bioszen_prepare_direct_run()
+  bioszen_prepare_direct_run(root = source_root)
 }
 
 source_dir <- function(path, envir) {
@@ -39,12 +87,8 @@ configure_shiny_upload_limit <- function() {
 }
 
 resolve_app_parent_env <- function() {
-  if ("package:BIOSZEN" %in% search()) {
-    return(as.environment("package:BIOSZEN"))
-  }
-  if (requireNamespace("BIOSZEN", quietly = TRUE)) {
-    return(asNamespace("BIOSZEN"))
-  }
+  # global.R attaches the app dependencies with library(); use the global
+  # search chain so installed-package runs resolve those symbols correctly.
   globalenv()
 }
 
@@ -52,17 +96,17 @@ app_env <- new.env(parent = resolve_app_parent_env())
 
 configure_shiny_upload_limit()
 
-sys.source("global.R", envir = app_env)          # paquetes y configuraciones generales
+sys.source(file.path(app_dir, "global.R"), envir = app_env)          # paquetes y configuraciones generales
 
-sys.source("helpers.R", envir = app_env)         # funciones compartidas
+sys.source(file.path(app_dir, "helpers.R"), envir = app_env)         # funciones compartidas
 
 # Carga automatica de modulos; permite agregar nuevos .R facilmente
-source_dir("params", envir = app_env)        # utilidades de parametros
-source_dir("stats", envir = app_env)         # funciones estadisticas
-source_dir("graficos", envir = app_env)      # helpers de graficos
-source_dir("server", envir = app_env)        # modulos de servidor
-source_dir("ui", envir = app_env)            # interfaz
+source_dir(file.path(app_dir, "params"), envir = app_env)        # utilidades de parametros
+source_dir(file.path(app_dir, "stats"), envir = app_env)         # funciones estadisticas
+source_dir(file.path(app_dir, "graficos"), envir = app_env)      # helpers de graficos
+source_dir(file.path(app_dir, "server"), envir = app_env)        # modulos de servidor
+source_dir(file.path(app_dir, "ui"), envir = app_env)            # interfaz
 
-shiny::addResourcePath("www", "www")
+shiny::addResourcePath("www", file.path(app_dir, "www"))
 
 shiny::shinyApp(app_env$ui, app_env$server)

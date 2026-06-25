@@ -12,6 +12,10 @@ test_that("plot loading overlay is wired in UI and server", {
   expect_match(ui_txt, "plot-loading-indicator", fixed = TRUE)
   expect_match(ui_txt, "shiny:outputinvalidated", fixed = TRUE)
   expect_match(ui_txt, "plotInteractivo", fixed = TRUE)
+  expect_match(ui_txt, "schedulePlotLoading", fixed = TRUE)
+  expect_match(ui_txt, "clearPlotLoading", fixed = TRUE)
+  expect_match(ui_txt, "setTimeout", fixed = TRUE)
+  expect_match(ui_txt, "180", fixed = TRUE)
 
   expect_match(server_txt, "id = \"plot-loading-wrap\"", fixed = TRUE)
   expect_match(server_txt, "plot-loading-indicator", fixed = TRUE)

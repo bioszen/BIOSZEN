@@ -16,3 +16,8 @@ test_that("safe_sheet strips invalid characters", {
 test_that("sanitize replaces forbidden filename characters", {
   expect_equal(sanitize("A/B:C*D?E\"F<G>H|I"), "A_B_C_D_E_F_G_H_I")
 })
+
+test_that("sanitize handles blank and NA filename parts", {
+  expect_equal(sanitize(NA_character_), "")
+  expect_equal(sanitize(c("A/B", ""), fallback = "file"), c("A_B", "file"))
+})

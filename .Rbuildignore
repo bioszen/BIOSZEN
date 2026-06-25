@@ -2,6 +2,8 @@
 ^app\.R$
 ^tests/testthat$ # include tests but not the results
 ^\.github$
+^\.git
+^BIOSZEN_.*\.tar\.gz$
 ^utils$
 ^R_libs$
 ^\.env.*$
@@ -24,6 +26,7 @@
 ^CHANGELOG\.md$
 ^Download_R_and_RStudio\.html$
 ^docs$
+^html-version$
 ^\.codex$
 ^\.codex-run$
 ^\.local-tools$
@@ -37,3 +40,4 @@
 ^\.\.Rcheck$
 ^check_clean$
 ^check_clean_as_cran$
+^output$

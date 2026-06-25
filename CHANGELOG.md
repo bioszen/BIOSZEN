@@ -7,6 +7,13 @@ Semantic Versioning.
 ## [Unreleased]
 - No notable changes yet.
 
+## [2.0.3] - 2026-06-24
+- Hardened downloads for generated workbooks, metadata, statistics, PNG/PDF graphics, and bundle ZIP exports.
+- Improved the standalone launcher so BIOSZEN can start from versioned archives or extracted source folders.
+- Expanded metadata reproducibility for plot typography, composition typography, error-bar statistics, and composition plot metadata.
+- Set Boxplot error-bar defaults to Min-Max while preserving SD and SEM options.
+- Reviewed and strengthened normalized-data guard behavior to avoid raw fallback plots and app stalls when control selections are unavailable.
+
 ## [2.0.2] - 2026-06-05
 - Prepared the project for the BIOSZEN 2.0.2 release.
 - Declared the required `digest` runtime dependency used by app export logic.
