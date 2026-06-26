@@ -37,7 +37,6 @@
     webshot2::webshot
     shinyBS::bsTooltip
     multcomp::glht
-    dunn.test::dunn.test
     ggrepel::geom_text_repel
     rlang::enquo
     writexl::write_xlsx

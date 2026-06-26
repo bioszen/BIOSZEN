@@ -47,7 +47,6 @@ Imports:
     webshot2,
     shinyBS,
     multcomp,
-    dunn.test,
     ggrepel,
     rlang,
     writexl,
