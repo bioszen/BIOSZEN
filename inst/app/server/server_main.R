@@ -1288,6 +1288,13 @@ server <- function(input, output, session) {
 
   # --- Helper: recopilar metadata actual para reproducibilidad ---
   collect_metadata_tbl <- function() {
+    legend_style <- plot_metadata_style_value("legend")
+    legend_style_parts <- metadata_parse_text_style_value(legend_style)
+    legend_applicable <- input$tipo %in% c("Boxplot", "Barras", "Violin")
+    legend_on_right <- legend_applicable &&
+      isTRUE(input$legend_right) &&
+      !identical(input$colorMode, "Blanco y Negro")
+
     base_vals <- list(
       scope          = input$scope,
       strain         = {
@@ -1326,7 +1333,7 @@ server <- function(input, output, session) {
       plot_text_style_title = plot_metadata_style_value("title"),
       plot_text_style_axis_titles = plot_metadata_style_value("axis_titles"),
       plot_text_style_axis_text = plot_metadata_style_value("axis_text"),
-      plot_text_style_legend = plot_metadata_style_value("legend"),
+      plot_text_style_legend = legend_style,
       plot_text_style_data_labels = plot_metadata_style_value("data_labels"),
       plot_text_style_significance = plot_metadata_style_value("significance"),
       axis_line_size = input$axis_line_size,
@@ -1359,8 +1366,28 @@ server <- function(input, output, session) {
     if (input$tipo %in% c("Boxplot", "Barras", "Violin")) {
       meta <- add_row(
         meta,
-        Campo = "legend_right",
-        Valor = as.character(input$legend_right)
+        Campo = c(
+          "legend_right",
+          "legend_applicable",
+          "legend_on_right",
+          "legend_text_style",
+          "legend_bold",
+          "legend_italic",
+          "legend_underline",
+          "legend_font_family",
+          "legend_font_size"
+        ),
+        Valor = c(
+          as.character(input$legend_right),
+          as.character(legend_applicable),
+          as.character(legend_on_right),
+          legend_style,
+          as.character("bold" %in% legend_style_parts),
+          as.character("italic" %in% legend_style_parts),
+          as.character("underline" %in% legend_style_parts),
+          as.character(input$plot_font_family %||% "Helvetica"),
+          as.character(input$fs_legend)
+        )
       )
     }
     if (input$tipo == "Boxplot") {
@@ -13646,6 +13673,26 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("x_wrap")))      updateCheckboxInput(session, "x_wrap", value = tolower(v) == "true")
     if (!is.null(v <- get_val("x_wrap_lines")))updateNumericInput(session, "x_wrap_lines", value = as.numeric(v))
     if (!is.null(v <- get_val("legend_right"))) updateCheckboxInput(session, "legend_right", value = tolower(v) == "true")
+    else if (!is.null(v <- get_val("legend_on_right"))) updateCheckboxInput(session, "legend_right", value = parse_bool(v))
+    if (!"legend" %in% restored_style_fields && !is.null(v <- get_val_allow_blank("legend_text_style"))) {
+      updateCheckboxGroupInput(session, "plot_text_style_legend", selected = parse_style_values(v))
+      restored_style_fields <- c(restored_style_fields, "legend")
+    } else if (!"legend" %in% restored_style_fields) {
+      legend_flag_styles <- character(0)
+      if (parse_bool(get_val("legend_bold"))) legend_flag_styles <- c(legend_flag_styles, "bold")
+      if (parse_bool(get_val("legend_italic"))) legend_flag_styles <- c(legend_flag_styles, "italic")
+      if (parse_bool(get_val("legend_underline"))) legend_flag_styles <- c(legend_flag_styles, "underline")
+      if (length(legend_flag_styles)) {
+        updateCheckboxGroupInput(session, "plot_text_style_legend", selected = legend_flag_styles)
+        restored_style_fields <- c(restored_style_fields, "legend")
+      }
+    }
+    if (is.null(get_val("plot_font_family")) && !is.null(v <- get_val("legend_font_family"))) {
+      updateSelectInput(session, "plot_font_family", selected = v)
+    }
+    if (is.null(get_val("fs_legend")) && !is.null(v <- get_val("legend_font_size"))) {
+      updateNumericInput(session, "fs_legend", value = as.numeric(v))
+    }
     if (!is.null(v <- get_val("pt_jit")))      updateNumericInput(session, "pt_jit",      value = as.numeric(v))
     if (!is.null(v <- get_val("box_w")))      updateNumericInput(session, "box_w",      value = as.numeric(v))
     if (!is.null(v <- get_val("violin_width")))     updateNumericInput(session, "violin_width",     value = as.numeric(v))

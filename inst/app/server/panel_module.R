@@ -1118,6 +1118,12 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
 
   collect_combo_meta <- function() {
     plot_ids <- names(plot_bank$all)
+    combo_legend_style <- combo_metadata_style_value("legend")
+    combo_legend_style_parts <- metadata_parse_text_style_value(combo_legend_style)
+    combo_legend_side_val <- as.character(input$combo_legend_side %||% "right")
+    combo_legend_on_right <- isTRUE(input$show_legend_combo) &&
+      identical(combo_legend_side_val, "right")
+
     vals <- list(
       plots_chosen      = paste(input$plots_chosen %||% character(0), collapse = ","),
       plot_order_ids    = paste(plot_ids, collapse = ","),
@@ -1126,6 +1132,7 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       combo_title_size  = input$combo_title_size,
       combo_legend_scope = input$combo_legend_scope,
       combo_legend_side = input$combo_legend_side,
+      combo_legend_on_right = combo_legend_on_right,
       nrow_combo        = input$nrow_combo,
       ncol_combo        = input$ncol_combo,
       combo_width       = input$combo_width,
@@ -1135,9 +1142,15 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       combo_text_style_title = combo_metadata_style_value("title"),
       combo_text_style_axis_titles = combo_metadata_style_value("axis_titles"),
       combo_text_style_axis_text = combo_metadata_style_value("axis_text"),
-      combo_text_style_legend = combo_metadata_style_value("legend"),
+      combo_text_style_legend = combo_legend_style,
       combo_text_style_data_labels = combo_metadata_style_value("data_labels"),
       combo_text_style_significance = combo_metadata_style_value("significance"),
+      combo_legend_text_style = combo_legend_style,
+      combo_legend_bold = "bold" %in% combo_legend_style_parts,
+      combo_legend_italic = "italic" %in% combo_legend_style_parts,
+      combo_legend_underline = "underline" %in% combo_legend_style_parts,
+      combo_legend_font_family = input$combo_font_family,
+      combo_legend_font_size = input$fs_legend_all,
       combo_adv_pal_enable = input$combo_adv_pal_enable,
       combo_adv_pal_type = input$combo_adv_pal_type,
       combo_adv_pal_reverse = input$combo_adv_pal_reverse,
@@ -1226,8 +1239,17 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
         v <- meta$Valor[meta$Campo == campo]
         if (length(v)) v else NULL
       }
+      first_val <- function(x) {
+        x <- as.character(x %||% "")
+        if (!length(x) || is.na(x[[1]])) "" else x[[1]]
+      }
+      parse_bool <- function(x) {
+        tolower(trimws(first_val(x))) %in% c("true", "1", "yes", "y")
+      }
       if (!is.null(v <- gv('show_legend_combo')))
-        updateCheckboxInput(session, 'show_legend_combo', value = tolower(v) == 'true')
+        updateCheckboxInput(session, 'show_legend_combo', value = parse_bool(v))
+      else if (!is.null(v <- gv('combo_legend_on_right')))
+        updateCheckboxInput(session, 'show_legend_combo', value = parse_bool(v))
       if (!is.null(v <- gv('combo_title')))
         updateTextInput(session, 'combo_title', value = v)
       if (!is.null(v <- gv('combo_title_size')))
@@ -1236,6 +1258,8 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
         updateSelectInput(session, 'combo_legend_scope', selected = v)
       if (!is.null(v <- gv('combo_legend_side')))
         updateRadioButtons(session, 'combo_legend_side', selected = v)
+      else if (!is.null(v <- gv('combo_legend_on_right')) && parse_bool(v))
+        updateRadioButtons(session, 'combo_legend_side', selected = "right")
       if (!is.null(v <- gv('nrow_combo')))
         updateNumericInput(session, 'nrow_combo', value = as.numeric(v))
       if (!is.null(v <- gv('ncol_combo')))
@@ -1260,14 +1284,29 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
         updateCheckboxInput(session, 'combo_apply_paper_theme', value = tolower(v) == 'true')
       if (!is.null(v <- gv('combo_font_family')))
         updateSelectInput(session, 'combo_font_family', selected = v)
+      else if (!is.null(v <- gv('combo_legend_font_family')))
+        updateSelectInput(session, 'combo_font_family', selected = v)
+      if (is.null(gv('fs_legend_all')) && !is.null(v <- gv('combo_legend_font_size')))
+        updateNumericInput(session, 'fs_legend_all', value = as.numeric(v))
       for (target in c("title", "axis_titles", "axis_text", "legend", "data_labels", "significance")) {
         input_id <- paste0("combo_text_style_", target)
         if (!is.null(v <- gv(input_id))) {
           updateCheckboxGroupInput(session, input_id, selected = metadata_parse_text_style_value(v))
         }
       }
+      if (is.null(gv("combo_text_style_legend")) && !is.null(v <- gv("combo_legend_text_style"))) {
+        updateCheckboxGroupInput(session, "combo_text_style_legend", selected = metadata_parse_text_style_value(v))
+      } else if (is.null(gv("combo_text_style_legend"))) {
+        legend_flag_styles <- character(0)
+        if (parse_bool(gv("combo_legend_bold"))) legend_flag_styles <- c(legend_flag_styles, "bold")
+        if (parse_bool(gv("combo_legend_italic"))) legend_flag_styles <- c(legend_flag_styles, "italic")
+        if (parse_bool(gv("combo_legend_underline"))) legend_flag_styles <- c(legend_flag_styles, "underline")
+        if (length(legend_flag_styles)) {
+          updateCheckboxGroupInput(session, "combo_text_style_legend", selected = legend_flag_styles)
+        }
+      }
       if (!is.null(v <- gv('combo_adv_pal_enable')))
-        updateCheckboxInput(session, 'combo_adv_pal_enable', value = tolower(v) == 'true')
+        updateCheckboxInput(session, 'combo_adv_pal_enable', value = parse_bool(v))
       if (!is.null(v <- gv('combo_adv_pal_type')))
         updateRadioButtons(session, 'combo_adv_pal_type', selected = v)
       if (!is.null(v <- gv('combo_adv_pal_reverse')))

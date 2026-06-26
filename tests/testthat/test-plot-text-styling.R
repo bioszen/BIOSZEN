@@ -52,9 +52,24 @@ test_that("main graph typography controls are wired through UI and server", {
   expect_match(server_txt, "plot_text_style_title = plot_metadata_style_value(\"title\")", fixed = TRUE)
   expect_match(server_txt, "plot_text_style_axis_titles = plot_metadata_style_value(\"axis_titles\")", fixed = TRUE)
   expect_match(server_txt, "plot_text_style_axis_text = plot_metadata_style_value(\"axis_text\")", fixed = TRUE)
-  expect_match(server_txt, "plot_text_style_legend = plot_metadata_style_value(\"legend\")", fixed = TRUE)
+  expect_match(server_txt, "legend_style <- plot_metadata_style_value(\"legend\")", fixed = TRUE)
+  expect_match(server_txt, "plot_text_style_legend = legend_style", fixed = TRUE)
   expect_match(server_txt, "plot_text_style_data_labels = plot_metadata_style_value(\"data_labels\")", fixed = TRUE)
   expect_match(server_txt, "plot_text_style_significance = plot_metadata_style_value(\"significance\")", fixed = TRUE)
+  for (field in c(
+    "legend_applicable",
+    "legend_on_right",
+    "legend_text_style",
+    "legend_bold",
+    "legend_italic",
+    "legend_underline",
+    "legend_font_family",
+    "legend_font_size"
+  )) {
+    expect_match(server_txt, field, fixed = TRUE)
+  }
+  expect_match(server_txt, "get_val(\"legend_on_right\")", fixed = TRUE)
+  expect_match(server_txt, "get_val_allow_blank(\"legend_text_style\")", fixed = TRUE)
   expect_match(server_txt, "addWorksheet(wb, \"TextStyle\")", fixed = TRUE)
   expect_match(server_txt, "writeData(wb, \"TextStyle\", text_style", fixed = TRUE)
   expect_match(server_txt, "metadata_text_style_sheet_rows(", fixed = TRUE)
@@ -85,6 +100,19 @@ test_that("main graph typography controls are wired through UI and server", {
   expect_match(panel_txt, "combo_text_face <- function", fixed = TRUE)
   expect_match(panel_txt, "combo_style_text_layers <- function", fixed = TRUE)
   expect_match(panel_txt, "combo_text_style_title = combo_metadata_style_value(\"title\")", fixed = TRUE)
+  for (field in c(
+    "combo_legend_on_right",
+    "combo_legend_text_style",
+    "combo_legend_bold",
+    "combo_legend_italic",
+    "combo_legend_underline",
+    "combo_legend_font_family",
+    "combo_legend_font_size"
+  )) {
+    expect_match(panel_txt, field, fixed = TRUE)
+  }
+  expect_match(panel_txt, "gv('combo_legend_on_right')", fixed = TRUE)
+  expect_match(panel_txt, "gv(\"combo_legend_text_style\")", fixed = TRUE)
   expect_match(panel_txt, "addWorksheet(wb, 'TextStyle')", fixed = TRUE)
   expect_match(panel_txt, "writeData(wb, 'TextStyle', collect_combo_text_style_tbl()", fixed = TRUE)
   expect_match(panel_txt, "collect_combo_plot_metadata_tbl <- function()", fixed = TRUE)
