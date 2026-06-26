@@ -8,6 +8,8 @@
 # Local Codex/session state
 .codex/
 .codex-run/
+.codex-remote-attachments/
+.agents/
 
 # Local helper tools kept outside release/repo scope
 .local-tools/

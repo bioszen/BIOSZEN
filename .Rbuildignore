@@ -13,6 +13,11 @@
 ^inst/app/rsconnect$
 ^inst/app/manifest\.json$
 ^inst/app/Rplots\.pdf$
+^\.Rhistory$
+^\.RData$
+^\.Ruserdata$
+^\.Rproj\.user$
+^.*\.Rproj$
 ^inst/app/\.Rhistory$
 ^R/\.Rhistory$
 ^Gallery$
@@ -29,7 +34,10 @@
 ^html-version$
 ^\.codex$
 ^\.codex-run$
+^\.codex-remote-attachments$
+^\.agents$
 ^\.local-tools$
+^inst/launchers/bioszen_r\.log$
 ^setup\.sh$
 ^%$
 ^reflog\.txt$
