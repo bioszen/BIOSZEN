@@ -17,7 +17,6 @@ library(nortest)
 library(DescTools)    # para DunnettTest()  
 library(multcomp)     # alternativa Dunnett y glht()  
 library(PMCMRplus)    # Scheffé, Conover, Nemenyi, DSCF  
-library(dunn.test)    # otra implementación de Dunn  
 library(broom)  
 library(stringr)  
 library(forcats)  
