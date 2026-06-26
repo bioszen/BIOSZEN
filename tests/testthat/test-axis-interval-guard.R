@@ -22,6 +22,20 @@ test_that("axis_breaks_limited_range caps excessive tick counts", {
   expect_equal(max(br), 1)
 })
 
+test_that("axis interval guard does not overwrite numeric inputs while typing", {
+  server_txt <- paste(
+    readLines(app_test_path("server", "server_main.R"), warn = FALSE, encoding = "UTF-8"),
+    collapse = "\n"
+  )
+
+  expect_false(grepl("enforce_axis_break_limit", server_txt, fixed = TRUE))
+  expect_false(grepl(
+    "updateNumericInput\\(session, break_id",
+    server_txt,
+    perl = TRUE
+  ))
+})
+
 test_that("Y-axis limits are not overwritten when switching parameters", {
   server_txt <- paste(
     readLines(app_test_path("server", "server_main.R"), warn = FALSE, encoding = "UTF-8"),

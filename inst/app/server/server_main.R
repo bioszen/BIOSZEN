@@ -940,43 +940,6 @@ server <- function(input, output, session) {
     invisible(TRUE)
   }
 
-  enforce_axis_break_limit <- function(break_id,
-                                       max_id,
-                                       min_id = NULL,
-                                       max_ticks = 40L) {
-    observeEvent(
-      list(input[[break_id]], input[[max_id]], if (!is.null(min_id)) input[[min_id]] else NULL),
-      {
-        br_raw <- suppressWarnings(as.numeric(input[[break_id]]))
-        if (!is.finite(br_raw) || br_raw <= 0) return()
-
-        lim <- if (is.null(min_id)) {
-          axis_interval_limited(
-            max_value = input[[max_id]],
-            interval = br_raw,
-            max_ticks = max_ticks,
-            fallback_ticks = 6L
-          )
-        } else {
-          axis_interval_limited_range(
-            min_value = input[[min_id]],
-            max_value = input[[max_id]],
-            interval = br_raw,
-            max_ticks = max_ticks,
-            fallback_ticks = 6L
-          )
-        }
-        safe_step <- suppressWarnings(as.numeric(lim$step))
-        if (!is.finite(safe_step) || safe_step <= 0) return()
-
-        tol <- max(1e-9, abs(safe_step) * 1e-6)
-        if (abs(br_raw - safe_step) <= tol) return()
-        updateNumericInput(session, break_id, value = safe_step)
-      },
-      ignoreInit = TRUE
-    )
-  }
-
   plot_payload_cache_get <- function(slot, key) {
     slot <- as.character(slot %||% "")
     if (!length(slot) || is.na(slot[[1]]) || !nzchar(slot[[1]])) return(NULL)
@@ -1082,14 +1045,6 @@ server <- function(input, output, session) {
 
   # Heatmap/correlation now render synchronously to avoid async lockups.
   output$heatmapLoadingUI <- renderUI(NULL)
-
-  # Guard against tiny user-entered intervals that would create too many
-  # axis ticks and stall rendering during rapid transitions.
-  enforce_axis_break_limit("ybreak", "ymax", max_ticks = 40L)
-  enforce_axis_break_limit("xbreak_cur", "xmax_cur", max_ticks = 40L)
-  enforce_axis_break_limit("ybreak_cur", "ymax_cur", max_ticks = 40L)
-  enforce_axis_break_limit("xbreak_corr", "xmax_corr", min_id = "xmin_corr", max_ticks = 60L)
-  enforce_axis_break_limit("ybreak_corr", "ymax_corr", min_id = "ymin_corr", max_ticks = 60L)
 
   observe({
     flag <- if (isTRUE(summary_input_mode())) "true" else "false"
