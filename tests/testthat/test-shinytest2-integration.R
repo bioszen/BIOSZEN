@@ -755,13 +755,33 @@ test_that("heatmap cluster export download includes parameter cluster sheets", {
     wait_ = TRUE,
     timeout_ = 60000
   )
+  app$wait_for_idle(timeout = 120000)
+  expect_true(wait_for_plot_idle(app, timeout_sec = 60))
 
-  out <- app$get_download(output = "downloadHeatClusters")
-  expect_true(file.exists(out))
+  out <- tryCatch(
+    app$get_download(output = "downloadHeatClusters"),
+    error = function(e) {
+      logs <- tryCatch(
+        paste(capture.output(print(app$get_logs())), collapse = "\n"),
+        error = function(...) "<failed to read app logs>"
+      )
+      stop(
+        sprintf("downloadHeatClusters failed: %s\nApp logs:\n%s", conditionMessage(e), logs),
+        call. = FALSE
+      )
+    }
+  )
+  expect_true(file.exists(out), info = sprintf("downloadHeatClusters file not created: %s", out))
 
   sheets <- readxl::excel_sheets(out)
-  expect_true(all(c("Summary", "HeatmapMatrix", "RowClusters", "ColumnClusters") %in% sheets))
-  expect_true(length(grep("^RowCluster_", sheets)) >= 1)
+  expect_true(
+    all(c("Summary", "HeatmapMatrix", "RowClusters", "ColumnClusters") %in% sheets),
+    info = paste("Workbook sheets:", paste(sheets, collapse = ", "))
+  )
+  expect_true(
+    length(grep("^RowCluster_", sheets)) >= 1,
+    info = paste("Workbook sheets:", paste(sheets, collapse = ", "))
+  )
 })
 
 test_that("heatmap and correlation-matrix flows run without critical frontend errors", {
