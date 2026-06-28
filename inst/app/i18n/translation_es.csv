@@ -134,6 +134,17 @@ select_params_prompt,Selecciona al menos un parámetro.
 missing_params_list,No se encontró el/los parámetro(s): %s
 table_not_available,Tabla no disponible para este tipo de gráfico
 growth_files,Cargar curvas de crecimiento (.xlsx)
+growth_selected_files,Archivos de crecimiento seleccionados
+growth_no_selected_files,Aún no hay archivos de crecimiento seleccionados.
+growth_files_selected_count,%d archivo(s) de crecimiento seleccionado(s).
+growth_clear_files,Limpiar archivos seleccionados
+growth_selection_cleared,Selección de archivos de crecimiento limpiada.
+growth_need_selected_files,Selecciona al menos un archivo de crecimiento para procesar.
+growth_output_dir,Carpeta de autoguardado (opcional)
+growth_output_dir_placeholder,C:/Users/nombre/Documents/BIOSZEN_growth_results
+growth_output_dir_help,"Si se define, los archivos finales se guardan ahí. Los puntos de control por pozo solo se conservan después de una interrupción y se borran al completar o reanudar con éxito."
+growth_browse_dir,Examinar...
+growth_browse_dir_caption,Seleccionar carpeta de salida de crecimiento
 growth_max_time,Tiempo máximo
 growth_interval,Intervalo (by)
 growth_run,Calcular parámetros
@@ -156,10 +167,22 @@ plot_text_styles_by_target,Estilos por tipo de texto
 plot_text_style_targets,1. Elige los textos
 plot_text_target_title,Título del gráfico
 plot_text_target_axis_titles,Títulos de ejes
-plot_text_target_axis_text,Números de ejes
+plot_text_target_axis_title_x,Título eje X
+plot_text_target_axis_title_y,Título eje Y
+plot_text_target_axis_text,Etiquetas de ticks de ejes
+plot_text_target_axis_text_x,Etiquetas de ticks eje X
+plot_text_target_axis_text_y,Etiquetas de ticks eje Y
 plot_text_target_legend,Leyenda
 plot_text_target_data_labels,Etiquetas de datos
 plot_text_target_significance,Texto de significancia
+plot_axis_xy_custom,Personalizar ejes X e Y por separado
+group_label_style_title,Etiquetas de grupos visibles
+group_label_style_hint,Usar solo para etiquetas de grupos que estén visibles en el eje del gráfico.
+group_label_style_select,Etiqueta de grupo
+group_label_style_styles,Estilo de la etiqueta seleccionada
+group_label_style_apply,Aplicar a etiqueta seleccionada
+group_label_style_reset,Restablecer etiqueta seleccionada
+group_label_style_empty,No hay etiquetas de grupos editables visibles para este gráfico.
 plot_text_styles,2. Aplica estos estilos
 plot_text_style_bold,Negrita
 plot_text_style_italic,Cursiva

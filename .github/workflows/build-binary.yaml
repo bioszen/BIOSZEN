@@ -17,7 +17,11 @@ defaults:
 jobs:
   test:
     name: Test suite (release gate)
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
     env:
       NOT_CRAN: "true"
 
@@ -27,6 +31,8 @@ jobs:
 
       - name: Set up R
         uses: r-lib/actions/setup-r@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590
+        with:
+          r-version: release
 
       - name: Install dependencies
         uses: r-lib/actions/setup-r-dependencies@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590
@@ -37,8 +43,13 @@ jobs:
             any::chromote
           needs: check
 
-      - name: Run testthat suite
+      - name: Run full testthat suite (incl shiny e2e)
+        if: matrix.os == 'windows-latest'
         run: Rscript -e "testthat::test_dir('tests/testthat')"
+
+      - name: Run core testthat suite (exclude shiny e2e)
+        if: matrix.os != 'windows-latest'
+        run: Rscript -e "files <- list.files('tests/testthat', pattern='^test-.*[.]R$', full.names = TRUE); files <- files[basename(files) != 'test-shinytest2-integration.R']; invisible(lapply(files, testthat::test_file))"
 
   package:
     name: Package BIOSZEN (${{ matrix.os }})

@@ -254,6 +254,15 @@ is_local_session <- function(session) {
   host %in% c("127.0.0.1", "localhost", "::1")
 }
 
+should_stop_on_last_session <- function() {
+  value <- Sys.getenv("BIOSZEN_STOP_ON_LAST_SESSION", unset = "")
+  if (!nzchar(value)) {
+    value <- getOption("BIOSZEN.stop_on_last_session", "true")
+  }
+  value <- tolower(trimws(as.character(value)[[1]] %||% "false"))
+  value %in% c("1", "true", "yes", "y", "on")
+}
+
 get_current_version <- function(pkg = "BIOSZEN") {
   out <- tryCatch(as.character(utils::packageVersion(pkg)), error = function(e) "")
   if (!nzchar(out)) {
@@ -285,10 +294,14 @@ server <- function(input, output, session) {
       ifnotfound = NULL
     )
     keep_running_for_growth <- is.function(has_active_growth_jobs) && isTRUE(has_active_growth_jobs())
-    if (active_sessions == 0 && !keep_running_for_growth) shiny::stopApp()
+    if (active_sessions == 0 && !keep_running_for_growth && should_stop_on_last_session()) {
+      shiny::stopApp()
+    }
   })
 
   plot_text_style_inputs_ready <- reactiveVal(FALSE)
+  group_label_style_overrides <- reactiveVal(setNames(character(0), character(0)))
+  group_label_style_syncing <- reactiveVal(FALSE)
   session$onFlushed(function() {
     plot_text_style_inputs_ready(TRUE)
   }, once = TRUE)
@@ -464,8 +477,6 @@ server <- function(input, output, session) {
   }, ignoreInit = FALSE)
 
   observeEvent(input$param, {
-    current_param <- trimws(as.character(input$param %||% ""))
-    if (!nzchar(current_param)) return()
     cfg <- isolate(plot_cfg_box())
     params_all <- if (is.data.frame(cfg) && "Parameter" %in% names(cfg)) {
       vals <- as.character(cfg$Parameter %||% character(0))
@@ -473,6 +484,8 @@ server <- function(input, output, session) {
     } else {
       character(0)
     }
+    current_param <- normalize_param_selection(input$param, params_all)
+    if (!nzchar(current_param)) return()
     if (length(params_all) && current_param %in% params_all) {
       last_param_selection(current_param)
     }
@@ -1242,7 +1255,11 @@ server <- function(input, output, session) {
       as.character(target %||% ""),
       title = input$fs_title,
       axis_titles = input$fs_axis,
+      axis_title_x = input$fs_axis,
+      axis_title_y = input$fs_axis,
       axis_text = input$fs_axis,
+      axis_text_x = input$fs_axis,
+      axis_text_y = input$fs_axis,
       legend = input$fs_legend,
       data_labels = input$fs_axis,
       significance = input$sig_textsize %||% input$fs_axis,
@@ -1254,7 +1271,12 @@ server <- function(input, output, session) {
     targets <- if (exists("bioszen_plot_text_targets", mode = "function")) {
       bioszen_plot_text_targets()
     } else {
-      c("title", "axis_titles", "axis_text", "legend", "data_labels", "significance")
+      c(
+        "title",
+        "axis_titles", "axis_title_x", "axis_title_y",
+        "axis_text", "axis_text_x", "axis_text_y",
+        "legend", "data_labels", "significance"
+      )
     }
     family <- as.character(input$plot_font_family %||% "Helvetica")
     rows <- lapply(targets, function(target) {
@@ -1274,7 +1296,11 @@ server <- function(input, output, session) {
           as.character(target),
           title = "fs_title",
           axis_titles = "fs_axis",
+          axis_title_x = "fs_axis",
+          axis_title_y = "fs_axis",
           axis_text = "fs_axis",
+          axis_text_x = "fs_axis",
+          axis_text_y = "fs_axis",
           legend = "fs_legend",
           data_labels = "fs_axis",
           significance = "sig_textsize",
@@ -1283,7 +1309,36 @@ server <- function(input, output, session) {
         stringsAsFactors = FALSE
       )
     })
-    do.call(rbind, rows)
+    style_tbl <- do.call(rbind, rows)
+    group_overrides <- tryCatch(
+      group_label_style_overrides(),
+      error = function(e) setNames(character(0), character(0))
+    )
+    if (length(group_overrides)) {
+      keep <- !is.na(names(group_overrides)) & nzchar(names(group_overrides))
+      group_overrides <- group_overrides[keep]
+    }
+    if (length(group_overrides)) {
+      group_rows <- lapply(names(group_overrides), function(label) {
+        style <- metadata_text_style_value(metadata_parse_text_style_value(group_overrides[[label]]))
+        parsed <- metadata_parse_text_style_value(style)
+        data.frame(
+          Text = paste0("Group label: ", label),
+          Target = paste0("group_label:", label),
+          FontFamily = family,
+          Size = as.character(input$fs_axis),
+          Style = style,
+          Bold = as.character("bold" %in% parsed),
+          Italic = as.character("italic" %in% parsed),
+          Underline = as.character("underline" %in% parsed),
+          InputId = "",
+          SizeInputId = "fs_axis",
+          stringsAsFactors = FALSE
+        )
+      })
+      style_tbl <- rbind(style_tbl, do.call(rbind, group_rows))
+    }
+    style_tbl
   }
 
   # --- Helper: recopilar metadata actual para reproducibilidad ---
@@ -1330,12 +1385,23 @@ server <- function(input, output, session) {
       fs_axis        = input$fs_axis,
       fs_legend      = input$fs_legend,
       plot_font_family = as.character(input$plot_font_family %||% "Helvetica"),
+      plot_axis_xy_custom = as.character(input$plot_axis_xy_custom %||% FALSE),
       plot_text_style_title = plot_metadata_style_value("title"),
       plot_text_style_axis_titles = plot_metadata_style_value("axis_titles"),
+      plot_text_style_axis_title_x = plot_metadata_style_value("axis_title_x"),
+      plot_text_style_axis_title_y = plot_metadata_style_value("axis_title_y"),
       plot_text_style_axis_text = plot_metadata_style_value("axis_text"),
+      plot_text_style_axis_text_x = plot_metadata_style_value("axis_text_x"),
+      plot_text_style_axis_text_y = plot_metadata_style_value("axis_text_y"),
       plot_text_style_legend = legend_style,
       plot_text_style_data_labels = plot_metadata_style_value("data_labels"),
       plot_text_style_significance = plot_metadata_style_value("significance"),
+      group_label_text_style_overrides = encode_named_metadata(
+        tryCatch(
+          group_label_style_overrides(),
+          error = function(e) setNames(character(0), character(0))
+        )
+      ),
       axis_line_size = input$axis_line_size,
       yLab           = as.character(input$yLab %||% ""),
       plotTitle      = as.character(input$plotTitle %||% ""),
@@ -1349,6 +1415,21 @@ server <- function(input, output, session) {
       Campo = names(base_vals),
       Valor = vapply(base_vals, as.character, character(1))
     )
+
+    metadata_param <- normalize_param_selection(input$param, safe_plot_setting_params())
+    if (!nzchar(metadata_param)) {
+      metadata_param <- normalize_param_selection(last_param_selection(), safe_plot_setting_params())
+    }
+    if (!nzchar(metadata_param)) {
+      metadata_param <- normalize_param_selection(safe_param(), safe_plot_setting_params())
+    }
+    if (nzchar(metadata_param)) {
+      meta <- add_row(
+        meta,
+        Campo = "param",
+        Valor = metadata_param
+      )
+    }
 
     if (input$tipo %in% c("Boxplot", "Barras", "Apiladas", "Violin")) {
       meta <- add_row(
@@ -1425,10 +1506,8 @@ server <- function(input, output, session) {
     if (input$tipo %in% c("Boxplot", "Barras", "Violin")) {
       meta <- add_row(
         meta,
-        Campo = c("param",
-                  "errbar_size", "ymax", "ybreak"),
+        Campo = c("errbar_size", "ymax", "ybreak"),
         Valor = c(
-          safe_param(),
           as.character(input$errbar_size),
           as.character(get_ylim(safe_param())$ymax),
           as.character(get_ylim(safe_param())$ybreak)
@@ -2436,12 +2515,40 @@ server <- function(input, output, session) {
     if (exists("bioszen_plot_text_targets", mode = "function")) {
       bioszen_plot_text_targets()
     } else {
-      c("title", "axis_titles", "axis_text", "legend", "data_labels", "significance")
+      c(
+        "title",
+        "axis_titles", "axis_title_x", "axis_title_y",
+        "axis_text", "axis_text_x", "axis_text_y",
+        "legend", "data_labels", "significance"
+      )
     }
   }
 
   plot_text_style_input_id <- function(target) {
     paste0("plot_text_style_", as.character(target %||% ""))
+  }
+
+  plot_axis_xy_custom_enabled <- function() {
+    isTRUE(input$plot_axis_xy_custom %||% FALSE)
+  }
+
+  plot_axis_parent_target <- function(target) {
+    switch(
+      as.character(target %||% ""),
+      axis_title_x = "axis_titles",
+      axis_title_y = "axis_titles",
+      axis_text_x = "axis_text",
+      axis_text_y = "axis_text",
+      as.character(target %||% "")
+    )
+  }
+
+  plot_effective_text_target <- function(target) {
+    target_chr <- as.character(target %||% "")
+    if (!isTRUE(plot_axis_xy_custom_enabled())) {
+      return(plot_axis_parent_target(target_chr))
+    }
+    target_chr
   }
 
   plot_text_allowed_styles <- function() {
@@ -2462,7 +2569,7 @@ server <- function(input, output, session) {
   }
 
   plot_text_styles_for_target <- function(target, default_face = "plain") {
-    target <- as.character(target %||% "")
+    target <- plot_effective_text_target(target)
     input_id <- plot_text_style_input_id(target)
     val <- input[[input_id]]
     if (is.null(val) && !isTRUE(plot_text_style_inputs_ready())) {
@@ -2485,14 +2592,90 @@ server <- function(input, output, session) {
     "underline" %in% plot_text_styles_for_target(target)
   }
 
-  plotly_underline_state <- function() {
+  group_label_style_supported <- function(tipo = input$tipo %||% "") {
+    as.character(tipo %||% "") %in% c("Boxplot", "Barras", "Violin", "Apiladas")
+  }
+
+  displayed_group_labels <- function() {
+    tipo <- as.character(input$tipo %||% "")
+    if (!isTRUE(group_label_style_supported(tipo))) return(character(0))
+    df <- tryCatch(scoped_plot_df(), error = function(e) NULL)
+    if (!is.data.frame(df) || !nrow(df)) return(character(0))
+    scope <- input$scope %||% "Por Cepa"
+    label_vec <- if (identical(scope, "Por Cepa")) {
+      df$Media %||% character(0)
+    } else if (identical(tipo, "Apiladas") && isTRUE(input$labelMode)) {
+      df$Strain %||% character(0)
+    } else {
+      if (!"Label" %in% names(df) && all(c("Strain", "Media") %in% names(df))) {
+        paste(df$Strain, df$Media, sep = "-")
+      } else {
+        df$Label %||% character(0)
+      }
+    }
+    if (is.factor(label_vec)) {
+      labels <- levels(label_vec)
+    } else {
+      labels <- unique(as.character(label_vec))
+    }
+    labels <- labels[!is.na(labels) & nzchar(labels)]
+    if (isTRUE(input$x_wrap)) {
+      labels <- wrap_label(labels, lines = input$x_wrap_lines)
+    }
+    if (!identical(scope, "Por Cepa") && !identical(tipo, "Apiladas") && isTRUE(input$labelMode)) {
+      labels <- sub("-.*$", "", labels)
+    }
+    unique(labels[!is.na(labels) & nzchar(labels)])
+  }
+
+  group_label_axis_target <- function() {
+    if (isTRUE(input$plot_flip %||% FALSE)) "axis_text_y" else "axis_text_x"
+  }
+
+  style_state_from_styles <- function(styles) {
+    styles <- intersect(as.character(styles %||% character(0)), plot_text_allowed_styles())
     list(
-      title = isTRUE(plot_text_underlined("title")),
-      axisTitles = isTRUE(plot_text_underlined("axis_titles")),
-      axisText = isTRUE(plot_text_underlined("axis_text")),
-      legend = isTRUE(plot_text_underlined("legend")),
-      dataLabels = isTRUE(plot_text_underlined("data_labels")),
-      significance = isTRUE(plot_text_underlined("significance"))
+      underline = "underline" %in% styles,
+      bold = "bold" %in% styles,
+      italic = "italic" %in% styles
+    )
+  }
+
+  style_state_from_metadata_value <- function(value) {
+    style_state_from_styles(metadata_parse_text_style_value(value))
+  }
+
+  plotly_underline_state <- function() {
+    target_state <- function(target, enabled = TRUE) {
+      if (!isTRUE(enabled)) {
+        return(list(underline = FALSE, bold = FALSE, italic = FALSE))
+      }
+      styles <- plot_text_styles_for_target(target)
+      style_state_from_styles(styles)
+    }
+    group_overrides <- tryCatch(
+      group_label_style_overrides(),
+      error = function(e) setNames(character(0), character(0))
+    )
+    if (length(group_overrides)) {
+      visible <- displayed_group_labels()
+      keep <- names(group_overrides) %in% visible
+      group_overrides <- group_overrides[keep]
+    }
+    group_states <- lapply(group_overrides, style_state_from_metadata_value)
+    list(
+      title = target_state("title"),
+      axisTitles = target_state("axis_titles", enabled = !isTRUE(plot_axis_xy_custom_enabled())),
+      axisTitleX = target_state("axis_title_x"),
+      axisTitleY = target_state("axis_title_y"),
+      axisText = target_state("axis_text", enabled = !isTRUE(plot_axis_xy_custom_enabled())),
+      axisTextX = target_state("axis_text_x"),
+      axisTextY = target_state("axis_text_y"),
+      legend = target_state("legend"),
+      dataLabels = target_state("data_labels"),
+      significance = target_state("significance"),
+      groupLabels = group_states,
+      groupLabelAxis = if (identical(group_label_axis_target(), "axis_text_y")) "y" else "x"
     )
   }
 
@@ -2562,13 +2745,13 @@ server <- function(input, output, session) {
       ),
       axis.title.x = update_text_element(
         plot_theme_element(p, "axis.title.x", "axis.title"),
-        "axis_titles",
+        "axis_title_x",
         default_face = "bold",
         size = input$fs_axis
       ),
       axis.title.y = update_text_element(
         plot_theme_element(p, "axis.title.y", "axis.title"),
-        "axis_titles",
+        "axis_title_y",
         default_face = "bold",
         size = input$fs_axis
       ),
@@ -2580,13 +2763,13 @@ server <- function(input, output, session) {
       ),
       axis.text.x = update_text_element(
         plot_theme_element(p, "axis.text.x", "axis.text"),
-        "axis_text",
+        "axis_text_x",
         default_face = "plain",
         size = input$fs_axis
       ),
       axis.text.y = update_text_element(
         plot_theme_element(p, "axis.text.y", "axis.text"),
-        "axis_text",
+        "axis_text_y",
         default_face = "plain",
         size = input$fs_axis
       ),
@@ -2618,10 +2801,19 @@ server <- function(input, output, session) {
       "  var selectorMap = {",
       "    title: ['.gtitle'],",
       "    axisTitles: ['.xtitle', '.ytitle', '.x2title', '.y2title', '.x3title', '.y3title', '.g-xtitle text', '.g-ytitle text'],",
+      "    axisTitleX: ['.xtitle', '.x2title', '.x3title', '.g-xtitle text'],",
+      "    axisTitleY: ['.ytitle', '.y2title', '.y3title', '.g-ytitle text'],",
       "    axisText: ['.xtick text', '.ytick text', '.x2tick text', '.y2tick text', '.x3tick text', '.y3tick text', 'g[class$=\"tick\"] text'],",
+      "    axisTextX: ['.xtick text', '.x2tick text', '.x3tick text'],",
+      "    axisTextY: ['.ytick text', '.y2tick text', '.y3tick text'],",
       "    legend: ['.legend text'],",
-      "    dataLabels: ['.textpoint text', '.bartext', '.slicetext', '.funneltext', '.treemaptext', '.sunburstlabel', '.iciclelabel'],",
+      "    dataLabels: ['.textpoint', '.textpoint text', '.scatterlayer .textpoint', '.scatterlayer .textpoint text', '.scatterlayer .text', '.scatterlayer .text text', '.bartext', '.bartext text', '.slicetext', '.slicetext text', '.funneltext', '.funneltext text', '.treemaptext', '.treemaptext text', '.sunburstlabel', '.iciclelabel'],",
       "    significance: ['.annotation text']",
+      "  };",
+      "  var groupAxisSelectorMap = {",
+      "    x: ['.xtick text', '.x2tick text', '.x3tick text'],",
+      "    y: ['.ytick text', '.y2tick text', '.y3tick text'],",
+      "    both: ['.xtick text', '.ytick text', '.x2tick text', '.y2tick text', '.x3tick text', '.y3tick text']",
       "  };",
       "  var allSelectors = [];",
       "  Object.keys(selectorMap).forEach(function(key) {",
@@ -2640,9 +2832,23 @@ server <- function(input, output, session) {
       "    });",
       "    return out;",
       "  }",
-      "  function setUnderline(node, enabled) {",
+      "  function targetState(key) {",
+      "    var cfg = state[key];",
+      "    if (typeof cfg === 'boolean') return { underline: cfg, bold: false, italic: false };",
+      "    if (!cfg || typeof cfg !== 'object') return { underline: false, bold: false, italic: false };",
+      "    return {",
+      "      underline: !!cfg.underline,",
+      "      bold: !!cfg.bold,",
+      "      italic: !!cfg.italic",
+      "    };",
+      "  }",
+      "  function normalizeLabelText(value) {",
+      "    return String(value == null ? '' : value).replace(/\\s+/g, ' ').trim();",
+      "  }",
+      "  function setTextStyle(node, cfg) {",
       "    if (!node || !node.style) return;",
-      "    if (enabled) {",
+      "    cfg = cfg || { underline: false, bold: false, italic: false };",
+      "    if (cfg.underline) {",
       "      node.style.textDecoration = 'underline';",
       "      node.style.textDecorationLine = 'underline';",
       "      node.setAttribute('text-decoration', 'underline');",
@@ -2651,15 +2857,48 @@ server <- function(input, output, session) {
       "      node.style.textDecorationLine = '';",
       "      node.removeAttribute('text-decoration');",
       "    }",
+      "    if (cfg.italic) {",
+      "      node.style.fontStyle = 'italic';",
+      "      node.setAttribute('font-style', 'italic');",
+      "    } else {",
+      "      node.style.fontStyle = '';",
+      "      node.removeAttribute('font-style');",
+      "    }",
+      "    if (cfg.bold) {",
+      "      node.style.fontWeight = '700';",
+      "      node.setAttribute('font-weight', '700');",
+      "    } else {",
+      "      node.style.fontWeight = '';",
+      "      node.removeAttribute('font-weight');",
+      "    }",
       "  }",
       "  function apply() {",
       "    var gd = el.querySelector('.js-plotly-plot') || el;",
       "    if (!gd || !gd.querySelectorAll) return;",
-      "    uniqueNodes(gd, allSelectors).forEach(function(node) { setUnderline(node, false); });",
-      "    Object.keys(selectorMap).forEach(function(key) {",
-      "      if (!state[key]) return;",
-      "      uniqueNodes(gd, selectorMap[key]).forEach(function(node) { setUnderline(node, true); });",
+      "    uniqueNodes(gd, allSelectors).forEach(function(node) {",
+      "      setTextStyle(node, { underline: false, bold: false, italic: false });",
       "    });",
+      "    Object.keys(selectorMap).forEach(function(key) {",
+      "      var cfg = targetState(key);",
+      "      if (!cfg.underline && !cfg.bold && !cfg.italic) return;",
+      "      uniqueNodes(gd, selectorMap[key]).forEach(function(node) { setTextStyle(node, cfg); });",
+      "    });",
+      "    var groupLabels = state.groupLabels || {};",
+      "    var groupKeys = Object.keys(groupLabels);",
+      "    if (groupKeys.length) {",
+      "      var axisKey = state.groupLabelAxis || 'both';",
+      "      var selectors = groupAxisSelectorMap[axisKey] || groupAxisSelectorMap.both;",
+      "      var normalized = {};",
+      "      groupKeys.forEach(function(label) {",
+      "        normalized[normalizeLabelText(label)] = groupLabels[label];",
+      "      });",
+      "      uniqueNodes(gd, selectors).forEach(function(node) {",
+      "        var label = normalizeLabelText(node.textContent || '');",
+      "        if (Object.prototype.hasOwnProperty.call(normalized, label)) {",
+      "          setTextStyle(node, normalized[label]);",
+      "        }",
+      "      });",
+      "    }",
       "  }",
       "  function attach() {",
       "    var gd = el.querySelector('.js-plotly-plot') || el;",
@@ -2692,18 +2931,21 @@ server <- function(input, output, session) {
     font
   }
 
-  style_plotly_axis <- function(axis_obj) {
+  style_plotly_axis <- function(axis_obj, axis_name = "") {
     axis_obj <- if (is.list(axis_obj)) axis_obj else list()
+    axis_name <- tolower(as.character(axis_name %||% ""))
+    title_target <- if (startsWith(axis_name, "yaxis")) "axis_title_y" else "axis_title_x"
+    text_target <- if (startsWith(axis_name, "yaxis")) "axis_text_y" else "axis_text_x"
     if (is.list(axis_obj$title)) {
-      axis_obj$title$text <- plotly_style_text_value(axis_obj$title$text %||% "", "axis_titles")
-      axis_obj$title$font <- plotly_font_list("axis_titles", size = input$fs_axis, current = axis_obj$title$font)
+      axis_obj$title$text <- plotly_style_text_value(axis_obj$title$text %||% "", title_target)
+      axis_obj$title$font <- plotly_font_list(title_target, size = input$fs_axis, current = axis_obj$title$font)
     } else if (!is.null(axis_obj$title)) {
-      axis_obj$title <- plotly_style_text_value(axis_obj$title, "axis_titles")
+      axis_obj$title <- plotly_style_text_value(axis_obj$title, title_target)
     }
-    axis_obj$titlefont <- plotly_font_list("axis_titles", size = input$fs_axis, current = axis_obj$titlefont)
-    axis_obj$tickfont <- plotly_font_list("axis_text", size = input$fs_axis, current = axis_obj$tickfont)
+    axis_obj$titlefont <- plotly_font_list(title_target, size = input$fs_axis, current = axis_obj$titlefont)
+    axis_obj$tickfont <- plotly_font_list(text_target, size = input$fs_axis, current = axis_obj$tickfont)
     if (!is.null(axis_obj$ticktext)) {
-      axis_obj$ticktext <- plotly_style_text_value(axis_obj$ticktext, "axis_text")
+      axis_obj$ticktext <- plotly_style_text_value(axis_obj$ticktext, text_target)
     }
     axis_obj
   }
@@ -2723,7 +2965,7 @@ server <- function(input, output, session) {
     }
     axis_names <- unique(c("xaxis", "yaxis", grep("^[xy]axis[0-9]+$", names(layout_obj), value = TRUE)))
     for (axis_name in axis_names) {
-      layout_obj[[axis_name]] <- style_plotly_axis(layout_obj[[axis_name]])
+      layout_obj[[axis_name]] <- style_plotly_axis(layout_obj[[axis_name]], axis_name = axis_name)
     }
     legend_obj <- layout_obj$legend %||% list()
     legend_obj$font <- plotly_font_list("legend", size = input$fs_legend, current = legend_obj$font)
@@ -2898,6 +3140,7 @@ server <- function(input, output, session) {
                                    curve_settings)
   growth_mod    <- setup_growth_module(input, output, session)
   growth_out_dir <- growth_mod$growth_dir
+  growth_selected_count <- growth_mod$selected_count
 
   # Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Logo siempre visible Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   output$logo_img <- renderUI({
@@ -4226,8 +4469,8 @@ server <- function(input, output, session) {
       params <- params[!is.na(params) & nzchar(params)]
       high_dim <- is_large_param_set(params)
 
-      current_param <- isolate(input$param %||% "")
-      preferred_param <- isolate(last_param_selection() %||% "")
+      current_param <- normalize_param_selection(isolate(input$param %||% ""), params)
+      preferred_param <- normalize_param_selection(isolate(last_param_selection() %||% ""), params)
       current_x <- isolate(input$corr_param_x %||% "")
       current_y <- isolate(input$corr_param_y %||% "")
       current_adv_anchor <- isolate(input$corr_adv_anchor %||% "")
@@ -4253,24 +4496,12 @@ server <- function(input, output, session) {
       if (strict_norm && !is.null(scope_df)) {
         param_choices <- normalized_ready_params(scope_df, params)
       }
-      if (nzchar(current_param) &&
-          current_param %in% params &&
-          !current_param %in% param_choices) {
-        # Keep current parameter available so it never jumps automatically
-        # outside manual changes or data reload.
-        param_choices <- unique(c(current_param, param_choices))
-      }
-      if (nzchar(preferred_param) &&
-          preferred_param %in% params &&
-          !preferred_param %in% param_choices) {
-        param_choices <- unique(c(preferred_param, param_choices))
-      }
 
       selected_param <- if (nzchar(current_param) && current_param %in% param_choices) {
         current_param
       } else if (nzchar(preferred_param) && preferred_param %in% param_choices) {
         preferred_param
-      } else if (!nzchar(current_param) && length(param_choices)) {
+      } else if (length(param_choices)) {
         param_choices[1]
       } else {
         character(0)
@@ -4414,10 +4645,12 @@ server <- function(input, output, session) {
   # --- ParÃƒÂ¡m. seguro: siempre existe en el Excel cargado ----  
   safe_param <- reactive({
     params_all <- safe_plot_setting_params()
-    current <- as.character(input$param %||% "")
-    if (!length(current) || is.na(current[[1]])) current <- ""
-    current <- current[[1]]
+    current <- normalize_param_selection(input$param, params_all)
+    preferred <- normalize_param_selection(last_param_selection(), params_all)
 
+    if (!nzchar(current) && nzchar(preferred)) {
+      current <- preferred
+    }
     if ((!nzchar(current) || !current %in% params_all) && length(params_all)) {
       current <- params_all[[1]]
     }
@@ -5342,9 +5575,8 @@ server <- function(input, output, session) {
   observeEvent(input$param, {
     req(plot_settings(), input$param)
     
-    raw_param <- as.character(input$param %||% "")
-    if (!length(raw_param) || is.na(raw_param[[1]]) || !nzchar(raw_param[[1]])) return()
-    raw_param <- raw_param[[1]]
+    raw_param <- normalize_param_selection(input$param, safe_plot_setting_params())
+    if (!nzchar(raw_param)) return()
     cfg <- plot_settings() %>%
       dplyr::filter(Parameter == raw_param) %>%
       dplyr::slice(1)
@@ -5515,8 +5747,10 @@ server <- function(input, output, session) {
       req(plot_settings(), input$param)
       if (isTRUE(axis_sync_inflight())) return()
 
+      raw_param <- normalize_param_selection(input$param, safe_plot_setting_params())
+      if (!nzchar(raw_param)) return()
       tgt <- if (isTRUE(input$doNorm) && has_ctrl_selected())
-        paste0(input$param, "_Norm") else input$param
+        paste0(raw_param, "_Norm") else raw_param
 
       lims <- get_ylim(tgt)
       lang <- input$app_lang %||% i18n_lang
@@ -5547,8 +5781,8 @@ server <- function(input, output, session) {
       } else {
         character(0)
       }
-      param_sel <- trimws(as.character(input$param %||% ""))
-      preferred_param <- trimws(as.character(isolate(last_param_selection() %||% "")))
+      param_sel <- normalize_param_selection(input$param, params)
+      preferred_param <- normalize_param_selection(isolate(last_param_selection() %||% ""), params)
       if (!nzchar(param_sel) && nzchar(preferred_param) && (!length(params) || preferred_param %in% params)) {
         param_sel <- preferred_param
       }
@@ -5694,8 +5928,19 @@ server <- function(input, output, session) {
   param_rep_df <- function() {
     df <- datos_combinados()
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return(df)
-    param <- input$param
-    if (is.null(param) || !nzchar(param) || !param %in% names(df)) return(df[0, ])
+    params_all <- safe_plot_setting_params()
+    raw_param <- normalize_param_selection(input$param, params_all)
+    if (!nzchar(raw_param)) {
+      raw_param <- normalize_param_selection(last_param_selection(), params_all)
+    }
+    if (!nzchar(raw_param) && length(params_all)) raw_param <- params_all[[1]]
+    if (!nzchar(raw_param)) return(df[0, , drop = FALSE])
+    param <- if (isTRUE(input$doNorm) && has_ctrl_selected() && paste0(raw_param, "_Norm") %in% names(df)) {
+      paste0(raw_param, "_Norm")
+    } else {
+      raw_param
+    }
+    if (!param %in% names(df)) return(df[0, , drop = FALSE])
     df %>%
       filter(!is.na(Strain), !is.na(Media), Strain != "C-") %>%
       filter(is.finite(.data[[param]]))
@@ -6035,10 +6280,8 @@ server <- function(input, output, session) {
       return(list(base = "", value = "", normalized = FALSE))
     }
 
-    current <- trimws(as.character(input$param %||% ""))
-    current <- if (length(current) && !is.na(current[[1]])) current[[1]] else ""
-    preferred <- trimws(as.character(last_param_selection() %||% ""))
-    preferred <- if (length(preferred) && !is.na(preferred[[1]])) preferred[[1]] else ""
+    current <- normalize_param_selection(input$param, params_all)
+    preferred <- normalize_param_selection(last_param_selection(), params_all)
 
     candidates <- unique(c(current, preferred, params_all))
     candidates <- candidates[!is.na(candidates) & nzchar(candidates)]
@@ -8015,9 +8258,7 @@ server <- function(input, output, session) {
     params <- qc_param_cols()
     if (!length(params)) return(character(0))
 
-    selected_param <- as.character(input$param %||% character(0))
-    selected_param <- selected_param[!is.na(selected_param) & nzchar(selected_param)]
-    selected_param <- if (length(selected_param)) selected_param[[1]] else ""
+    selected_param <- normalize_param_selection(input$param, safe_plot_setting_params())
 
     if (nzchar(selected_param)) {
       selected_candidates <- c(selected_param)
@@ -9292,6 +9533,130 @@ server <- function(input, output, session) {
     }
     unique(as.character(labels))
   })
+
+  output$groupLabelStyleUI <- renderUI({
+    input$app_lang
+    labels <- displayed_group_labels()
+    if (!length(labels)) {
+      return(helpText(tr("group_label_style_empty")))
+    }
+    selected <- as.character(input$group_label_style_sel %||% "")
+    if (!length(selected) || is.na(selected[[1]]) || !selected[[1]] %in% labels) {
+      selected <- labels[[1]]
+    } else {
+      selected <- selected[[1]]
+    }
+    tagList(
+      hr(),
+      h5(tr("group_label_style_title")),
+      helpText(tr("group_label_style_hint")),
+      selectizeInput(
+        "group_label_style_sel",
+        tr("group_label_style_select"),
+        choices = labels,
+        selected = selected,
+        multiple = FALSE,
+        options = list(
+          placeholder = tr("group_label_style_select")
+        )
+      ),
+      checkboxGroupInput(
+        "group_label_text_style_selected",
+        tr("group_label_style_styles"),
+        choices = named_choices(
+          bioszen_plot_text_styles(),
+          list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+        ),
+        selected = character(0),
+        inline = TRUE
+      ),
+      fluidRow(
+        column(
+          6,
+          actionButton(
+            "group_label_style_apply",
+            tr("group_label_style_apply"),
+            class = "btn btn-primary btn-sm"
+          )
+        ),
+        column(
+          6,
+          actionButton(
+            "group_label_style_reset",
+            tr("group_label_style_reset"),
+            class = "btn btn-outline-secondary btn-sm"
+          )
+        )
+      )
+    )
+  })
+
+  group_label_styles_for_selection <- function(label) {
+    label <- as.character(label %||% "")
+    if (!length(label) || is.na(label[[1]]) || !nzchar(label[[1]])) return(character(0))
+    label <- label[[1]]
+    overrides <- tryCatch(
+      group_label_style_overrides(),
+      error = function(e) setNames(character(0), character(0))
+    )
+    if (label %in% names(overrides)) {
+      return(metadata_parse_text_style_value(overrides[[label]]))
+    }
+    plot_text_styles_for_target(group_label_axis_target())
+  }
+
+  observe({
+    req(group_label_style_supported())
+    labels <- displayed_group_labels()
+    req(length(labels) > 0)
+    selected <- as.character(input$group_label_style_sel %||% labels[[1]])
+    if (!length(selected) || is.na(selected[[1]]) || !selected[[1]] %in% labels) {
+      selected <- labels[[1]]
+    } else {
+      selected <- selected[[1]]
+    }
+    group_label_style_syncing(TRUE)
+    on.exit(group_label_style_syncing(FALSE), add = TRUE)
+    updateCheckboxGroupInput(
+      session,
+      "group_label_text_style_selected",
+      selected = group_label_styles_for_selection(selected)
+    )
+  })
+
+  observeEvent(input$group_label_style_apply, {
+    if (isTRUE(group_label_style_syncing())) return()
+    labels <- displayed_group_labels()
+    selected <- as.character(input$group_label_style_sel %||% "")
+    if (!length(selected) || is.na(selected[[1]]) || !selected[[1]] %in% labels) return()
+    selected <- selected[[1]]
+    overrides <- tryCatch(
+      group_label_style_overrides(),
+      error = function(e) setNames(character(0), character(0))
+    )
+    overrides[[selected]] <- metadata_text_style_value(input$group_label_text_style_selected %||% character(0))
+    group_label_style_overrides(overrides)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$group_label_style_reset, {
+    labels <- displayed_group_labels()
+    selected <- as.character(input$group_label_style_sel %||% "")
+    if (!length(selected) || is.na(selected[[1]]) || !selected[[1]] %in% labels) return()
+    selected <- selected[[1]]
+    overrides <- tryCatch(
+      group_label_style_overrides(),
+      error = function(e) setNames(character(0), character(0))
+    )
+    if (selected %in% names(overrides)) {
+      overrides <- overrides[setdiff(names(overrides), selected)]
+      group_label_style_overrides(overrides)
+    }
+    updateCheckboxGroupInput(
+      session,
+      "group_label_text_style_selected",
+      selected = plot_text_styles_for_target(group_label_axis_target())
+    )
+  }, ignoreInit = TRUE)
 
   output$adv_pal_group_ui <- renderUI({
     input$app_lang
@@ -11078,9 +11443,10 @@ server <- function(input, output, session) {
     lang <- input$app_lang %||% i18n_lang
     req(plot_settings())
     params_all <- safe_plot_setting_params()
-    raw_param_input <- as.character(input$param %||% "")
-    if (!length(raw_param_input) || is.na(raw_param_input[[1]])) raw_param_input <- ""
-    raw_param_input <- raw_param_input[[1]]
+    raw_param_input <- normalize_param_selection(input$param, params_all)
+    if (!nzchar(raw_param_input)) {
+      raw_param_input <- normalize_param_selection(last_param_selection(), params_all)
+    }
 
     if (!identical(tipo, "Heatmap")) {
       if (!length(params_all)) {
@@ -11095,6 +11461,7 @@ server <- function(input, output, session) {
       if (!nzchar(raw_param_input) || !raw_param_input %in% params_all) {
         raw_param_input <- params_all[[1]]
       }
+      if (nzchar(raw_param_input)) last_param_selection(raw_param_input)
     }
 
     # Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Nuevo bloque para normalizaciÃƒÂ³n Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
@@ -13572,8 +13939,8 @@ server <- function(input, output, session) {
   
   output$showImportBtn <- renderUI({
     input$app_lang
-    req(input$growthFiles)
-    if (length(input$growthFiles$name) == 1)
+    req(growth_selected_count)
+    if (identical(growth_selected_count(), 1L))
       actionButton("importToPlots", tr("growth_import"), class = "btn btn-primary")
     else
       NULL
@@ -13613,13 +13980,49 @@ server <- function(input, output, session) {
       if (!length(vals)) return(FALSE)
       tolower(trimws(vals[[1]])) %in% c("true", "1", "yes", "y")
     }
+    metadata_choice <- function(x, choices) {
+      val <- as.character(x %||% "")
+      val <- val[!is.na(val)]
+      if (!length(val)) return(NULL)
+      val <- trimws(val[[1]])
+      choices <- as.character(choices %||% character(0))
+      if (nzchar(val) && val %in% choices) val else NULL
+    }
+    update_radio_metadata <- function(input_id, value, choices) {
+      selected <- metadata_choice(value, choices)
+      if (!is.null(selected)) updateRadioButtons(session, input_id, selected = selected)
+      invisible(!is.null(selected))
+    }
+    update_select_metadata <- function(input_id, value, choices) {
+      selected <- metadata_choice(value, choices)
+      if (!is.null(selected)) updateSelectInput(session, input_id, selected = selected)
+      invisible(!is.null(selected))
+    }
+    current_ctrl_medium_choices <- function() {
+      df <- tryCatch(datos_agrupados(), error = function(e) NULL)
+      if (is.null(df) || !is.data.frame(df) || !"Media" %in% names(df)) return(character(0))
+      scope_val <- input$scope %||% "Por Cepa"
+      strain_val <- current_strain_value()
+      if (identical(scope_val, "Por Cepa") && nzchar(strain_val) && "Strain" %in% names(df)) {
+        df <- df[df$Strain == strain_val, , drop = FALSE]
+      }
+      opts <- sort(unique(trimws(as.character(df$Media))))
+      opts[!is.na(opts) & nzchar(opts)]
+    }
 
     if (!is.null(v <- get_val("scope")))      updateRadioButtons(session, "scope",      selected = v)
     if (!is.null(v <- get_val("strain")))     updateSelectizeInput(session, "strain", selected = v, server = TRUE)
-    if (!is.null(v <- get_val("colorMode")))  updateSelectInput(session,  "colorMode",  selected = v)
+    if (!is.null(v <- get_val("colorMode")))  update_select_metadata("colorMode", v, c(
+      "Default", "Default Suave", "Blanco y Negro", "Blanco y Negro Suave",
+      "Viridis", "Viridis Suave", "Plasma", "Plasma Suave", "Magma", "Magma Suave",
+      "Cividis", "Cividis Suave", "Set1", "Set1 Suave", "Set2", "Set2 Suave",
+      "Set3", "Set3 Suave", "Dark2", "Dark2 Suave", "Accent", "Accent Suave",
+      "Paired", "Paired Suave", "Pastel1", "Pastel1 Suave", "Pastel2", "Pastel2 Suave",
+      "OkabeIto", "OkabeIto Suave", "Tableau", "Tableau Suave"
+    ))
     if (!is.null(v <- get_val("repeat_colors_combined"))) updateCheckboxInput(session, "repeat_colors_combined", value = parse_bool(v))
     if (!is.null(v <- get_val("adv_pal_enable"))) updateCheckboxInput(session, "adv_pal_enable", value = parse_bool(v))
-    if (!is.null(v <- get_val("adv_pal_type"))) updateRadioButtons(session, "adv_pal_type", selected = v)
+    if (!is.null(v <- get_val("adv_pal_type"))) update_radio_metadata("adv_pal_type", v, c("seq", "div", "qual"))
     if (!is.null(v <- get_val("adv_pal_reverse"))) updateCheckboxInput(session, "adv_pal_reverse", value = parse_bool(v))
     if (!is.null(v <- get_val("adv_pal_filters"))) updateCheckboxGroupInput(session, "adv_pal_filters", selected = parse_csv_values(v))
     if (!is.null(v <- get_val("adv_pal_name"))) updateSelectInput(session, "adv_pal_name", selected = v)
@@ -13642,6 +14045,10 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("fs_axis")))    updateNumericInput(session, "fs_axis",    value = as.numeric(v))
     if (!is.null(v <- get_val("fs_legend")))  updateNumericInput(session, "fs_legend",  value = as.numeric(v))
     if (!is.null(v <- get_val("plot_font_family"))) updateSelectInput(session, "plot_font_family", selected = v)
+    if (!is.null(v <- get_val("plot_axis_xy_custom"))) updateCheckboxInput(session, "plot_axis_xy_custom", value = parse_bool(v))
+    if (!is.null(v <- get_val("group_label_text_style_overrides"))) {
+      group_label_style_overrides(decode_named_metadata(v))
+    }
     plot_style_targets <- plot_text_style_targets()
     restored_style_fields <- character(0)
     for (target in plot_style_targets) {
@@ -13698,8 +14105,8 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("violin_width")))     updateNumericInput(session, "violin_width",     value = as.numeric(v))
     if (!is.null(v <- get_val("violin_linewidth"))) updateNumericInput(session, "violin_linewidth", value = as.numeric(v))
     if (!is.null(v <- get_val("curve_lwd")))   updateNumericInput(session, "curve_lwd",   value = as.numeric(v))
-    if (!is.null(v <- get_val("curve_geom"))) updateRadioButtons(session, "curve_geom", selected = v)
-    if (!is.null(v <- get_val("curve_color_mode"))) updateRadioButtons(session, "curve_color_mode", selected = v)
+    if (!is.null(v <- get_val("curve_geom"))) update_radio_metadata("curve_geom", v, c("line_points", "line_only"))
+    if (!is.null(v <- get_val("curve_color_mode"))) update_radio_metadata("curve_color_mode", v, c("by_group", "single"))
     if (!is.null(v <- get_val("curve_single_color"))) {
       safe_col <- gsub("'", "", as.character(v))
       shinyjs::runjs(sprintf(
@@ -13707,17 +14114,46 @@ server <- function(input, output, session) {
         safe_col, safe_col
       ))
     }
-    if (!is.null(v <- get_val("cur_ci_style"))) updateRadioButtons(session, "cur_ci_style", selected = v)
+    if (!is.null(v <- get_val("cur_ci_style"))) update_radio_metadata("cur_ci_style", v, c("ribbon", "errorbar"))
     if (!is.null(v <- get_val("sig_linewidth")))updateNumericInput(session, "sig_linewidth", value = as.numeric(v))
     if (!is.null(v <- get_val("sig_textsize"))) updateNumericInput(session, "sig_textsize", value = as.numeric(v))
     if (!is.null(v <- get_val("sig_sep")))      updateNumericInput(session, "sig_sep",      value = as.numeric(v))
     if (!is.null(v <- get_val("sig_textpad")))  updateNumericInput(session, "sig_textpad",  value = as.numeric(v))
-    if (!is.null(v <- get_val("sig_mode")))     updateRadioButtons(session, "sig_mode", selected = v)
+    if (!is.null(v <- get_val("sig_mode")))     update_radio_metadata("sig_mode", v, c("bars", "labels"))
     if (!is.null(v <- get_val("sig_label_param_color"))) updateCheckboxInput(session, "sig_label_param_color", value = tolower(v) == "true")
-    if (!is.null(v <- get_val("multitest_method"))) updateRadioButtons(session, "multitest_method", selected = v)
-    if (!is.null(v <- get_val("param")))      updateSelectizeInput(session, "param", selected = v, server = TRUE)
-    if (!is.null(v <- get_val("doNorm")))     updateCheckboxInput(session, "doNorm",    value = tolower(v) == "true")
-    if (!is.null(v <- get_val("ctrlMedium"))) updateSelectInput(session, "ctrlMedium", selected = if (v == "NULL") character(0) else v)
+    if (!is.null(v <- get_val("multitest_method"))) update_radio_metadata("multitest_method", v, c("holm", "fdr", "bonferroni", "none"))
+    if (!is.null(v <- get_val("param"))) {
+      param_sel <- normalize_param_selection(v, safe_plot_setting_params())
+      if (nzchar(param_sel)) {
+        updateSelectizeInput(session, "param", selected = param_sel, server = TRUE)
+        last_param_selection(param_sel)
+      }
+    }
+    metadata_ctrl_valid <- NULL
+    if (!is.null(v <- get_val("ctrlMedium"))) {
+      ctrl_val <- trimws(as.character(v %||% ""))
+      if (identical(ctrl_val, "NULL") || !nzchar(ctrl_val)) {
+        updateSelectInput(session, "ctrlMedium", selected = character(0))
+        metadata_ctrl_valid <- FALSE
+      } else {
+        ctrl_choices <- current_ctrl_medium_choices()
+        if (ctrl_val %in% ctrl_choices) {
+          updateSelectInput(session, "ctrlMedium", selected = ctrl_val)
+          metadata_ctrl_valid <- TRUE
+        } else {
+          metadata_ctrl_valid <- FALSE
+        }
+      }
+    }
+    if (!is.null(v <- get_val("doNorm"))) {
+      norm_val <- parse_bool(v)
+      can_enable_norm <- isFALSE(norm_val) ||
+        isTRUE(metadata_ctrl_valid) ||
+        (is.null(metadata_ctrl_valid) && has_ctrl_selected())
+      if (isTRUE(can_enable_norm)) {
+        updateCheckboxInput(session, "doNorm", value = norm_val)
+      }
+    }
     if (!is.null(v <- get_val("errbar_stat"))) {
       errbar_default <- default_errorbar_stat_for_plot(
         input$tipo %||% "",
@@ -13759,8 +14195,8 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("curve_stats_methods"))) updateCheckboxGroupInput(session, "curve_stats_methods", selected = parse_csv_values(v))
     if (!is.null(v <- get_val("corr_param_x"))) updateSelectizeInput(session, "corr_param_x", selected = v, server = TRUE)
     if (!is.null(v <- get_val("corr_param_y"))) updateSelectizeInput(session, "corr_param_y", selected = v, server = TRUE)
-    if (!is.null(v <- get_val("corr_method")))  updateRadioButtons(session, "corr_method", selected = v)
-    if (!is.null(v <- get_val("corr_norm_target"))) updateRadioButtons(session, "corr_norm_target", selected = v)
+    if (!is.null(v <- get_val("corr_method")))  update_radio_metadata("corr_method", v, c("pearson", "spearman", "kendall"))
+    if (!is.null(v <- get_val("corr_norm_target"))) update_radio_metadata("corr_norm_target", v, c("both", "x_only", "y_only"))
     if (!is.null(v <- get_val("corr_show_line")))   updateCheckboxInput(session, "corr_show_line",   value = tolower(v) == "true")
     if (!is.null(v <- get_val("corr_show_labels"))) updateCheckboxInput(session, "corr_show_labels", value = tolower(v) == "true")
     if (!is.null(v <- get_val("corr_show_r")))      updateCheckboxInput(session, "corr_show_r",      value = tolower(v) == "true")
@@ -13768,7 +14204,7 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("corr_show_r2")))     updateCheckboxInput(session, "corr_show_r2",     value = tolower(v) == "true")
     if (!is.null(v <- get_val("corr_show_eq")))     updateCheckboxInput(session, "corr_show_eq",     value = tolower(v) == "true")
     if (!is.null(v <- get_val("corr_show_ci")))     updateCheckboxInput(session, "corr_show_ci",     value = tolower(v) == "true")
-    if (!is.null(v <- get_val("corr_ci_style")))    updateRadioButtons(session, "corr_ci_style", selected = v)
+    if (!is.null(v <- get_val("corr_ci_style")))    update_radio_metadata("corr_ci_style", v, c("band", "dashed"))
     if (!is.null(v <- get_val("corr_ci_level")))    updateNumericInput(session, "corr_ci_level", value = as.numeric(v))
     if (!is.null(v <- get_val("corr_xlab")))        updateTextInput(session, "corr_xlab", value = v)
     if (!is.null(v <- get_val("corr_ylab")))        updateTextInput(session, "corr_ylab", value = v)
@@ -13780,11 +14216,11 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("ybreak_corr")))      updateNumericInput(session, "ybreak_corr", value = as.numeric(v))
     if (!is.null(v <- get_val("corr_label_size")))  updateNumericInput(session, "corr_label_size", value = as.numeric(v))
     if (!is.null(v <- get_val("corr_adv_anchor")))  updateSelectizeInput(session, "corr_adv_anchor", selected = v, server = TRUE)
-    if (!is.null(v <- get_val("corr_adv_method")))  updateRadioButtons(session, "corr_adv_method", selected = v)
-    if (!is.null(v <- get_val("corr_adv_data_mode"))) updateRadioButtons(session, "corr_adv_data_mode", selected = v)
+    if (!is.null(v <- get_val("corr_adv_method")))  update_radio_metadata("corr_adv_method", v, c("pearson", "spearman", "kendall"))
+    if (!is.null(v <- get_val("corr_adv_data_mode"))) update_radio_metadata("corr_adv_data_mode", v, c("raw", "norm_both", "norm_x", "norm_y"))
     if (!is.null(v <- get_val("corr_adv_sig_only"))) updateCheckboxInput(session, "corr_adv_sig_only", value = tolower(v) == "true")
     if (!is.null(v <- get_val("corr_adv_pvalue_max"))) updateNumericInput(session, "corr_adv_pvalue_max", value = as.numeric(v))
-    if (!is.null(v <- get_val("corr_adv_direction"))) updateSelectInput(session, "corr_adv_direction", selected = v)
+    if (!is.null(v <- get_val("corr_adv_direction"))) update_select_metadata("corr_adv_direction", v, c("all", "positive", "negative"))
     r_min_meta <- suppressWarnings(as.numeric(get_val("corr_adv_r_min")))
     r_max_meta <- suppressWarnings(as.numeric(get_val("corr_adv_r_max")))
     if (length(r_min_meta) >= 1 && length(r_max_meta) >= 1 &&
@@ -13797,19 +14233,23 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("corrm_params"))) {
       updateSelectizeInput(session, "corrm_params", selected = parse_csv_values(v), server = TRUE)
     }
-    if (!is.null(v <- get_val("corrm_method"))) updateRadioButtons(session, "corrm_method", selected = v)
-    if (!is.null(v <- get_val("corrm_adjust"))) updateRadioButtons(session, "corrm_adjust", selected = v)
+    if (!is.null(v <- get_val("corrm_method"))) update_radio_metadata("corrm_method", v, c("pearson", "spearman", "kendall"))
+    if (!is.null(v <- get_val("corrm_adjust"))) update_radio_metadata("corrm_adjust", v, c("holm", "fdr", "bonferroni", "none"))
     if (!is.null(v <- get_val("corrm_show_sig"))) updateCheckboxInput(session, "corrm_show_sig", value = tolower(v) == "true")
 
     if (!is.null(v <- get_val("heat_params"))) {
       updateSelectizeInput(session, "heat_params", selected = parse_csv_values(v), server = TRUE)
     }
     if (!is.null(v <- get_val("heat_scale_mode"))) {
-      updateRadioButtons(session, "heat_scale_mode", selected = v)
+      update_radio_metadata("heat_scale_mode", v, c("none", "row", "column"))
     } else if (!is.null(v <- get_val("heat_norm_z"))) {
       updateRadioButtons(session, "heat_scale_mode", selected = if (tolower(v) == "true") "row" else "none")
     }
-    if (!is.null(v <- get_val("heat_hclust_method"))) updateSelectInput(session, "heat_hclust_method", selected = v)
+    if (!is.null(v <- get_val("heat_hclust_method"))) update_select_metadata(
+      "heat_hclust_method",
+      v,
+      c("ward.D2", "ward.D", "complete", "average", "single", "mcquitty", "median", "centroid")
+    )
     if (!is.null(v <- get_val("heat_cluster_rows"))) updateCheckboxInput(session, "heat_cluster_rows", value = tolower(v) == "true")
     if (!is.null(v <- get_val("heat_cluster_cols"))) updateCheckboxInput(session, "heat_cluster_cols", value = tolower(v) == "true")
     if (!is.null(v <- get_val("heat_k_rows"))) updateNumericInput(session, "heat_k_rows", value = as.numeric(v))
@@ -13817,7 +14257,7 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("heat_show_side_dend"))) updateCheckboxInput(session, "heat_show_side_dend", value = tolower(v) == "true")
     if (!is.null(v <- get_val("heat_show_top_dend"))) updateCheckboxInput(session, "heat_show_top_dend", value = tolower(v) == "true")
     if (!is.null(v <- get_val("heat_show_param_labels"))) updateCheckboxInput(session, "heat_show_param_labels", value = tolower(v) == "true")
-    if (!is.null(v <- get_val("heat_orientation"))) updateRadioButtons(session, "heat_orientation", selected = v)
+    if (!is.null(v <- get_val("heat_orientation"))) update_radio_metadata("heat_orientation", v, c("params_rows", "params_cols"))
     if (!is.null(v <- get_val("heat_show_values"))) updateCheckboxInput(session, "heat_show_values", value = tolower(v) == "true")
   }
 
@@ -14099,31 +14539,48 @@ server <- function(input, output, session) {
         filter(Parameter %in% names(df1))          # descarta los que ya no existen
     )
     
-    new_params <- plot_cfg_box()$Parameter
-    if (!is.null(input$param) && !input$param %in% new_params) {
-      update_selectize_adaptive(
-        "param",
-        choices = new_params,
-        selected = if (length(new_params)) new_params[1] else character(0)
-      )
+    new_params <- sanitize_param_vector(plot_cfg_box()$Parameter)
+    current_import_param <- normalize_param_selection(isolate(input$param %||% ""), new_params)
+    preferred_import_param <- normalize_param_selection(isolate(last_param_selection() %||% ""), new_params)
+    selected_import_param <- if (nzchar(current_import_param)) {
+      current_import_param
+    } else if (nzchar(preferred_import_param)) {
+      preferred_import_param
+    } else if (length(new_params)) {
+      new_params[[1]]
+    } else {
+      character(0)
+    }
+    if (length(selected_import_param) && nzchar(selected_import_param[[1]])) {
+      last_param_selection(selected_import_param)
     }
     
     # 5) Refrescar todos los inputs que dependen de plot_cfg_box()
-    update_stack_params_input(plot_cfg_box()$Parameter)
+    update_stack_params_input(new_params)
     update_selectize_adaptive(
       "param",
-      choices = plot_cfg_box()$Parameter,
-      selected = if (length(plot_cfg_box()$Parameter)) plot_cfg_box()$Parameter[1] else character(0)
+      choices = new_params,
+      selected = selected_import_param
     )
+    current_corr_x <- normalize_param_selection(isolate(input$corr_param_x %||% ""), new_params)
+    current_corr_y <- normalize_param_selection(isolate(input$corr_param_y %||% ""), new_params)
+    selected_corr_x <- if (nzchar(current_corr_x)) current_corr_x else selected_import_param
+    selected_corr_y <- if (nzchar(current_corr_y)) {
+      current_corr_y
+    } else if (length(new_params) >= 2L) {
+      new_params[[min(2L, length(new_params))]]
+    } else {
+      selected_corr_x
+    }
     update_selectize_adaptive(
       "corr_param_x",
-      choices = plot_cfg_box()$Parameter,
-      selected = if (length(plot_cfg_box()$Parameter)) plot_cfg_box()$Parameter[1] else character(0)
+      choices = new_params,
+      selected = selected_corr_x
     )
     update_selectize_adaptive(
       "corr_param_y",
-      choices = plot_cfg_box()$Parameter,
-      selected = plot_cfg_box()$Parameter[min(2, length(plot_cfg_box()$Parameter))]
+      choices = new_params,
+      selected = selected_corr_y
     )
     
     # 6) Volvemos a la pestaÃƒÂ±a de resultados

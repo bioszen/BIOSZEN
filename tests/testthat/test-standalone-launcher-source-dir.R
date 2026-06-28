@@ -28,6 +28,27 @@ load_launcher_functions <- function(function_names) {
   env
 }
 
+launcher_source_path <- function() {
+  root <- app_test_root()
+  candidates <- c(
+    file.path(root, "inst", "launchers", "App.R"),
+    file.path(root, "launchers", "App.R"),
+    system.file("launchers", "App.R", package = "BIOSZEN")
+  )
+  candidates <- candidates[nzchar(candidates)]
+  matches <- candidates[file.exists(candidates)]
+  if (!length(matches)) {
+    skip("Standalone launcher source file is not available in this test context.")
+  }
+  matches[[1]]
+}
+
+root_launcher_source_paths <- function() {
+  root <- app_test_root()
+  paths <- file.path(root, c("App.R", "app.R"))
+  paths[file.exists(paths)]
+}
+
 write_launcher_desc <- function(path, version, package = "BIOSZEN") {
   dir.create(path, recursive = TRUE, showWarnings = FALSE)
   writeLines(
@@ -111,4 +132,27 @@ test_that("standalone launcher keeps archive candidates primary when both exist"
 
   expect_identical(env$pick_best_package_candidate(archive_choice, source_choice)$kind, "archive")
   expect_identical(env$pick_best_package_candidate(NULL, source_choice)$kind, "source_dir")
+})
+
+test_that("standalone launcher closes the startup log sink on source exit", {
+  launcher <- launcher_source_path()
+  txt <- paste(readLines(launcher, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(txt, "log_sink_depth <- sink.number\\(\\)", perl = TRUE)
+  expect_match(txt, "sink\\(log_file, append = TRUE, split = TRUE\\)", perl = TRUE)
+  expect_match(txt, "on.exit\\(\\{\\s*while \\(sink.number\\(\\) > log_sink_depth\\)", perl = TRUE)
+})
+
+test_that("root App.R launchers resolve paths from the script location", {
+  paths <- root_launcher_source_paths()
+  skip_if_not(length(paths) > 0, "Root App.R/app.R launchers are source-tree files and are not installed.")
+  for (path in paths) {
+    txt <- paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+    expect_match(txt, "find_bioszen_app_file <- function", fixed = TRUE)
+    expect_match(txt, "frame\\$ofile", perl = TRUE)
+    expect_match(txt, "startup_file <- file.path\\(app_root, \"R\", \"app_startup.R\"\\)", perl = TRUE)
+    expect_match(txt, "file.path\\(app_root, \"inst\", \"app\"\\)", perl = TRUE)
+    expect_false(grepl('file.path\\("inst", "app"\\)', txt, perl = TRUE))
+  }
 })

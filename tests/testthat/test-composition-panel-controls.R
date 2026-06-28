@@ -200,12 +200,12 @@ test_that("composition supports global title and shared legend modes", {
     perl = TRUE
   ))
   expect_true(grepl(
-    "axis.title.x = combo_text_element\\(\"axis_titles\", default_face = \"bold\", size = global_axis_title_size\\)",
+    "axis.title.x = combo_text_element\\(\"axis_title_x\", default_face = \"bold\", size = global_axis_title_size\\)",
     panel_txt,
     perl = TRUE
   ))
   expect_true(grepl(
-    "axis.text.x = combo_text_element\\(\"axis_text\", default_face = \"plain\", size = global_axis_text_size\\)",
+    "axis.text.x = combo_text_element\\(\"axis_text_x\", default_face = \"plain\", size = global_axis_text_size\\)",
     panel_txt,
     perl = TRUE
   ))

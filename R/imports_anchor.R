@@ -7,6 +7,7 @@
 .bioszen_imports_anchor <- function() {
   if (FALSE) {
     shiny::runApp
+    httpuv::service
     shiny.i18n::Translator
     ggplot2::ggplot
     plotly::plot_ly

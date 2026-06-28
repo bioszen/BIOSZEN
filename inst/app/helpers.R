@@ -155,8 +155,7 @@ safe_sheet <- function(x) {
 
 metadata_data_keys <- function() {
   c(
-    "scope", "strain", "param",
-    "doNorm", "ctrlMedium",
+    "scope", "strain",
     "stackParams", "orderStack",
     "corr_param_x", "corr_param_y",
     "corr_adv_anchor",
@@ -203,13 +202,36 @@ metadata_parse_text_style_value <- function(value, allowed = NULL) {
   intersect(vals, metadata_text_allowed_styles(allowed))
 }
 
+normalize_param_selection <- function(value, params_all = character(0)) {
+  val <- trimws(as.character(value %||% ""))
+  val <- val[!is.na(val) & nzchar(val)]
+  if (!length(val)) return("")
+  val <- val[[1]]
+
+  params_all <- unique(trimws(as.character(params_all %||% character(0))))
+  params_all <- params_all[!is.na(params_all) & nzchar(params_all)]
+
+  if (length(params_all) && val %in% params_all) return(val)
+
+  if (grepl("_Norm$", val, ignore.case = TRUE)) {
+    base <- sub("_Norm$", "", val, ignore.case = TRUE)
+    if (!length(params_all) || base %in% params_all) return(base)
+  }
+
+  if (length(params_all)) "" else val
+}
+
 metadata_text_target_label <- function(target) {
   labels <- c(
     title = "Plot title",
     composition_title = "Composition title",
     plot_titles = "Plot titles",
     axis_titles = "Axis titles",
-    axis_text = "Axis numbers",
+    axis_title_x = "X axis title",
+    axis_title_y = "Y axis title",
+    axis_text = "Axis tick labels",
+    axis_text_x = "X axis tick labels",
+    axis_text_y = "Y axis tick labels",
     legend = "Legend",
     data_labels = "Data labels",
     significance = "Significance text"

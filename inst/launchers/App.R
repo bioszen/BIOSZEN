@@ -78,8 +78,16 @@ root_dir <- normalizePath(root_dir, winslash = "/", mustWork = FALSE)
 
 # -------- log --------
 log_file <- file.path(script_dir, "bioszen_r.log")
+log_sink_depth <- sink.number()
 try({
   sink(log_file, append = TRUE, split = TRUE)
+  on.exit({
+    while (sink.number() > log_sink_depth) {
+      before <- sink.number()
+      try(sink(), silent = TRUE)
+      if (sink.number() >= before) break
+    }
+  }, add = TRUE)
   cat("\n=== BIOSZEN App.R start ===\n")
   cat("Time: ", as.character(Sys.time()), "\n", sep = "")
   cat("R: ", R.version.string, "\n", sep = "")

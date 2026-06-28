@@ -2151,6 +2151,34 @@ ui <- fluidPage(
                         selected = "bold",
                         inline = TRUE
                       ),
+                      checkboxInput(
+                        "plot_axis_xy_custom",
+                        tr("plot_axis_xy_custom"),
+                        value = FALSE
+                      ),
+                      conditionalPanel(
+                        condition = "input.plot_axis_xy_custom == true",
+                        checkboxGroupInput(
+                          "plot_text_style_axis_title_x",
+                          tr("plot_text_target_axis_title_x"),
+                          choices = named_choices(
+                            bioszen_plot_text_styles(),
+                            list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                          ),
+                          selected = "bold",
+                          inline = TRUE
+                        ),
+                        checkboxGroupInput(
+                          "plot_text_style_axis_title_y",
+                          tr("plot_text_target_axis_title_y"),
+                          choices = named_choices(
+                            bioszen_plot_text_styles(),
+                            list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                          ),
+                          selected = "bold",
+                          inline = TRUE
+                        )
+                      ),
                       checkboxGroupInput(
                         "plot_text_style_axis_text",
                         tr("plot_text_target_axis_text"),
@@ -2160,6 +2188,29 @@ ui <- fluidPage(
                         ),
                         selected = character(0),
                         inline = TRUE
+                      ),
+                      conditionalPanel(
+                        condition = "input.plot_axis_xy_custom == true",
+                        checkboxGroupInput(
+                          "plot_text_style_axis_text_x",
+                          tr("plot_text_target_axis_text_x"),
+                          choices = named_choices(
+                            bioszen_plot_text_styles(),
+                            list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                          ),
+                          selected = character(0),
+                          inline = TRUE
+                        ),
+                        checkboxGroupInput(
+                          "plot_text_style_axis_text_y",
+                          tr("plot_text_target_axis_text_y"),
+                          choices = named_choices(
+                            bioszen_plot_text_styles(),
+                            list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                          ),
+                          selected = character(0),
+                          inline = TRUE
+                        )
                       ),
                       checkboxGroupInput(
                         "plot_text_style_legend",
@@ -2180,6 +2231,10 @@ ui <- fluidPage(
                         ),
                         selected = character(0),
                         inline = TRUE
+                      ),
+                      conditionalPanel(
+                        condition = "['Boxplot','Barras','Violin','Apiladas'].indexOf(input.tipo) >= 0",
+                        uiOutput("groupLabelStyleUI")
                       ),
                       checkboxGroupInput(
                         "plot_text_style_significance",
@@ -2680,12 +2735,32 @@ ui <- fluidPage(
                     fileInput(
                      "growthFiles",
                      tr("growth_files"),
-                    accept = ".xlsx",
-                   multiple = TRUE
-                 ),
-                 numericInput(
-                   "maxTime",
-                   tr("growth_max_time"),
+                     accept = ".xlsx",
+                    multiple = TRUE
+                  ),
+                  uiOutput("growthSelectedFilesUI"),
+                  actionButton(
+                    "clearGrowthFiles",
+                    tr("growth_clear_files"),
+                    class = "btn btn-default"
+                  ),
+                  br(), br(),
+                  textInput(
+                    "growthOutputDir",
+                    tr("growth_output_dir"),
+                    value = "",
+                    placeholder = tr_text("growth_output_dir_placeholder", i18n_lang)
+                  ),
+                  actionButton(
+                    "browseGrowthOutputDir",
+                    label = tagList(icon("folder-open"), tr("growth_browse_dir")),
+                    class = "btn btn-default"
+                  ),
+                  helpText(tr("growth_output_dir_help")),
+                  br(),
+                  numericInput(
+                    "maxTime",
+                    tr("growth_max_time"),
                    value = 48,
                    min = 0
                  ),
@@ -2743,7 +2818,20 @@ ui <- fluidPage(
                           clearGrowthFileInput();
                         });
                         Shiny.addCustomMessageHandler('bioszen-growth-running', function (payload) {
-                          window.__bioszen_growth_running = !!(payload && payload.running);
+                          var running = !!(payload && payload.running);
+                          window.__bioszen_growth_running = running;
+                          var runButton = document.getElementById('runGrowth');
+                          var stopButton = document.getElementById('stopGrowth');
+                          if (runButton) {
+                            runButton.disabled = running;
+                            runButton.classList.toggle('disabled', running);
+                            runButton.setAttribute('aria-disabled', running ? 'true' : 'false');
+                          }
+                          if (stopButton) {
+                            stopButton.disabled = !running;
+                            stopButton.classList.toggle('disabled', !running);
+                            stopButton.setAttribute('aria-disabled', running ? 'false' : 'true');
+                          }
                         });
                         return true;
                       }

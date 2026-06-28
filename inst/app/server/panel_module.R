@@ -658,9 +658,12 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     input$fs_axis_title_all; input$fs_axis_text_all; input$fs_legend_all;
     input$combo_axis_line_size;
     input$combo_title; input$combo_title_size; input$combo_legend_scope; input$combo_legend_side
+    input$combo_axis_xy_custom
     input$combo_apply_paper_theme; input$combo_font_family
     input$combo_text_style_title; input$combo_text_style_axis_titles
+    input$combo_text_style_axis_title_x; input$combo_text_style_axis_title_y
     input$combo_text_style_axis_text; input$combo_text_style_legend
+    input$combo_text_style_axis_text_x; input$combo_text_style_axis_text_y
     input$combo_text_style_data_labels; input$combo_text_style_significance
     input$combo_adv_pal_enable; input$combo_adv_pal_type; input$combo_adv_pal_reverse
     input$combo_adv_pal_filters; input$combo_adv_pal_name
@@ -688,12 +691,40 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       if (exists("bioszen_plot_text_targets", mode = "function")) {
         bioszen_plot_text_targets()
       } else {
-        c("title", "axis_titles", "axis_text", "legend", "data_labels", "significance")
+        c(
+          "title",
+          "axis_titles", "axis_title_x", "axis_title_y",
+          "axis_text", "axis_text_x", "axis_text_y",
+          "legend", "data_labels", "significance"
+        )
       }
     }
 
     combo_text_style_input_id <- function(target) {
       paste0("combo_text_style_", as.character(target %||% ""))
+    }
+
+    combo_axis_xy_custom_enabled <- function() {
+      isTRUE(input$combo_axis_xy_custom %||% FALSE)
+    }
+
+    combo_axis_parent_target <- function(target) {
+      switch(
+        as.character(target %||% ""),
+        axis_title_x = "axis_titles",
+        axis_title_y = "axis_titles",
+        axis_text_x = "axis_text",
+        axis_text_y = "axis_text",
+        as.character(target %||% "")
+      )
+    }
+
+    combo_effective_text_target <- function(target) {
+      target_chr <- as.character(target %||% "")
+      if (!isTRUE(combo_axis_xy_custom_enabled())) {
+        return(combo_axis_parent_target(target_chr))
+      }
+      target_chr
     }
 
     combo_text_allowed_styles <- function() {
@@ -714,7 +745,7 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     }
 
     combo_text_styles_for_target <- function(target, default_face = "plain") {
-      target <- as.character(target %||% "")
+      target <- combo_effective_text_target(target)
       input_id <- combo_text_style_input_id(target)
       val <- input[[input_id]]
       if (is.null(val) && !isTRUE(combo_text_style_inputs_ready())) {
@@ -977,15 +1008,15 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     }
     # Final composition-level style pass so global controls always win
     # even when individual plots define axis.title.x/.y or axis.text.x/.y.
-    res <- res & theme(
+      res <- res & theme(
       text = element_text(family = combo_family),
       plot.title = combo_text_element("title", default_face = "bold", size = global_title_size),
       axis.title = combo_text_element("axis_titles", default_face = "bold", size = global_axis_title_size),
-      axis.title.x = combo_text_element("axis_titles", default_face = "bold", size = global_axis_title_size),
-      axis.title.y = combo_text_element("axis_titles", default_face = "bold", size = global_axis_title_size),
+      axis.title.x = combo_text_element("axis_title_x", default_face = "bold", size = global_axis_title_size),
+      axis.title.y = combo_text_element("axis_title_y", default_face = "bold", size = global_axis_title_size),
       axis.text = combo_text_element("axis_text", default_face = "plain", size = global_axis_text_size),
-      axis.text.x = combo_text_element("axis_text", default_face = "plain", size = global_axis_text_size),
-      axis.text.y = combo_text_element("axis_text", default_face = "plain", size = global_axis_text_size),
+      axis.text.x = combo_text_element("axis_text_x", default_face = "plain", size = global_axis_text_size),
+      axis.text.y = combo_text_element("axis_text_y", default_face = "plain", size = global_axis_text_size),
       axis.ticks = element_line(linewidth = global_axis_line_size, colour = "black"),
       axis.line = element_line(linewidth = global_axis_line_size, colour = "black"),
       legend.text = combo_text_element("legend", default_face = "plain", size = global_legend_size),
@@ -1071,7 +1102,11 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
         combo_metadata_text_style_row(metadata_text_target_label("composition_title"), "title", input$combo_title_size, "combo_title_size"),
         combo_metadata_text_style_row(metadata_text_target_label("plot_titles"), "title", input$fs_title_all, "fs_title_all"),
         combo_metadata_text_style_row(metadata_text_target_label("axis_titles"), "axis_titles", input$fs_axis_title_all, "fs_axis_title_all"),
+        combo_metadata_text_style_row(metadata_text_target_label("axis_title_x"), "axis_title_x", input$fs_axis_title_all, "fs_axis_title_all"),
+        combo_metadata_text_style_row(metadata_text_target_label("axis_title_y"), "axis_title_y", input$fs_axis_title_all, "fs_axis_title_all"),
         combo_metadata_text_style_row(metadata_text_target_label("axis_text"), "axis_text", input$fs_axis_text_all, "fs_axis_text_all"),
+        combo_metadata_text_style_row(metadata_text_target_label("axis_text_x"), "axis_text_x", input$fs_axis_text_all, "fs_axis_text_all"),
+        combo_metadata_text_style_row(metadata_text_target_label("axis_text_y"), "axis_text_y", input$fs_axis_text_all, "fs_axis_text_all"),
         combo_metadata_text_style_row(metadata_text_target_label("legend"), "legend", input$fs_legend_all, "fs_legend_all"),
         combo_metadata_text_style_row(metadata_text_target_label("data_labels"), "data_labels", input$fs_axis_text_all, "fs_axis_text_all"),
         combo_metadata_text_style_row(metadata_text_target_label("significance"), "significance", input$ov_sig_txt, "ov_sig_txt")
@@ -1139,9 +1174,14 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       combo_height      = input$combo_height,
       combo_apply_paper_theme = input$combo_apply_paper_theme,
       combo_font_family = input$combo_font_family,
+      combo_axis_xy_custom = input$combo_axis_xy_custom,
       combo_text_style_title = combo_metadata_style_value("title"),
       combo_text_style_axis_titles = combo_metadata_style_value("axis_titles"),
+      combo_text_style_axis_title_x = combo_metadata_style_value("axis_title_x"),
+      combo_text_style_axis_title_y = combo_metadata_style_value("axis_title_y"),
       combo_text_style_axis_text = combo_metadata_style_value("axis_text"),
+      combo_text_style_axis_text_x = combo_metadata_style_value("axis_text_x"),
+      combo_text_style_axis_text_y = combo_metadata_style_value("axis_text_y"),
       combo_text_style_legend = combo_legend_style,
       combo_text_style_data_labels = combo_metadata_style_value("data_labels"),
       combo_text_style_significance = combo_metadata_style_value("significance"),
@@ -1286,9 +1326,11 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
         updateSelectInput(session, 'combo_font_family', selected = v)
       else if (!is.null(v <- gv('combo_legend_font_family')))
         updateSelectInput(session, 'combo_font_family', selected = v)
+      if (!is.null(v <- gv('combo_axis_xy_custom')))
+        updateCheckboxInput(session, 'combo_axis_xy_custom', value = parse_bool(v))
       if (is.null(gv('fs_legend_all')) && !is.null(v <- gv('combo_legend_font_size')))
         updateNumericInput(session, 'fs_legend_all', value = as.numeric(v))
-      for (target in c("title", "axis_titles", "axis_text", "legend", "data_labels", "significance")) {
+      for (target in combo_text_style_targets()) {
         input_id <- paste0("combo_text_style_", target)
         if (!is.null(v <- gv(input_id))) {
           updateCheckboxGroupInput(session, input_id, selected = metadata_parse_text_style_value(v))

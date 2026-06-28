@@ -17,6 +17,7 @@ ByteCompile: true
 Depends: R (>= 4.1.0)
 Imports:
     shiny,
+    httpuv,
     shiny.i18n,
     ggplot2,
     plotly,

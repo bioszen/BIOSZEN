@@ -22,6 +22,14 @@
     return(invisible(FALSE))
   }
   if (.bioszen_growth_has_active_jobs()) return(invisible(FALSE))
+  stop_on_last <- get0("should_stop_on_last_session", mode = "function", inherits = TRUE, ifnotfound = NULL)
+  if (is.function(stop_on_last) && !isTRUE(stop_on_last())) return(invisible(FALSE))
+  if (!is.function(stop_on_last)) {
+    value <- tolower(trimws(Sys.getenv("BIOSZEN_STOP_ON_LAST_SESSION", unset = "")))
+    if (nzchar(value) && !(value %in% c("1", "true", "yes", "y", "on"))) {
+      return(invisible(FALSE))
+    }
+  }
   try(shiny::stopApp(), silent = TRUE)
   invisible(TRUE)
 }
@@ -39,6 +47,190 @@
     .bioszen_safe_growth_name(names[[i]], sprintf("growth_file_%d", i))
   }, character(1))
   make.unique(stems, sep = "_")
+}
+
+.bioszen_growth_result_columns <- c("Well", "µMax", "ODmax", "AUC", "lag_time", "max_percap_time", "doub_time", "max_time")
+
+.bioszen_growth_file_hash <- function(path) {
+  if (!file.exists(path)) return(NA_character_)
+  hash <- tryCatch(unname(tools::md5sum(path)), error = function(e) NA_character_)
+  as.character(hash[[1]])
+}
+
+.bioszen_resolve_growth_output_dir <- function(path) {
+  if (is.null(path) || !length(path) || is.na(path[[1]])) return(NULL)
+  path <- trimws(as.character(path[[1]]))
+  if (!nzchar(path)) return(NULL)
+  path <- path.expand(path)
+  if (file.exists(path) && !dir.exists(path)) {
+    stop(sprintf("The growth output path exists but is not a directory: %s", path), call. = FALSE)
+  }
+  if (!dir.exists(path)) {
+    dir.create(path, recursive = TRUE, showWarnings = FALSE)
+  }
+  if (!dir.exists(path)) {
+    stop(sprintf("Could not create growth output directory: %s", path), call. = FALSE)
+  }
+  normalizePath(path, winslash = "/", mustWork = TRUE)
+}
+
+.bioszen_choose_growth_output_dir <- function(initial = "", caption = "Select growth output folder") {
+  initial <- trimws(as.character(initial %||% ""))
+  if (nzchar(initial)) {
+    initial <- path.expand(initial)
+  }
+  if (!nzchar(initial) || !dir.exists(initial)) {
+    initial <- path.expand("~")
+  }
+
+  selected <- NULL
+  if (requireNamespace("rstudioapi", quietly = TRUE) &&
+      isTRUE(tryCatch(rstudioapi::isAvailable(), error = function(e) FALSE))) {
+    selected <- tryCatch(
+      rstudioapi::selectDirectory(caption = caption, path = initial),
+      error = function(e) NULL
+    )
+  }
+
+  if ((is.null(selected) || !nzchar(selected)) && identical(.Platform$OS.type, "windows")) {
+    selected <- tryCatch(
+      utils::choose.dir(default = initial, caption = caption),
+      error = function(e) NULL
+    )
+  }
+
+  if ((is.null(selected) || !nzchar(selected)) && requireNamespace("tcltk", quietly = TRUE)) {
+    selected <- tryCatch(
+      tcltk::tk_choose.dir(default = initial, caption = caption),
+      error = function(e) NULL
+    )
+  }
+
+  if (is.null(selected) || !nzchar(selected) || is.na(selected[[1]])) return(NULL)
+  normalizePath(path.expand(selected[[1]]), winslash = "/", mustWork = FALSE)
+}
+
+.bioszen_copy_growth_output_file <- function(file, output_dir) {
+  if (is.null(output_dir) || !nzchar(output_dir)) return(invisible(FALSE))
+  target <- file.path(output_dir, basename(file))
+  copied <- file.copy(file, target, overwrite = TRUE)
+  if (!isTRUE(copied)) {
+    stop(sprintf("Could not save growth output file to: %s", target), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+.bioszen_growth_checkpoint <- function(output_dir,
+                                       stem,
+                                       source_name,
+                                       source_hash,
+                                       max_time,
+                                       time_interval,
+                                       format) {
+  if (is.null(output_dir) || !nzchar(output_dir)) return(NULL)
+  metadata <- list(
+    source_name = as.character(source_name),
+    source_hash = as.character(source_hash),
+    max_time = as.numeric(max_time),
+    time_interval = as.numeric(time_interval),
+    format = as.character(format),
+    bioszen_version = tryCatch(as.character(utils::packageVersion("BIOSZEN")), error = function(e) "source")
+  )
+  key <- digest::digest(metadata, algo = "xxhash64")
+  checkpoint_root <- file.path(output_dir, "BIOSZEN_growth_checkpoints")
+  checkpoint_dir <- file.path(checkpoint_root, paste0(.bioszen_safe_growth_name(stem, "growth_file"), "_", substr(key, 1, 12)))
+  dir.create(checkpoint_dir, recursive = TRUE, showWarnings = FALSE)
+  if (!dir.exists(checkpoint_dir)) {
+    stop(sprintf("Could not create growth checkpoint directory: %s", checkpoint_dir), call. = FALSE)
+  }
+  list(
+    key = key,
+    metadata = metadata,
+    root = checkpoint_root,
+    dir = checkpoint_dir,
+    rds_file = file.path(checkpoint_dir, "checkpoint.rds"),
+    partial_file = file.path(checkpoint_dir, paste0("Parametros_", .bioszen_safe_growth_name(stem, "growth_file"), "_partial.xlsx"))
+  )
+}
+
+.bioszen_empty_growth_results <- function() {
+  out <- as.data.frame(stats::setNames(replicate(length(.bioszen_growth_result_columns), logical(0), simplify = FALSE),
+                                       .bioszen_growth_result_columns))
+  out$Well <- character(0)
+  for (col in setdiff(.bioszen_growth_result_columns, "Well")) out[[col]] <- numeric(0)
+  out
+}
+
+.bioszen_restore_growth_checkpoint <- function(checkpoint) {
+  if (is.null(checkpoint) || !file.exists(checkpoint$rds_file)) {
+    return(.bioszen_empty_growth_results())
+  }
+  obj <- tryCatch(readRDS(checkpoint$rds_file), error = function(e) NULL)
+  if (is.null(obj) || !identical(obj$key, checkpoint$key) || !is.data.frame(obj$results)) {
+    return(.bioszen_empty_growth_results())
+  }
+  results <- obj$results
+  missing_cols <- setdiff(.bioszen_growth_result_columns, names(results))
+  if (length(missing_cols)) return(.bioszen_empty_growth_results())
+  results <- results[, .bioszen_growth_result_columns, drop = FALSE]
+  results$Well <- as.character(results$Well)
+  results
+}
+
+.bioszen_write_growth_checkpoint <- function(checkpoint, results, completed = FALSE) {
+  if (is.null(checkpoint)) return(invisible(FALSE))
+  results <- as.data.frame(results)
+  if (!nrow(results)) return(invisible(FALSE))
+  results$Well <- as.character(results$Well)
+  results <- results[, .bioszen_growth_result_columns, drop = FALSE]
+  obj <- list(
+    key = checkpoint$key,
+    metadata = checkpoint$metadata,
+    completed = isTRUE(completed),
+    updated_at = as.character(Sys.time()),
+    results = results
+  )
+  tmp_rds <- tempfile("checkpoint_", tmpdir = checkpoint$dir, fileext = ".rds")
+  tmp_xlsx <- tempfile("partial_", tmpdir = checkpoint$dir, fileext = ".xlsx")
+  on.exit(unlink(c(tmp_rds, tmp_xlsx), force = TRUE), add = TRUE)
+  saveRDS(obj, tmp_rds)
+  openxlsx::write.xlsx(
+    results,
+    tmp_xlsx,
+    sheetName = if (isTRUE(completed)) "Resultados Combinados" else "Resultados Parciales",
+    colNames = TRUE,
+    rowNames = FALSE,
+    overwrite = TRUE
+  )
+  if (!isTRUE(file.copy(tmp_rds, checkpoint$rds_file, overwrite = TRUE))) {
+    stop(sprintf("Could not save growth checkpoint file: %s", checkpoint$rds_file), call. = FALSE)
+  }
+  if (!isTRUE(file.copy(tmp_xlsx, checkpoint$partial_file, overwrite = TRUE))) {
+    stop(sprintf("Could not save growth partial workbook: %s", checkpoint$partial_file), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+.bioszen_cleanup_growth_checkpoint <- function(checkpoint) {
+  if (is.null(checkpoint) || is.null(checkpoint$dir) || !nzchar(checkpoint$dir)) {
+    return(invisible(FALSE))
+  }
+  checkpoint_dir <- normalizePath(checkpoint$dir, winslash = "/", mustWork = FALSE)
+  checkpoint_root <- if (!is.null(checkpoint$root) && nzchar(checkpoint$root)) {
+    normalizePath(checkpoint$root, winslash = "/", mustWork = FALSE)
+  } else {
+    normalizePath(dirname(checkpoint_dir), winslash = "/", mustWork = FALSE)
+  }
+  if (!identical(basename(checkpoint_root), "BIOSZEN_growth_checkpoints")) {
+    return(invisible(FALSE))
+  }
+  if (dir.exists(checkpoint_dir)) {
+    unlink(checkpoint_dir, recursive = TRUE, force = TRUE)
+  }
+  if (dir.exists(checkpoint_root) && !length(list.files(checkpoint_root, all.files = FALSE, no.. = TRUE))) {
+    unlink(checkpoint_root, recursive = TRUE, force = TRUE)
+  }
+  invisible(TRUE)
 }
 
 .bioszen_copy_growth_uploads <- function(files, names, parent_dir = file.path(tempdir(), "growth_upload_cache")) {
@@ -79,7 +271,7 @@
   list(files = targets, names = names, output_stems = stems, cache_dir = run_dir)
 }
 
-compute_growth_results_batch <- function(tidy_df, should_abort = NULL, progress_callback = NULL) {
+.bioszen_compute_growth_results_batch_core <- function(tidy_df, should_abort = NULL, progress_callback = NULL) {
   .bioszen_abort_if_requested(should_abort)
   wells <- unique(tidy_df$Well)
   tidy_df <- tidy_df %>%
@@ -148,6 +340,108 @@ compute_growth_results_batch <- function(tidy_df, should_abort = NULL, progress_
     dplyr::mutate(Well = factor(Well, levels = wells)) %>%
     dplyr::arrange(Well) %>%
     dplyr::select(Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time)
+}
+
+.bioszen_compute_growth_results_batch_checkpointed <- function(tidy_df,
+                                                               should_abort = NULL,
+                                                               progress_callback = NULL,
+                                                               checkpoint = NULL) {
+  wells <- unique(tidy_df$Well)
+  tidy_df <- tidy_df %>%
+    dplyr::mutate(
+      Well = factor(Well, levels = wells),
+      Time = as.numeric(Time)
+    )
+
+  restored <- .bioszen_restore_growth_checkpoint(checkpoint)
+  restored <- restored[as.character(restored$Well) %in% as.character(wells), , drop = FALSE]
+  if (nrow(restored)) {
+    restored$Well <- factor(as.character(restored$Well), levels = wells)
+    restored <- restored[!duplicated(as.character(restored$Well)), , drop = FALSE]
+    restored <- dplyr::arrange(restored, Well)
+  }
+
+  done_wells <- as.character(restored$Well)
+  missing_wells <- setdiff(as.character(wells), done_wells)
+  total_wells <- length(wells)
+  if (is.function(progress_callback) && length(done_wells)) {
+    progress_callback(stage = "checkpoint_loaded", done = length(done_wells), total = total_wells, well = NA_character_)
+  }
+
+  results <- restored
+  permissive_done <- 0L
+  for (well in missing_wells) {
+    .bioszen_abort_if_requested(should_abort)
+    well_df <- tidy_df[as.character(tidy_df$Well) == well, , drop = FALSE]
+    well_df$Well <- factor(as.character(well_df$Well), levels = wells)
+
+    robust <- calculate_growth_rates_robust(well_df, should_abort = should_abort)
+    robust$Well <- as.character(robust$Well)
+    if (is.function(progress_callback)) {
+      progress_callback(
+        stage = "robust",
+        done = length(unique(c(done_wells, as.character(results$Well), well))),
+        total = total_wells,
+        well = well
+      )
+    }
+    .bioszen_abort_if_requested(should_abort)
+
+    fill_cols <- setdiff(names(robust), "Well")
+    needs_permissive <- length(fill_cols) && any(vapply(fill_cols, function(col) {
+      any(is_empty_value(robust[[col]]))
+    }, logical(1)))
+
+    permissive <- robust
+    for (col in fill_cols) permissive[[col]] <- rep(NA_real_, nrow(permissive))
+    if (isTRUE(needs_permissive)) {
+      permissive <- calculate_growth_rates_permissive(well_df, should_abort = should_abort)
+      permissive$Well <- as.character(permissive$Well)
+      permissive_done <- permissive_done + 1L
+      if (is.function(progress_callback)) {
+        progress_callback(stage = "permissive", done = permissive_done, total = total_wells, well = well)
+      }
+    }
+
+    combined <- combine_growth_results(robust, permissive) %>%
+      dplyr::mutate(Well = factor(as.character(Well), levels = wells)) %>%
+      dplyr::arrange(Well) %>%
+      dplyr::select(Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time)
+    results <- dplyr::bind_rows(results, combined)
+    results$Well <- factor(as.character(results$Well), levels = wells)
+    results <- results[!duplicated(as.character(results$Well)), , drop = FALSE]
+    results <- dplyr::arrange(results, Well)
+    .bioszen_write_growth_checkpoint(checkpoint, results, completed = FALSE)
+  }
+
+  if (is.function(progress_callback)) {
+    progress_callback(stage = "permissive_done", done = total_wells, total = total_wells, well = NA_character_)
+  }
+  .bioszen_abort_if_requested(should_abort)
+  results$Well <- factor(as.character(results$Well), levels = wells)
+  results <- dplyr::arrange(results, Well)
+  results <- dplyr::select(results, Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time)
+  .bioszen_write_growth_checkpoint(checkpoint, results, completed = TRUE)
+  results
+}
+
+compute_growth_results_batch <- function(tidy_df,
+                                         should_abort = NULL,
+                                         progress_callback = NULL,
+                                         checkpoint = NULL) {
+  if (is.null(checkpoint)) {
+    return(.bioszen_compute_growth_results_batch_core(
+      tidy_df,
+      should_abort = should_abort,
+      progress_callback = progress_callback
+    ))
+  }
+  .bioszen_compute_growth_results_batch_checkpointed(
+    tidy_df,
+    should_abort = should_abort,
+    progress_callback = progress_callback,
+    checkpoint = checkpoint
+  )
 }
 
 .bioszen_parse_numeric <- function(x) {
@@ -268,13 +562,27 @@ compute_growth_results_batch <- function(tidy_df, should_abort = NULL, progress_
 
 setup_growth_module <- function(input, output, session) {
   growth_out_dir <- file.path(tempdir(), 'growth_results')
+  empty_growth_selection <- function() {
+    data.frame(
+      id = character(),
+      name = character(),
+      path = character(),
+      cache_dir = character(),
+      stringsAsFactors = FALSE
+    )
+  }
+
   cancel_requested <- shiny::reactiveVal(FALSE)
   growth_running <- shiny::reactiveVal(FALSE)
   status_text <- shiny::reactiveVal("")
+  growth_files_selected <- shiny::reactiveVal(empty_growth_selection())
+  growth_selection_cache_parent <- tempfile("growth_selected_uploads_")
+  dir.create(growth_selection_cache_parent, recursive = TRUE, showWarnings = FALSE)
   growth_state <- new.env(parent = emptyenv())
   growth_state$cancel_requested <- FALSE
   growth_state$running <- FALSE
   growth_state$session_closed <- FALSE
+  growth_state$last_event_pump <- Sys.time()
 
   # Use translated text when available; fall back to defaults for standalone tests
   current_lang <- function() {
@@ -306,28 +614,47 @@ setup_growth_module <- function(input, output, session) {
     default
   }
 
+  pump_growth_events <- function() {
+    if (requireNamespace("httpuv", quietly = TRUE)) {
+      try(httpuv::service(1), silent = TRUE)
+    }
+    if (requireNamespace("later", quietly = TRUE)) {
+      try(later::run_now(0), silent = TRUE)
+    }
+    if (requireNamespace("shiny", quietly = TRUE)) {
+      flush_fun <- get0("flushReact", envir = asNamespace("shiny"), inherits = FALSE)
+      if (is.function(flush_fun)) try(flush_fun(), silent = TRUE)
+    }
+    growth_state$last_event_pump <- Sys.time()
+    invisible(NULL)
+  }
+
   should_abort <- local({
     counter <- 0L
     function() {
       counter <<- counter + 1L
-      if ((counter %% 25L) != 0L) {
-        return(FALSE)
+      now <- Sys.time()
+      elapsed <- suppressWarnings(as.numeric(difftime(now, growth_state$last_event_pump, units = "secs")))
+      if (!is.finite(elapsed) || elapsed >= 0.1) {
+        pump_growth_events()
       }
       isTRUE(growth_state$cancel_requested)
     }
   })
 
   set_growth_buttons <- function(running) {
-    if (!requireNamespace("shinyjs", quietly = TRUE)) return(invisible(NULL))
-    try({
-      if (isTRUE(running)) {
-        shinyjs::disable("runGrowth")
-        shinyjs::enable("stopGrowth")
-      } else {
-        shinyjs::enable("runGrowth")
-        shinyjs::disable("stopGrowth")
-      }
-    }, silent = TRUE)
+    if (requireNamespace("shinyjs", quietly = TRUE)) {
+      try({
+        if (isTRUE(running)) {
+          shinyjs::disable("runGrowth")
+          shinyjs::enable("stopGrowth")
+        } else {
+          shinyjs::enable("runGrowth")
+          shinyjs::disable("stopGrowth")
+        }
+      }, silent = TRUE)
+    }
+    try(set_growth_running_flag(running), silent = TRUE)
     invisible(NULL)
   }
 
@@ -349,9 +676,64 @@ setup_growth_module <- function(input, output, session) {
     tryCatch(isTRUE(session$isClosed()), error = function(e) FALSE)
   }
 
+  safe_show_growth_notification <- function(ui,
+                                            action = NULL,
+                                            duration = 5,
+                                            closeButton = TRUE,
+                                            id = NULL,
+                                            type = c("default", "message", "warning", "error")) {
+    if (is_growth_session_closed()) return(invisible(NULL))
+    notify_session <- tryCatch(session, error = function(e) NULL)
+    if (!inherits(notify_session, "ShinySession")) return(invisible(NULL))
+    send_notification <- tryCatch(notify_session$sendNotification, error = function(e) NULL)
+    if (!is.function(send_notification)) return(invisible(NULL))
+    type <- match.arg(type)
+    tryCatch(
+      shiny::showNotification(
+        ui = ui,
+        action = action,
+        duration = duration,
+        closeButton = closeButton,
+        id = id,
+        type = type,
+        session = notify_session
+      ),
+      error = function(e) invisible(NULL)
+    )
+  }
+
+  with_growth_progress <- function(message, value = 0, code) {
+    code_expr <- substitute(code)
+    code_env <- parent.frame()
+    run_code <- function() eval(code_expr, envir = code_env)
+    progress_session <- tryCatch(session, error = function(e) NULL)
+    if (is_growth_session_closed() || !inherits(progress_session, "ShinySession")) {
+      return(run_code())
+    }
+    tryCatch(
+      shiny::withProgress(
+        message = message,
+        value = value,
+        session = progress_session,
+        {
+          run_code()
+        }
+      ),
+      error = function(e) {
+        if (grepl("ShinySession", conditionMessage(e), fixed = TRUE) ||
+            is_growth_session_closed()) {
+          return(run_code())
+        }
+        stop(e)
+      }
+    )
+  }
+
   safe_inc_progress <- function(amount, detail = NULL) {
     if (is_growth_session_closed()) return(invisible(NULL))
-    try(incProgress(amount, detail = detail), silent = TRUE)
+    progress_session <- tryCatch(session, error = function(e) NULL)
+    if (!inherits(progress_session, "ShinySession")) return(invisible(NULL))
+    try(shiny::incProgress(amount, detail = detail, session = progress_session), silent = TRUE)
     invisible(NULL)
   }
 
@@ -393,19 +775,167 @@ setup_growth_module <- function(input, output, session) {
     invisible(NULL)
   }
 
+  selected_growth_rows <- function(isolate_read = FALSE) {
+    rows <- if (isTRUE(isolate_read)) {
+      isolate(growth_files_selected())
+    } else {
+      growth_files_selected()
+    }
+    if (is.null(rows) || !is.data.frame(rows) || !nrow(rows)) {
+      return(empty_growth_selection())
+    }
+    rows
+  }
+
+  selected_growth_ids <- function(isolate_read = FALSE) {
+    rows <- selected_growth_rows(isolate_read = isolate_read)
+    if (!nrow(rows)) return(character(0))
+    ids <- if (isTRUE(isolate_read)) {
+      isolate(input$growthFilesKeep %||% rows$id)
+    } else {
+      input$growthFilesKeep %||% rows$id
+    }
+    ids <- as.character(ids)
+    ids <- ids[!is.na(ids) & nzchar(ids)]
+    ids <- intersect(ids, rows$id)
+    if (!length(ids) && nrow(rows)) ids <- rows$id
+    ids
+  }
+
+  selected_growth_uploads <- function(isolate_read = FALSE) {
+    rows <- selected_growth_rows(isolate_read = isolate_read)
+    if (!nrow(rows)) return(rows)
+    ids <- selected_growth_ids(isolate_read = isolate_read)
+    if (!length(ids)) return(rows[0, , drop = FALSE])
+    rows[match(ids, rows$id), , drop = FALSE]
+  }
+
+  output$growthSelectedFilesUI <- renderUI({
+    rows <- selected_growth_rows()
+    if (!nrow(rows)) {
+      return(tags$div(
+        class = "help-block",
+        growth_tr("growth_no_selected_files", "No growth files selected yet.", current_lang())
+      ))
+    }
+    selected <- input$growthFilesKeep %||% rows$id
+    selected <- intersect(as.character(selected), rows$id)
+    checkboxGroupInput(
+      "growthFilesKeep",
+      growth_tr("growth_selected_files", "Selected growth files", current_lang()),
+      choices = stats::setNames(rows$id, rows$name),
+      selected = selected
+    )
+  })
+
+  observeEvent(input$browseGrowthOutputDir, {
+    selected <- tryCatch(
+      .bioszen_choose_growth_output_dir(
+        initial = isolate(input$growthOutputDir %||% ""),
+        caption = growth_tr("growth_browse_dir_caption", "Select growth output folder", current_lang())
+      ),
+      error = function(e) {
+        msg <- conditionMessage(e)
+        status_text(sprintf("Error: %s", msg))
+        safe_show_growth_notification(
+          sprintf(growth_tr("global_error_template", "Error in %s: %s", current_lang()), "growth", msg),
+          type = "error",
+          duration = 8
+        )
+        NULL
+      }
+    )
+    if (!is.null(selected) && nzchar(selected)) {
+      updateTextInput(session, "growthOutputDir", value = selected)
+    }
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$growthFiles, {
+    upload <- input$growthFiles
+    if (is.null(upload) || !is.data.frame(upload) || !nrow(upload)) return()
+    prepared <- tryCatch(
+      .bioszen_copy_growth_uploads(
+        files = upload$datapath,
+        names = upload$name,
+        parent_dir = growth_selection_cache_parent
+      ),
+      error = function(e) {
+        msg <- conditionMessage(e)
+        status_text(sprintf("Error: %s", msg))
+        safe_show_growth_notification(
+          sprintf(growth_tr("global_error_template", "Error in %s: %s", current_lang()), "growth", msg),
+          type = "error",
+          duration = 8
+        )
+        NULL
+      }
+    )
+    clear_growth_upload_ui()
+    if (is.null(prepared)) return()
+
+    existing <- selected_growth_rows()
+    previous_selected <- intersect(as.character(input$growthFilesKeep %||% existing$id), existing$id)
+    ts <- sprintf("%.0f", as.numeric(Sys.time()) * 1000)
+    new_rows <- data.frame(
+      id = paste0("growth_file_", ts, "_", seq_along(prepared$files)),
+      name = as.character(prepared$names),
+      path = as.character(prepared$files),
+      cache_dir = as.character(prepared$cache_dir),
+      stringsAsFactors = FALSE
+    )
+    duplicate_rows <- existing$name %in% new_rows$name
+    if (any(duplicate_rows)) {
+      unlink(existing$path[duplicate_rows], force = TRUE)
+      existing <- existing[!duplicate_rows, , drop = FALSE]
+      previous_selected <- intersect(previous_selected, existing$id)
+    }
+    growth_files_selected(rbind(existing, new_rows))
+    updateCheckboxGroupInput(
+      session,
+      "growthFilesKeep",
+      choices = stats::setNames(c(existing$id, new_rows$id), c(existing$name, new_rows$name)),
+      selected = unique(c(previous_selected, new_rows$id))
+    )
+    status_text(sprintf(
+      growth_tr("growth_files_selected_count", "%d growth file(s) selected.", current_lang()),
+      nrow(existing) + nrow(new_rows)
+    ))
+    if (!isTRUE(growth_running())) {
+      growth_state$cancel_requested <- FALSE
+      cancel_requested(FALSE)
+      set_growth_buttons(FALSE)
+    }
+  }, ignoreInit = FALSE, ignoreNULL = TRUE, priority = 100)
+
+  observeEvent(input$clearGrowthFiles, {
+    rows <- selected_growth_rows(isolate_read = TRUE)
+    if (nrow(rows)) {
+      unlink(unique(rows$cache_dir), recursive = TRUE, force = TRUE)
+    }
+    growth_files_selected(empty_growth_selection())
+    clear_growth_upload_ui()
+    reset_growth_results()
+    growth_state$cancel_requested <- FALSE
+    cancel_requested(FALSE)
+    set_growth_buttons(FALSE)
+    status_text(growth_tr("growth_selection_cleared", "Growth file selection cleared.", current_lang()))
+  }, ignoreInit = TRUE)
+
   run_growth_job <- function(files,
                              names,
                              max_time,
                              time_interval,
                              lang,
                              output_stems = NULL,
-                             upload_cache_dir = NULL) {
+                             upload_cache_dir = NULL,
+                             external_output_dir = NULL) {
     .bioszen_growth_job_started()
     on.exit({
       growth_state$running <- FALSE
+      growth_state$cancel_requested <- FALSE
       growth_running(FALSE)
+      cancel_requested(FALSE)
       set_growth_buttons(FALSE)
-      set_growth_running_flag(FALSE)
       .bioszen_growth_job_finished()
       if (!is.null(upload_cache_dir) && dir.exists(upload_cache_dir)) {
         unlink(upload_cache_dir, recursive = TRUE)
@@ -423,7 +953,7 @@ setup_growth_module <- function(input, output, session) {
     }
 
     tryCatch({
-      withProgress(message = growth_tr("growth_progress_files", "Processing files...", lang), value = 0, {
+      with_growth_progress(message = growth_tr("growth_progress_files", "Processing files...", lang), value = 0, {
         n_files <- length(files)
         for (i in seq_along(files)) {
           .bioszen_abort_if_requested(should_abort)
@@ -436,18 +966,31 @@ setup_growth_module <- function(input, output, session) {
           status_text(sprintf("Processing file %d/%d: %s (%s format)", i, n_files, display_nm, prepared$format))
           curvas_file <- file.path(growth_out_dir, paste0(curve_prefix, nm, '.xlsx'))
           writexl::write_xlsx(list(Sheet1 = new_data, Sheet2 = fixed_params), path = curvas_file)
+          .bioszen_copy_growth_output_file(curvas_file, external_output_dir)
           .bioszen_abort_if_requested(should_abort)
           tidy_df  <- gcplyr::trans_wide_to_tidy(new_data, id_cols = 'Time')
           total_wells <- length(unique(tidy_df$Well))
+          checkpoint <- .bioszen_growth_checkpoint(
+            external_output_dir,
+            stem = nm,
+            source_name = names[i],
+            source_hash = .bioszen_growth_file_hash(f),
+            max_time = max_time,
+            time_interval = time_interval,
+            format = prepared$format
+          )
           last_progress <- 0
           final_df <- NULL
-          withProgress(message = sprintf(growth_tr("growth_progress_curves", "Processing curves for %s", lang), nm), value = 0, {
+          with_growth_progress(message = sprintf(growth_tr("growth_progress_curves", "Processing curves for %s", lang), nm), value = 0, {
             final_df <- compute_growth_results_batch(
               tidy_df,
               should_abort = should_abort,
+              checkpoint = checkpoint,
               progress_callback = function(stage, done, total, well) {
                 target <- last_progress
-                if (identical(stage, "robust") && total > 0) {
+                if (identical(stage, "checkpoint_loaded") && total > 0) {
+                  target <- 0.5 * (done / total)
+                } else if (identical(stage, "robust") && total > 0) {
                   target <- 0.5 * (done / total)
                 } else if (identical(stage, "permissive") && total > 0) {
                   target <- 0.5 + 0.5 * (done / total)
@@ -461,7 +1004,13 @@ setup_growth_module <- function(input, output, session) {
                   } else {
                     display_nm
                   }
-                  phase_label <- if (identical(stage, "robust")) "Strict" else "Permissive"
+                  phase_label <- if (identical(stage, "checkpoint_loaded")) {
+                    "Resumed"
+                  } else if (identical(stage, "robust")) {
+                    "Strict"
+                  } else {
+                    "Permissive"
+                  }
                   if (identical(stage, "permissive_skipped")) phase_label <- "Permissive skipped"
                   status_text(sprintf(
                     "File %d/%d (%s): %s [%d/%d]",
@@ -480,6 +1029,8 @@ setup_growth_module <- function(input, output, session) {
           param_file <- file.path(growth_out_dir, paste0(param_prefix, nm, '.xlsx'))
           openxlsx::write.xlsx(final_df, param_file, sheetName = 'Resultados Combinados',
                                colNames = TRUE, rowNames = FALSE)
+          .bioszen_copy_growth_output_file(param_file, external_output_dir)
+          .bioszen_cleanup_growth_checkpoint(checkpoint)
           safe_inc_progress(1 / n_files, detail = sprintf(growth_tr("growth_progress_file_done", "File %s completed", lang), display_nm))
         }
       })
@@ -491,14 +1042,14 @@ setup_growth_module <- function(input, output, session) {
 
     if (!is.null(run_error)) {
       status_text(sprintf("Error: %s", run_error))
-      showNotification(
+      safe_show_growth_notification(
         sprintf(growth_tr("global_error_template", "Error in %s: %s", lang), "growth", run_error),
         type = "error",
         duration = 8
       )
     } else if (was_cancelled) {
       status_text("Process stopped by user.")
-      showNotification(
+      safe_show_growth_notification(
         growth_tr("growth_stopped", "Growth parameter extraction stopped."),
         type = "warning",
         duration = 5
@@ -511,26 +1062,61 @@ setup_growth_module <- function(input, output, session) {
   }
 
   observeEvent(input$stopGrowth, {
+    if (!isTRUE(growth_running())) {
+      growth_state$cancel_requested <- FALSE
+      cancel_requested(FALSE)
+      set_growth_buttons(FALSE)
+      return()
+    }
     growth_state$cancel_requested <- TRUE
     cancel_requested(TRUE)
-    clear_growth_upload_ui()
     status_text("Stop requested. Waiting for safe cancellation point...")
-    if (isTRUE(growth_running())) {
-      showNotification(
-        growth_tr("growth_stop_requested", "Stop requested. Cancelling current processing..."),
-        type = "warning",
-        duration = 4
-      )
-    }
+    safe_show_growth_notification(
+      growth_tr("growth_stop_requested", "Stop requested. Cancelling current processing..."),
+      type = "warning",
+      duration = 4
+    )
   }, ignoreInit = TRUE)
 
   session$onSessionEnded(function() {
     growth_state$session_closed <- TRUE
+    growth_state$cancel_requested <- TRUE
+    cancel_requested(TRUE)
+    rows <- selected_growth_rows(isolate_read = TRUE)
+    if (nrow(rows)) unlink(unique(rows$cache_dir), recursive = TRUE, force = TRUE)
+    if (dir.exists(growth_selection_cache_parent)) {
+      unlink(growth_selection_cache_parent, recursive = TRUE, force = TRUE)
+    }
   })
 
   observeEvent(input$runGrowth, {
-    req(input$growthFiles)
     if (isTRUE(growth_running())) return()
+    selected_rows <- selected_growth_uploads()
+    if (!nrow(selected_rows)) {
+      try(reset_growth_results(), silent = TRUE)
+      no_file_msg <- growth_tr("growth_need_selected_files", "Select at least one growth file to process.", current_lang())
+      status_text(sprintf("Error: %s", no_file_msg))
+      safe_show_growth_notification(
+        no_file_msg,
+        type = "error",
+        duration = 5
+      )
+      return()
+    }
+    external_output_dir <- tryCatch(
+      .bioszen_resolve_growth_output_dir(isolate(input$growthOutputDir)),
+      error = function(e) {
+        msg <- conditionMessage(e)
+        status_text(sprintf("Error: %s", msg))
+        safe_show_growth_notification(
+          sprintf(growth_tr("global_error_template", "Error in %s: %s", current_lang()), "growth", msg),
+          type = "error",
+          duration = 8
+        )
+        NA_character_
+      }
+    )
+    if (length(external_output_dir) && is.na(external_output_dir[[1]])) return()
     reset_ok <- tryCatch(
       {
         reset_growth_results()
@@ -540,7 +1126,7 @@ setup_growth_module <- function(input, output, session) {
       error = function(e) {
         msg <- conditionMessage(e)
         status_text(sprintf("Error: %s", msg))
-        showNotification(
+        safe_show_growth_notification(
           sprintf(growth_tr("global_error_template", "Error in %s: %s", current_lang()), "growth", msg),
           type = "error",
           duration = 8
@@ -549,14 +1135,12 @@ setup_growth_module <- function(input, output, session) {
       }
     )
     if (!isTRUE(reset_ok)) return()
-    files <- isolate(input$growthFiles$datapath)
-    names <- isolate(input$growthFiles$name)
     prepared_uploads <- tryCatch(
-      .bioszen_copy_growth_uploads(files, names),
+      .bioszen_copy_growth_uploads(selected_rows$path, selected_rows$name),
       error = function(e) {
         msg <- conditionMessage(e)
         status_text(sprintf("Error: %s", msg))
-        showNotification(
+        safe_show_growth_notification(
           sprintf(growth_tr("global_error_template", "Error in %s: %s", current_lang()), "growth", msg),
           type = "error",
           duration = 8
@@ -571,20 +1155,29 @@ setup_growth_module <- function(input, output, session) {
     cancel_requested(FALSE)
     growth_running(TRUE)
     set_growth_buttons(TRUE)
-    set_growth_running_flag(TRUE)
     max_time <- isolate(input$maxTime)
     time_interval <- isolate(input$timeInterval)
     lang <- isolate(current_lang())
 
-    run_growth_job(
-      prepared_uploads$files,
-      prepared_uploads$names,
-      max_time,
-      time_interval,
-      lang,
-      output_stems = prepared_uploads$output_stems,
-      upload_cache_dir = prepared_uploads$cache_dir
-    )
+    run_now <- function() {
+      run_growth_job(
+        prepared_uploads$files,
+        prepared_uploads$names,
+        max_time,
+        time_interval,
+        lang,
+        output_stems = prepared_uploads$output_stems,
+        upload_cache_dir = prepared_uploads$cache_dir,
+        external_output_dir = external_output_dir
+      )
+    }
+
+    if (isFALSE(getOption("bioszen_growth_force_sync", FALSE)) &&
+        requireNamespace("later", quietly = TRUE)) {
+      later::later(run_now, delay = 0)
+    } else {
+      run_now()
+    }
   })
 
   output$downloadGrowthZip <- downloadHandler(
@@ -599,5 +1192,11 @@ setup_growth_module <- function(input, output, session) {
     contentType = "application/zip"
   )
 
-  list(growth_dir = growth_out_dir)
+  list(
+    growth_dir = growth_out_dir,
+    selected_files = growth_files_selected,
+    selected_count = shiny::reactive(nrow(selected_growth_uploads())),
+    running = growth_running,
+    cancel_requested = cancel_requested
+  )
 }

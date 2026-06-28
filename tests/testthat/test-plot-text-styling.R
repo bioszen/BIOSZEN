@@ -34,7 +34,11 @@ test_that("main graph typography controls are wired through UI and server", {
   for (input_id in c(
     "plot_text_style_title",
     "plot_text_style_axis_titles",
+    "plot_text_style_axis_title_x",
+    "plot_text_style_axis_title_y",
     "plot_text_style_axis_text",
+    "plot_text_style_axis_text_x",
+    "plot_text_style_axis_text_y",
     "plot_text_style_legend",
     "plot_text_style_data_labels",
     "plot_text_style_significance"
@@ -51,11 +55,17 @@ test_that("main graph typography controls are wired through UI and server", {
   expect_match(server_txt, "plot_font_family = as.character(input$plot_font_family", fixed = TRUE)
   expect_match(server_txt, "plot_text_style_title = plot_metadata_style_value(\"title\")", fixed = TRUE)
   expect_match(server_txt, "plot_text_style_axis_titles = plot_metadata_style_value(\"axis_titles\")", fixed = TRUE)
+  expect_match(server_txt, "plot_text_style_axis_title_x = plot_metadata_style_value(\"axis_title_x\")", fixed = TRUE)
+  expect_match(server_txt, "plot_text_style_axis_title_y = plot_metadata_style_value(\"axis_title_y\")", fixed = TRUE)
   expect_match(server_txt, "plot_text_style_axis_text = plot_metadata_style_value(\"axis_text\")", fixed = TRUE)
+  expect_match(server_txt, "plot_text_style_axis_text_x = plot_metadata_style_value(\"axis_text_x\")", fixed = TRUE)
+  expect_match(server_txt, "plot_text_style_axis_text_y = plot_metadata_style_value(\"axis_text_y\")", fixed = TRUE)
   expect_match(server_txt, "legend_style <- plot_metadata_style_value(\"legend\")", fixed = TRUE)
   expect_match(server_txt, "plot_text_style_legend = legend_style", fixed = TRUE)
   expect_match(server_txt, "plot_text_style_data_labels = plot_metadata_style_value(\"data_labels\")", fixed = TRUE)
   expect_match(server_txt, "plot_text_style_significance = plot_metadata_style_value(\"significance\")", fixed = TRUE)
+  expect_match(server_txt, "plot_axis_xy_custom = as.character(input$plot_axis_xy_custom", fixed = TRUE)
+  expect_match(server_txt, "group_label_text_style_overrides = encode_named_metadata(", fixed = TRUE)
   for (field in c(
     "legend_applicable",
     "legend_on_right",
@@ -74,6 +84,8 @@ test_that("main graph typography controls are wired through UI and server", {
   expect_match(server_txt, "writeData(wb, \"TextStyle\", text_style", fixed = TRUE)
   expect_match(server_txt, "metadata_text_style_sheet_rows(", fixed = TRUE)
   expect_match(server_txt, "updateSelectInput(session, \"plot_font_family\"", fixed = TRUE)
+  expect_match(server_txt, "updateCheckboxInput(session, \"plot_axis_xy_custom\"", fixed = TRUE)
+  expect_match(server_txt, "group_label_style_overrides(decode_named_metadata(v))", fixed = TRUE)
   expect_match(server_txt, "plot_text_style_input_id(target)", fixed = TRUE)
   expect_match(server_txt, "metadata_parse_text_style_value(x)", fixed = TRUE)
   expect_match(server_txt, "legacy_targets <- parse_csv_values(old_targets)", fixed = TRUE)
@@ -86,7 +98,11 @@ test_that("main graph typography controls are wired through UI and server", {
   for (input_id in c(
     "combo_text_style_title",
     "combo_text_style_axis_titles",
+    "combo_text_style_axis_title_x",
+    "combo_text_style_axis_title_y",
     "combo_text_style_axis_text",
+    "combo_text_style_axis_text_x",
+    "combo_text_style_axis_text_y",
     "combo_text_style_legend",
     "combo_text_style_data_labels",
     "combo_text_style_significance"
@@ -99,6 +115,9 @@ test_that("main graph typography controls are wired through UI and server", {
   expect_match(global_txt, "choices = bioszen_plot_font_choices()", fixed = TRUE)
   expect_match(panel_txt, "combo_text_face <- function", fixed = TRUE)
   expect_match(panel_txt, "combo_style_text_layers <- function", fixed = TRUE)
+  expect_match(panel_txt, "combo_axis_xy_custom = input$combo_axis_xy_custom", fixed = TRUE)
+  expect_match(panel_txt, "combo_text_style_axis_title_x = combo_metadata_style_value(\"axis_title_x\")", fixed = TRUE)
+  expect_match(panel_txt, "combo_text_style_axis_text_y = combo_metadata_style_value(\"axis_text_y\")", fixed = TRUE)
   expect_match(panel_txt, "combo_text_style_title = combo_metadata_style_value(\"title\")", fixed = TRUE)
   for (field in c(
     "combo_legend_on_right",
@@ -120,7 +139,7 @@ test_that("main graph typography controls are wired through UI and server", {
   expect_match(panel_txt, "writeData(wb, 'PlotMetadata', plot_meta", fixed = TRUE)
   expect_match(panel_txt, "metadata_text_style_sheet_rows(", fixed = TRUE)
   expect_match(panel_txt, "metadata_parse_text_style_value(v)", fixed = TRUE)
-  expect_match(panel_txt, "for (target in c(\"title\", \"axis_titles\", \"axis_text\", \"legend\", \"data_labels\", \"significance\"))", fixed = TRUE)
+  expect_match(panel_txt, "for (target in combo_text_style_targets())", fixed = TRUE)
 })
 
 test_that("plotly underline styling does not emit literal u tags", {
@@ -131,6 +150,17 @@ test_that("plotly underline styling does not emit literal u tags", {
   expect_match(server_txt, "apply_plotly_underline_render_hook <- function", fixed = TRUE)
   expect_match(server_txt, "node.style.textDecoration = 'underline'", fixed = TRUE)
   expect_match(server_txt, "node.setAttribute('text-decoration', 'underline')", fixed = TRUE)
+  expect_match(server_txt, "node.style.fontStyle = 'italic'", fixed = TRUE)
+  expect_match(server_txt, "node.setAttribute('font-style', 'italic')", fixed = TRUE)
+  expect_match(server_txt, "node.style.fontWeight = '700'", fixed = TRUE)
+  expect_match(server_txt, "node.setAttribute('font-weight', '700')", fixed = TRUE)
+  expect_match(server_txt, "axisTitles: ['.xtitle', '.ytitle'", fixed = TRUE)
+  expect_match(server_txt, "axisTitleX: ['.xtitle'", fixed = TRUE)
+  expect_match(server_txt, "axisTextY: ['.ytick text'", fixed = TRUE)
+  expect_match(server_txt, "groupLabels = group_states", fixed = TRUE)
+  expect_match(server_txt, "normalizeLabelText(node.textContent || '')", fixed = TRUE)
+  expect_match(server_txt, "scatterlayer .textpoint text", fixed = TRUE)
+  expect_match(server_txt, "bartext text", fixed = TRUE)
   expect_match(server_txt, "gd.on('plotly_afterplot', apply)", fixed = TRUE)
   expect_match(server_txt, "gsub(\"</?u\\\\b[^>]*>\", \"\", out, ignore.case = TRUE)", fixed = TRUE)
   expect_false(grepl("paste0\\(\"<u>\"", server_txt, fixed = FALSE))

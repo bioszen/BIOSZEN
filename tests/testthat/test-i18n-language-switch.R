@@ -36,7 +36,7 @@ test_that("language switch refreshes static i18n DOM without reload", {
 test_that("language-refresh title updates keep a real parameter in default titles", {
   server_txt <- read_app_text("server", "server_main.R")
 
-  expect_match(server_txt, "preferred_param <- trimws\\(as\\.character\\(isolate\\(last_param_selection\\(\\)", perl = TRUE)
+  expect_match(server_txt, "preferred_param <- normalize_param_selection\\(isolate\\(last_param_selection\\(\\) %\\|\\|% \"\"\\), params\\)", perl = TRUE)
   expect_match(server_txt, "if \\(!nzchar\\(param_sel\\) && length\\(params\\)\\)", perl = TRUE)
   expect_match(server_txt, "if \\(!nzchar\\(param_sel\\) && input\\$tipo %in% c\\(\"Boxplot\", \"Barras\", \"Violin\", \"Apiladas\"\\)\\) return\\(\\)", perl = TRUE)
   expect_match(server_txt, "sprintf\\(tr_text\\(\"default_title_strain\", lang\\), type_label, param_sel", perl = TRUE)

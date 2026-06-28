@@ -134,6 +134,17 @@ select_params_prompt,Select at least one parameter.
 missing_params_list,Could not find parameter(s): %s
 table_not_available,Table not available for this plot type
 growth_files,Load growth curves (.xlsx)
+growth_selected_files,Selected growth files
+growth_no_selected_files,No growth files selected yet.
+growth_files_selected_count,%d growth file(s) selected.
+growth_clear_files,Clear selected files
+growth_selection_cleared,Growth file selection cleared.
+growth_need_selected_files,Select at least one growth file to process.
+growth_output_dir,Autosave output folder (optional)
+growth_output_dir_placeholder,C:/Users/name/Documents/BIOSZEN_growth_results
+growth_output_dir_help,"If set, final files are saved there. Per-well checkpoints are kept only after an interrupted run and are deleted after a successful completion or resume."
+growth_browse_dir,Browse...
+growth_browse_dir_caption,Select growth output folder
 growth_max_time,Max time
 growth_interval,Interval (by)
 growth_run,Calculate parameters
@@ -156,10 +167,22 @@ plot_text_styles_by_target,Styles by text part
 plot_text_style_targets,1. Choose text parts
 plot_text_target_title,Plot title
 plot_text_target_axis_titles,Axis titles
-plot_text_target_axis_text,Axis numbers
+plot_text_target_axis_title_x,X axis title
+plot_text_target_axis_title_y,Y axis title
+plot_text_target_axis_text,Axis tick labels
+plot_text_target_axis_text_x,X axis tick labels
+plot_text_target_axis_text_y,Y axis tick labels
 plot_text_target_legend,Legend
 plot_text_target_data_labels,Data labels
 plot_text_target_significance,Significance text
+plot_axis_xy_custom,Customize X and Y axes separately
+group_label_style_title,Visible group labels
+group_label_style_hint,Use this only for group labels currently shown on the plot axis.
+group_label_style_select,Group label
+group_label_style_styles,Selected label style
+group_label_style_apply,Apply to selected label
+group_label_style_reset,Reset selected label
+group_label_style_empty,No editable group labels are visible for this plot.
 plot_text_styles,2. Apply these styles
 plot_text_style_bold,Bold
 plot_text_style_italic,Italic

@@ -272,7 +272,9 @@ tipo específico de medición.
   - `Min-Max`: mínimo observado a máximo observado; disponible solo en Caja.
 - La sección desplegable **Estilo de texto** está disponible para gráficos individuales.
 - **Familia tipográfica** se aplica a todo el texto del gráfico actual. Las opciones incluyen fuentes comunes de publicación y sistema como Helvetica, Arial, Calibri, Cambria, Segoe UI, Times New Roman, Georgia, Verdana y variantes relacionadas.
-- Negrita, cursiva y subrayado se aplican de forma independiente por tipo de texto: título del gráfico, títulos de ejes, números de ejes, leyenda, etiquetas de datos y texto de significancia.
+- Negrita, cursiva y subrayado se aplican de forma independiente por tipo de texto: título del gráfico, títulos de ejes, etiquetas de ticks de ejes, leyenda, etiquetas de datos y texto de significancia.
+- El estilo de títulos de eje se aplica tanto al título del eje X como al del eje Y cuando esos títulos están visibles. El estilo de etiquetas de ticks se aplica a las etiquetas mostradas en los ejes, sean números o categorías.
+- Los controles de leyenda incluyen si se muestra a la derecha cuando corresponde, además del tamaño y estilo del texto de la leyenda (normal, negrita, cursiva y/o subrayado).
 - Cada tipo de texto puede tener su propia combinación de estilos; subrayar significancia, por ejemplo, no obliga a subrayar el título ni la leyenda.
 - Estos ajustes se aplican a la previsualización y se incluyen al exportar `PNG` y `PDF`.
 
@@ -401,7 +403,9 @@ Flujo de metadatos:
 - **Descargar metadatos** para guardar estado actual.
 - Reimportar metadatos en sesiones futuras.
 - El estado de orientación horizontal se conserva en roundtrip.
-- La familia tipográfica, los estilos de texto, el estadístico de barras de error y la selección de métodos de estadística de curvas se conservan en el roundtrip de metadatos.
+- Las opciones tipográficas se conservan en el roundtrip de metadatos, incluyendo familia de letra, tamaños y estado normal/negrita/cursiva/subrayado para título del gráfico, títulos de eje X/Y, etiquetas de ticks de ejes, texto de leyenda, etiquetas de datos y texto de significancia.
+- La visibilidad/posición de la leyenda, incluyendo la selección de leyenda a la derecha cuando corresponde, se guarda en metadatos y se aplica nuevamente al cargarlos.
+- El estadístico de barras de error y la selección de métodos de estadística de curvas se conservan en el roundtrip de metadatos.
 
 Bundle reproducible:
 
@@ -455,6 +459,14 @@ Flujo típico:
 3. Ejecuta extracción.
 4. Descarga ZIP de resultados.
 5. Reusa resultados en flujos de gráficos.
+
+Autoguardado y manejo de interrupciones:
+
+- La **Carpeta de autoguardado** opcional se puede escribir manualmente o seleccionar con **Examinar...**.
+- Cuando se define una carpeta de autoguardado, los archivos finales `Curvas_*.xlsx` / `Parametros_*.xlsx` se copian allí automáticamente, y la opción normal **Descargar resultados** en ZIP sigue disponible.
+- Durante procesos largos, BIOSZEN guarda puntos de control por well en una carpeta temporal `BIOSZEN_growth_checkpoints` dentro de la carpeta de autoguardado seleccionada. Estos puntos de control permiten reanudar una corrida interrumpida desde los wells ya completados, en lugar de empezar desde cero.
+- Los puntos de control se eliminan automáticamente después de completar correctamente el proceso o después de reanudarlo con éxito. Solo se conservan cuando el procesamiento se interrumpe antes de terminar.
+- **Detener proceso** solicita una cancelación segura. La app puede terminar el well/punto de control actual antes de liberar la corrida para que los archivos parciales sigan siendo utilizables y no se modifique el cálculo de parámetros de crecimiento.
 
 ![Flujo de parámetros de crecimiento](manual_images/13_growth_parameters_workflow.png)
 

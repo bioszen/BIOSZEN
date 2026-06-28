@@ -1,3 +1,19 @@
+.bioszen_startup_citation <- function() {
+  if (!isTRUE(getOption("BIOSZEN.show_startup_citation", TRUE))) {
+    return(invisible(FALSE))
+  }
+  packageStartupMessage(paste(
+    "##",
+    "## BIOSZEN",
+    "## See https://github.com/bioszen/BIOSZEN for additional documentation and source code.",
+    "## Please cite software as:",
+    "##   Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210",
+    "##",
+    sep = "\n"
+  ))
+  invisible(TRUE)
+}
+
 #'
 #' This function launches the interactive app that ships with the package.
 #'
@@ -16,6 +32,7 @@ run_app <- function(host = getOption("shiny.host", "127.0.0.1"),
   }
 
   app_dir <- system.file("app", package = "BIOSZEN")
+  .bioszen_startup_citation()
   shiny::runApp(
     app_dir,
     host = host,

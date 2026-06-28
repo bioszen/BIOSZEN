@@ -10,12 +10,17 @@ Semantic Versioning.
 ## [2.0.3] - 2026-06-26
 - Hardened downloads for generated workbooks, metadata, statistics, PNG/PDF graphics, and bundle ZIP exports.
 - Improved the standalone launcher so BIOSZEN can start from versioned archives or extracted source folders.
-- Expanded metadata reproducibility for plot typography, composition typography, error-bar statistics, and composition plot metadata.
+- Expanded metadata reproducibility for plot typography, composition typography, per-axis typography, data-label typography, error-bar statistics, and composition plot metadata.
 - Set Boxplot error-bar defaults to Min-Max while preserving SD and SEM options.
 - Reviewed and strengthened normalized-data guard behavior to avoid raw fallback plots and app stalls when control selections are unavailable.
 - Fixed axis interval inputs so typed values are not overwritten while editing.
 - Stabilized technical-replicate outlier deselection and filtered parameter workbook exports.
 - Added explicit legend-on-right and legend text style metadata round trips for individual plots and compositions.
+- Fixed Plotly text styling so bold, italic, and underline styling is applied to both X/Y axis titles, axis tick labels, and data labels where those texts are visible.
+- Added optional independent styling for visible group labels on plot axes, with metadata export/import support.
+- Renamed axis text controls from numeric wording to axis tick-label wording for categorical and numeric axes.
+- Stabilized parameter switching while normalization is active so axes, plots, and metadata follow the selected raw parameter without requiring an app restart.
+- Metadata exports now preserve the selected parameter, normalization flag, and control medium, while metadata imports validate those values before applying them.
 - Cleaned release packaging rules to keep local session artifacts, logs, helper folders, and generated archives out of source builds.
 
 ## [2.0.2] - 2026-06-05

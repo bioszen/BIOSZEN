@@ -196,7 +196,12 @@ bioszen_plot_font_choices <- function() {
 }
 
 bioszen_plot_text_targets <- function() {
-  c("title", "axis_titles", "axis_text", "legend", "data_labels", "significance")
+  c(
+    "title",
+    "axis_titles", "axis_title_x", "axis_title_y",
+    "axis_text", "axis_text_x", "axis_text_y",
+    "legend", "data_labels", "significance"
+  )
 }
 
 bioszen_plot_text_styles <- function() {
@@ -223,6 +228,32 @@ accordion_panel_safe <- function(title, ..., value = NULL) {
 }
 
 
+bioszen_safe_show_notification <- function(ui,
+                                           action = NULL,
+                                           duration = 5,
+                                           closeButton = TRUE,
+                                           id = NULL,
+                                           type = c("default", "message", "warning", "error"),
+                                           session = shiny::getDefaultReactiveDomain()) {
+  notify_session <- tryCatch(session, error = function(e) NULL)
+  if (!inherits(notify_session, "ShinySession")) return(invisible(NULL))
+  send_notification <- tryCatch(notify_session$sendNotification, error = function(e) NULL)
+  if (!is.function(send_notification)) return(invisible(NULL))
+  type <- match.arg(type)
+  tryCatch(
+    shiny::showNotification(
+      ui = ui,
+      action = action,
+      duration = duration,
+      closeButton = closeButton,
+      id = id,
+      type = type,
+      session = notify_session
+    ),
+    error = function(e) invisible(NULL)
+  )
+}
+
 # Reporta errores indicando el archivo de origen (soporta handlers sin argumento)
 options(shiny.error = function(e = NULL) {
   calls <- sys.calls()
@@ -239,7 +270,7 @@ options(shiny.error = function(e = NULL) {
   }
   if (is.null(src)) src <- 'fuente_desconocida'
   msg <- if (!is.null(e)) conditionMessage(e) else geterrmessage()
-  shiny::showNotification(
+  bioszen_safe_show_notification(
     sprintf(tr_text("global_error_template", i18n_lang), src, msg),
     type = 'error', duration = NULL
   )
@@ -359,6 +390,34 @@ tab_compos <- tabPanel(
                   selected = "bold",
                   inline = TRUE
                 ),
+                checkboxInput(
+                  "combo_axis_xy_custom",
+                  tr("plot_axis_xy_custom"),
+                  value = FALSE
+                ),
+                conditionalPanel(
+                  condition = "input.combo_axis_xy_custom == true",
+                  checkboxGroupInput(
+                    "combo_text_style_axis_title_x",
+                    tr("plot_text_target_axis_title_x"),
+                    choices = named_choices(
+                      bioszen_plot_text_styles(),
+                      list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                    ),
+                    selected = "bold",
+                    inline = TRUE
+                  ),
+                  checkboxGroupInput(
+                    "combo_text_style_axis_title_y",
+                    tr("plot_text_target_axis_title_y"),
+                    choices = named_choices(
+                      bioszen_plot_text_styles(),
+                      list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                    ),
+                    selected = "bold",
+                    inline = TRUE
+                  )
+                ),
                 checkboxGroupInput(
                   "combo_text_style_axis_text",
                   tr("plot_text_target_axis_text"),
@@ -368,6 +427,29 @@ tab_compos <- tabPanel(
                   ),
                   selected = character(0),
                   inline = TRUE
+                ),
+                conditionalPanel(
+                  condition = "input.combo_axis_xy_custom == true",
+                  checkboxGroupInput(
+                    "combo_text_style_axis_text_x",
+                    tr("plot_text_target_axis_text_x"),
+                    choices = named_choices(
+                      bioszen_plot_text_styles(),
+                      list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                    ),
+                    selected = character(0),
+                    inline = TRUE
+                  ),
+                  checkboxGroupInput(
+                    "combo_text_style_axis_text_y",
+                    tr("plot_text_target_axis_text_y"),
+                    choices = named_choices(
+                      bioszen_plot_text_styles(),
+                      list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
+                    ),
+                    selected = character(0),
+                    inline = TRUE
+                  )
                 ),
                 checkboxGroupInput(
                   "combo_text_style_legend",

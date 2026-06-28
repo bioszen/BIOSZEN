@@ -271,7 +271,9 @@ specific measurement type.
   - `Min-Max`: observed minimum to maximum; available only for Boxplot.
 - The collapsible **Text styling** section is available for individual plots.
 - **Font family** applies to all text in the current graph. Available choices include common publication and system fonts such as Helvetica, Arial, Calibri, Cambria, Segoe UI, Times New Roman, Georgia, Verdana, and related variants.
-- Bold, italic, and underline are applied independently by text part: plot title, axis titles, axis numbers, legend, data labels, and significance text.
+- Bold, italic, and underline are applied independently by text part: plot title, axis titles, axis tick labels, legend, data labels, and significance text.
+- Axis-title styling is applied to both X and Y axis titles when those titles are visible. Axis tick-label styling applies to the labels shown along the axes, whether they are numeric ticks or category labels.
+- Legend controls include whether the legend is shown on the right when applicable, plus legend text size and bold/italic/underline styling.
 - Each text part can use its own combination of styles; selecting underline for significance text, for example, does not force underline on the title or legend.
 - These choices are applied to the plot preview and included in exported `PNG` and `PDF` files.
 
@@ -400,7 +402,9 @@ Metadata flow:
 - **Download metadata** to save current state.
 - Re-import metadata in future sessions.
 - Orientation flip state persists across metadata roundtrip.
-- Plot typography choices, error-bar statistic, and curve-statistics method selection persist across metadata roundtrip.
+- Plot typography choices persist across metadata roundtrip, including font family, text sizes, and normal/bold/italic/underline state for plot titles, X/Y axis titles, axis tick labels, legend text, data labels, and significance text.
+- Legend visibility/placement, including right-side legend selection where applicable, is stored in metadata and reapplied when metadata are loaded.
+- Error-bar statistic and curve-statistics method selection persist across metadata roundtrip.
 
 Reproducibility bundle:
 
@@ -454,6 +458,14 @@ Typical flow:
 3. Run extraction.
 4. Download ZIP outputs.
 5. Reuse extracted outputs in main plotting workflows.
+
+Autosave and interruption handling:
+
+- The optional **Autosave output folder** can be typed manually or selected with **Browse...**.
+- When an autosave folder is set, final `Curves_*.xlsx` / `Parameters_*.xlsx` files are copied there automatically while the regular **Download results** ZIP remains available.
+- During long runs, BIOSZEN writes per-well checkpoints under a temporary `BIOSZEN_growth_checkpoints` folder inside the selected autosave folder. These checkpoints allow an interrupted run to resume from completed wells instead of starting from zero.
+- Checkpoints are deleted automatically after a successful completion or successful resume. They are kept only when processing is interrupted before completion.
+- **Stop process** requests a safe cancellation. The app may finish the current well/checkpoint before releasing the run so partial files stay usable and the growth-parameter calculations are not changed.
 
 ![Growth workflow](manual_images/13_growth_parameters_workflow.png)
 

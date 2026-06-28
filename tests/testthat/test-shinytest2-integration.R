@@ -6,6 +6,9 @@ skip_if_shiny_e2e_unavailable <- function() {
   skip_if_not_installed("shinytest2")
   skip_if_not_installed("chromote")
   skip_on_cran()
+  in_r_cmd_check <- nzchar(Sys.getenv("_R_CHECK_PACKAGE_NAME_", unset = "")) ||
+    grepl("\\.Rcheck(/|$)", normalizePath(getwd(), winslash = "/", mustWork = FALSE))
+  skip_if(in_r_cmd_check, "Browser E2E tests are covered by the GitHub/local test_dir lane.")
 
   chrome_path <- tryCatch(chromote::find_chrome(), error = function(e) "")
   if (!nzchar(chrome_path)) {
@@ -13,18 +16,58 @@ skip_if_shiny_e2e_unavailable <- function() {
   }
 }
 
-start_bioszen_driver <- function() {
+is_chromote_navigation_timeout <- function(err) {
+  msg <- conditionMessage(err)
+  grepl("Chromote: timed out", msg, fixed = TRUE) &&
+    grepl("Page.navigate", msg, fixed = TRUE)
+}
+
+start_bioszen_driver <- function(max_attempts = 3L) {
   old_not_cran <- Sys.getenv("NOT_CRAN", unset = NA_character_)
   Sys.setenv(NOT_CRAN = "true")
 
-  app <- shinytest2::AppDriver$new(
-    app_dir = app_launch_dir,
-    load_timeout = 120000,
-    timeout = 120000,
-    clean_logs = FALSE
-  )
+  if (is.null(max_attempts) || !length(max_attempts) || is.na(max_attempts[[1]])) {
+    max_attempts <- 3L
+  }
+  max_attempts <- max(1L, as.integer(max_attempts[[1]]))
+  last_error <- NULL
+  on.exit({
+    if (!is.null(last_error)) {
+      if (is.na(old_not_cran)) {
+        Sys.unsetenv("NOT_CRAN")
+      } else {
+        Sys.setenv(NOT_CRAN = old_not_cran)
+      }
+    }
+  }, add = TRUE)
 
-  list(app = app, old_not_cran = old_not_cran)
+  for (attempt in seq_len(max_attempts)) {
+    app <- tryCatch(
+      shinytest2::AppDriver$new(
+        app_dir = app_launch_dir,
+        load_timeout = 120000,
+        timeout = 120000,
+        clean_logs = FALSE,
+        options = list(warn = 1)
+      ),
+      error = function(e) e
+    )
+
+    if (!inherits(app, "error")) {
+      last_error <- NULL
+      return(list(app = app, old_not_cran = old_not_cran))
+    }
+
+    last_error <- app
+    if (!is_chromote_navigation_timeout(app) || attempt >= max_attempts) {
+      break
+    }
+
+    Sys.sleep(min(10, 2 * attempt))
+    invisible(gc())
+  }
+
+  stop(last_error)
 }
 
 stop_bioszen_driver <- function(ctx) {
@@ -299,6 +342,98 @@ activate_stats_tab <- function(app, pattern) {
   normalize_js_bool(app$get_js(js))
 }
 
+activate_growth_tab <- function(app) {
+  js <- "(function(){
+     var links = Array.from(document.querySelectorAll('a[data-toggle=\"tab\"], a[data-bs-toggle=\"tab\"], .nav-link'));
+     var link = links.find(function(a){ return /Growth Parameter Extraction/i.test((a.textContent || '').trim()); });
+     if (!link) return false;
+     link.click();
+     return true;
+   })()"
+  normalize_js_bool(app$get_js(js))
+}
+
+make_growth_e2e_workbook <- function(path, n_points = 12, n_wells = 3) {
+  wb <- openxlsx::createWorkbook()
+  openxlsx::addWorksheet(wb, "Sheet1")
+  time <- seq_len(n_points)
+  dat <- data.frame(Ignore1 = time, Ignore2 = time)
+  for (i in seq_len(n_wells)) {
+    rate <- 0.08 + 0.01 * i
+    dat[[paste0("W", i)]] <- exp(seq(0, by = rate, length.out = n_points)) *
+      (1 + 0.01 * sin(time + i))
+  }
+  openxlsx::writeData(wb, "Sheet1", dat, startRow = 3, colNames = TRUE)
+  openxlsx::saveWorkbook(wb, path, overwrite = TRUE)
+  invisible(path)
+}
+
+wait_for_growth_status <- function(app, timeout_sec = 90) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  last_status <- ""
+  while (Sys.time() < deadline) {
+    raw <- tryCatch(
+      app$get_js(
+        "(function(){
+           var el = document.getElementById('growthStatus');
+           return el ? (el.innerText || el.textContent || '') : '';
+         })()"
+      ),
+      error = function(e) ""
+    )
+    last_status <- normalize_js_scalar(raw)
+    if (grepl("Completed|Error|stopped|cancel", last_status, ignore.case = TRUE)) {
+      return(last_status)
+    }
+    Sys.sleep(0.5)
+  }
+  last_status
+}
+
+growth_button_state <- function(app) {
+  skip_if_not_installed("jsonlite")
+  raw <- app$get_js(
+    "(function(){
+       var run = document.getElementById('runGrowth');
+       var stop = document.getElementById('stopGrowth');
+       return JSON.stringify({
+         runDisabled: !!(run && run.disabled),
+         stopDisabled: !!(stop && stop.disabled)
+       });
+     })()"
+  )
+  as.list(jsonlite::fromJSON(normalize_js_scalar(raw)))
+}
+
+click_growth_button_if_enabled <- function(app, button_id) {
+  js <- sprintf(
+    "(function(){
+       var btn = document.getElementById('%s');
+       if (!btn || btn.disabled) return false;
+       btn.click();
+       return true;
+     })()",
+    button_id
+  )
+  normalize_js_bool(app$get_js(js))
+}
+
+wait_for_growth_buttons <- function(app,
+                                    run_disabled = NULL,
+                                    stop_disabled = NULL,
+                                    timeout_sec = 45) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  last <- NULL
+  while (Sys.time() < deadline) {
+    last <- growth_button_state(app)
+    run_ok <- is.null(run_disabled) || identical(isTRUE(last$runDisabled), isTRUE(run_disabled))
+    stop_ok <- is.null(stop_disabled) || identical(isTRUE(last$stopDisabled), isTRUE(stop_disabled))
+    if (run_ok && stop_ok) return(TRUE)
+    Sys.sleep(0.25)
+  }
+  FALSE
+}
+
 wait_for_stats_output_text <- function(app, output_id, timeout_sec = 45) {
   deadline <- Sys.time() + as.numeric(timeout_sec)
   last_text <- ""
@@ -406,6 +541,99 @@ test_that("browser upload flow keeps searchable selectors and no critical fronte
     0,
     info = paste(unique(as.character(critical$message)), collapse = "\n")
   )
+})
+
+test_that("growth parameter extraction upload flow completes without session notification errors", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("openxlsx")
+
+  growth_fixture <- tempfile("bioszen_growth_e2e_", fileext = ".xlsx")
+  on.exit(unlink(growth_fixture, force = TRUE), add = TRUE)
+  make_growth_e2e_workbook(growth_fixture, n_points = 12, n_wells = 3)
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  expect_true(
+    activate_growth_tab(app),
+    info = "The Growth Parameter Extraction tab should be available."
+  )
+  app$upload_file(growthFiles = normalizePath(growth_fixture), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "growthFilesKeep", timeout = 120000)
+
+  selected_text <- normalize_js_scalar(app$get_js(
+    "(function(){
+       var el = document.getElementById('growthSelectedFilesUI');
+       return el ? (el.innerText || el.textContent || '') : '';
+     })()"
+  ))
+  expect_match(selected_text, basename(growth_fixture), fixed = TRUE)
+
+  app$set_inputs(maxTime = 11, timeInterval = 1, runGrowth = "click", wait_ = FALSE)
+  growth_status <- wait_for_growth_status(app, timeout_sec = 120)
+  expect_match(growth_status, "Completed", fixed = TRUE)
+
+  page_text <- normalize_js_scalar(app$get_js("document.body.innerText"))
+  expect_false(grepl("ShinySession", page_text, fixed = TRUE))
+  expect_false(grepl("sendNotification", page_text, fixed = TRUE))
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("growth can be stopped, reuploaded, and run again without restarting the app", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("jsonlite")
+  skip_if_not_installed("openxlsx")
+
+  first_growth <- tempfile("bioszen_growth_stop_first_", fileext = ".xlsx")
+  second_growth <- tempfile("bioszen_growth_stop_second_", fileext = ".xlsx")
+  on.exit(unlink(c(first_growth, second_growth), force = TRUE), add = TRUE)
+  make_growth_e2e_workbook(first_growth, n_points = 120, n_wells = 8)
+  make_growth_e2e_workbook(second_growth, n_points = 12, n_wells = 3)
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  expect_true(activate_growth_tab(app))
+  app$upload_file(growthFiles = normalizePath(first_growth), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "growthFilesKeep", timeout = 120000)
+
+  expect_true(wait_for_growth_buttons(app, run_disabled = FALSE, stop_disabled = TRUE, timeout_sec = 30))
+  app$set_inputs(maxTime = 119, timeInterval = 1, wait_ = TRUE, timeout_ = 60000)
+  expect_true(click_growth_button_if_enabled(app, "runGrowth"))
+  expect_true(wait_for_growth_buttons(app, run_disabled = TRUE, stop_disabled = FALSE, timeout_sec = 45))
+  expect_true(click_growth_button_if_enabled(app, "stopGrowth"))
+  stopped_status <- wait_for_growth_status(app, timeout_sec = 120)
+  expect_match(stopped_status, "stopped|cancel", ignore.case = TRUE)
+  expect_true(wait_for_growth_buttons(app, run_disabled = FALSE, stop_disabled = TRUE, timeout_sec = 45))
+
+  app$upload_file(growthFiles = normalizePath(second_growth), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "growthFilesKeep", timeout = 120000)
+  selected_text <- normalize_js_scalar(app$get_js(
+    "(function(){
+       var el = document.getElementById('growthSelectedFilesUI');
+       return el ? (el.innerText || el.textContent || '') : '';
+     })()"
+  ))
+  expect_match(selected_text, basename(second_growth), fixed = TRUE)
+  expect_true(wait_for_growth_buttons(app, run_disabled = FALSE, stop_disabled = TRUE, timeout_sec = 45))
+
+  app$set_inputs(maxTime = 11, timeInterval = 1, wait_ = TRUE, timeout_ = 60000)
+  expect_true(click_growth_button_if_enabled(app, "runGrowth"))
+  rerun_status <- wait_for_growth_status(app, timeout_sec = 120)
+  expect_match(rerun_status, "Completed", fixed = TRUE)
+
+  page_text <- normalize_js_scalar(app$get_js("document.body.innerText"))
+  expect_false(grepl("ShinySession", page_text, fixed = TRUE))
+  expect_false(grepl("sendNotification", page_text, fixed = TRUE))
+  expect_true(wait_for_growth_buttons(app, run_disabled = FALSE, stop_disabled = TRUE, timeout_sec = 45))
 })
 
 test_that("core user processes settle without reload loops", {
@@ -1101,6 +1329,139 @@ test_that("reactive stress: rapid strain switching with normalization toggles st
       info = sprintf("Shiny session disconnected during normalization churn iteration %d.", i)
     )
   }
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("normalized parameter switching keeps axis and metadata on the selected parameter", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("readxl")
+
+  fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
+  )
+  expect_true(file.exists(fixture))
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(dataFile = normalizePath(fixture), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "strain", timeout = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  app$set_inputs(tipo = "Boxplot", wait_ = TRUE, timeout_ = 60000)
+  app$set_inputs(doNorm = TRUE, wait_ = TRUE, timeout_ = 90000)
+  app$wait_for_value(input = "ctrlMedium", timeout = 60000)
+
+  wait_for_param_choices <- function(timeout_sec = 45) {
+    deadline <- Sys.time() + timeout_sec
+    while (Sys.time() < deadline) {
+      raw <- tryCatch(
+        app$get_js(
+          "(function(){
+             var el = document.getElementById('param');
+             if (!el || !el.selectize || !el.selectize.options) return [];
+             return Object.keys(el.selectize.options);
+           })()"
+        ),
+        error = function(e) character(0)
+      )
+      vals <- unique(as.character(unlist(raw, use.names = FALSE)))
+      vals <- vals[!is.na(vals) & nzchar(vals)]
+      if (length(vals) >= 2) return(vals)
+      Sys.sleep(0.5)
+    }
+    character(0)
+  }
+
+  param_choices <- wait_for_param_choices()
+  if (length(param_choices) < 2) {
+    skip("Not enough normalized-ready parameters available for switching test.")
+  }
+
+  switch_seq <- rep(param_choices[seq_len(min(4L, length(param_choices)))], length.out = 8L)
+  wait_for_normalized_axis_param <- function(target, timeout_sec = 25) {
+    deadline <- Sys.time() + timeout_sec
+    last <- list(selected = "", label = "")
+    while (Sys.time() < deadline) {
+      raw <- tryCatch(
+        app$get_js(
+          "(function(){
+             var param = (window.Shiny && Shiny.shinyapp && Shiny.shinyapp.$inputValues) ?
+               (Shiny.shinyapp.$inputValues.param || '') : '';
+             var el = document.querySelector('label[for=\"ymax\"]');
+             return JSON.stringify({
+               param: String(param || ''),
+               label: el ? (el.textContent || '') : ''
+             });
+           })()"
+        ),
+        error = function(e) ""
+      )
+      info <- tryCatch(jsonlite::fromJSON(normalize_js_scalar(raw)), error = function(e) NULL)
+      if (!is.null(info)) {
+        last <- list(
+          selected = as.character(info$param %||% ""),
+          label = as.character(info$label %||% "")
+        )
+        if (identical(last$selected, target) &&
+            grepl(paste0(target, "_Norm"), last$label, fixed = TRUE)) {
+          return(TRUE)
+        }
+      }
+      Sys.sleep(0.4)
+    }
+    out <- FALSE
+    attr(out, "last") <- last
+    out
+  }
+
+  for (i in seq_along(switch_seq)) {
+    target <- switch_seq[[i]]
+    app$set_inputs(param = target, wait_ = TRUE, timeout_ = 90000)
+    expect_true(
+      wait_for_plot_idle(app, timeout_sec = 30),
+      info = sprintf("Plot did not settle after normalized parameter switch to %s.", target)
+    )
+    expect_true(
+      wait_for_shiny_connected(app, timeout_sec = 15),
+      info = sprintf("Shiny disconnected after normalized parameter switch to %s.", target)
+    )
+
+    axis_ok <- wait_for_normalized_axis_param(target)
+    last_axis <- attr(axis_ok, "last") %||% list(selected = "", label = "")
+    expect_true(
+      axis_ok,
+      info = sprintf(
+        "Normalized axis did not settle on %s. Last server param: %s. Last label: %s",
+        target, last_axis$selected, last_axis$label
+      )
+    )
+
+    selected <- normalize_js_scalar(app$get_js(
+      "(function(){
+         var el = document.getElementById('param');
+         if (el && el.selectize) return el.selectize.getValue();
+         return (window.Shiny && Shiny.shinyapp && Shiny.shinyapp.$inputValues) ?
+           (Shiny.shinyapp.$inputValues.param || '') : '';
+       })()"
+    ))
+    expect_identical(selected, target)
+    expect_false(grepl("_Norm$", selected, ignore.case = TRUE))
+  }
+
+  meta_path <- app$get_download(output = "downloadMetadata")
+  expect_true(file.exists(meta_path))
+  meta_tbl <- readxl::read_excel(meta_path, sheet = "Metadata")
+  fields <- stats::setNames(as.character(meta_tbl$Valor), as.character(meta_tbl$Campo))
+  expect_true("param" %in% names(fields), info = paste(names(fields), collapse = ", "))
+  expect_false(grepl("_Norm$", fields[["param"]], ignore.case = TRUE))
+  expect_identical(fields[["param"]], tail(switch_seq, 1))
+  expect_identical(tolower(fields[["doNorm"]]), "true")
 
   critical <- find_critical_frontend_logs(app$get_logs())
   expect_equal(

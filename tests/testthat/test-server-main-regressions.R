@@ -28,6 +28,16 @@ test_that("server string literals do not contain mojibake text", {
   )
 })
 
+test_that("global Shiny error notifications are defensive", {
+  global_file <- app_test_path("global.R")
+  txt <- paste(readLines(global_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(txt, "bioszen_safe_show_notification <- function", fixed = TRUE)
+  expect_match(txt, "sendNotification", fixed = TRUE)
+  expect_match(txt, 'inherits\\(notify_session, "ShinySession"\\)', perl = TRUE)
+  expect_match(txt, "options\\(shiny\\.error[\\s\\S]*bioszen_safe_show_notification", perl = TRUE)
+})
+
 test_that("technical QC selection is wired to filtered final table and export cache keys", {
   server_file <- app_test_path("server", "server_main.R")
   ui_file <- app_test_path("ui", "ui_main.R")
@@ -416,4 +426,101 @@ test_that("statistics builders resolve scoped data and tolerate transient blank 
     grepl("datos_agrupados\\(\\) \\|>", export_section, fixed = TRUE),
     info = "Statistics downloads should not rebuild a separate filter path from raw grouped data."
   )
+})
+
+test_that("normalized parameter switching does not preserve stale unavailable parameters", {
+  server_file <- app_test_path("server", "server_main.R")
+  server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(server_txt, "normalize_param_selection\\(input\\$param, params_all\\)", perl = TRUE)
+  expect_match(server_txt, "normalize_param_selection\\(isolate\\(input\\$param %\\|\\|% \"\"\\), params\\)", perl = TRUE)
+  expect_match(server_txt, "param_sel <- normalize_param_selection\\(v, safe_plot_setting_params\\(\\)\\)", perl = TRUE)
+  expect_match(server_txt, "metadata_param <- normalize_param_selection\\(input\\$param, safe_plot_setting_params\\(\\)\\)", perl = TRUE)
+  expect_match(server_txt, "metadata_param <- normalize_param_selection\\(last_param_selection\\(\\), safe_plot_setting_params\\(\\)\\)", perl = TRUE)
+
+  selector_start <- regexpr("param_choices <- params", server_txt, fixed = TRUE)
+  expect_true(selector_start[[1]] > 0L)
+  selector_tail <- substring(server_txt, selector_start[[1]])
+  selector_end <- regexpr("selected_x <-", selector_tail, fixed = TRUE)
+  expect_true(selector_end[[1]] > 0L)
+  selector_section <- substring(selector_tail, 1L, selector_end[[1]])
+
+  expect_match(selector_section, "param_choices <- normalized_ready_params\\(scope_df, params\\)", perl = TRUE)
+  expect_false(
+    grepl("param_choices <- unique\\(c\\(current_param", selector_section, perl = TRUE),
+    info = "Strict normalization must not re-add the previous parameter when it lacks normalized data."
+  )
+  expect_false(
+    grepl("param_choices <- unique\\(c\\(preferred_param", selector_section, perl = TRUE),
+    info = "Strict normalization must not re-add the remembered parameter when it lacks normalized data."
+  )
+})
+
+test_that("plots, replicate data, and growth imports normalize stale parameter selections", {
+  server_file <- app_test_path("server", "server_main.R")
+  server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  extract_section <- function(txt, start_pattern, end_pattern) {
+    start <- regexpr(start_pattern, txt, perl = TRUE)
+    expect_true(start[[1]] > 0L, info = start_pattern)
+    tail <- substring(txt, start[[1]])
+    end <- regexpr(end_pattern, substring(tail, 2), perl = TRUE)
+    if (end[[1]] > 0L) substring(tail, 1L, end[[1]]) else tail
+  }
+
+  param_rep_section <- extract_section(
+    server_txt,
+    "param_rep_df <- function\\(\\)",
+    "base_plot_df <- reactive"
+  )
+  expect_match(param_rep_section, "normalize_param_selection\\(input\\$param, params_all\\)", perl = TRUE)
+  expect_match(param_rep_section, "normalize_param_selection\\(last_param_selection\\(\\), params_all\\)", perl = TRUE)
+  expect_match(param_rep_section, "paste0\\(raw_param, \"_Norm\"\\) %in% names\\(df\\)", perl = TRUE)
+  expect_false(grepl("param <- input\\$param", param_rep_section, fixed = FALSE))
+
+  build_section <- extract_section(
+    server_txt,
+    "build_plot <- function",
+    "downsample_points_by_group <- function"
+  )
+  expect_match(build_section, "normalize_param_selection\\(input\\$param, params_all\\)", perl = TRUE)
+  expect_match(build_section, "normalize_param_selection\\(last_param_selection\\(\\), params_all\\)", perl = TRUE)
+  expect_match(build_section, "last_param_selection\\(raw_param_input\\)", perl = TRUE)
+
+  import_section <- extract_section(
+    server_txt,
+    "observeEvent\\(input\\$importToPlots",
+    "updateTabsetPanel\\(session, \"mainTabs\""
+  )
+  expect_match(import_section, "current_import_param <- normalize_param_selection", fixed = TRUE)
+  expect_match(import_section, "preferred_import_param <- normalize_param_selection", fixed = TRUE)
+  expect_match(import_section, "selected_import_param", fixed = TRUE)
+  expect_false(
+    grepl("selected = if \\(length\\(plot_cfg_box\\(\\)\\$Parameter\\)\\) plot_cfg_box\\(\\)\\$Parameter\\[1\\]", import_section, perl = TRUE),
+    info = "Importing growth parameters must preserve an equivalent selected parameter when possible."
+  )
+})
+
+test_that("metadata restore validates enum-like design fields before updating inputs", {
+  server_file <- app_test_path("server", "server_main.R")
+  server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(server_txt, "metadata_choice <- function", fixed = TRUE)
+  expect_match(server_txt, "update_radio_metadata <- function", fixed = TRUE)
+  expect_match(server_txt, "update_select_metadata <- function", fixed = TRUE)
+
+  raw_updates <- c(
+    'updateRadioButtons\\(session, "curve_geom", selected = v\\)',
+    'updateRadioButtons\\(session, "corr_method", selected = v\\)',
+    'updateRadioButtons\\(session, "corr_norm_target", selected = v\\)',
+    'updateRadioButtons\\(session, "heat_orientation", selected = v\\)',
+    'updateSelectInput\\(session, "corr_adv_direction", selected = v\\)'
+  )
+  for (pattern in raw_updates) {
+    expect_false(grepl(pattern, server_txt, perl = TRUE), info = pattern)
+  }
+
+  expect_match(server_txt, 'update_radio_metadata\\("curve_geom", v, c\\("line_points", "line_only"\\)\\)', perl = TRUE)
+  expect_match(server_txt, 'update_radio_metadata\\("corr_norm_target", v, c\\("both", "x_only", "y_only"\\)\\)', perl = TRUE)
+  expect_match(server_txt, 'update_select_metadata\\(\\s*"heat_hclust_method"', perl = TRUE)
 })
