@@ -109,4 +109,27 @@ source_dir(file.path(app_dir, "ui"), envir = app_env)            # interfaz
 
 shiny::addResourcePath("www", file.path(app_dir, "www"))
 
+.bioszen_emit_app_startup_citation <- function() {
+  if (!isTRUE(getOption("BIOSZEN.show_startup_citation", TRUE))) {
+    return(invisible(FALSE))
+  }
+  if (isTRUE(getOption("BIOSZEN.startup_citation_shown", FALSE))) {
+    return(invisible(FALSE))
+  }
+
+  options(BIOSZEN.startup_citation_shown = TRUE)
+  packageStartupMessage(paste(
+    "##",
+    "## BIOSZEN",
+    "## See https://github.com/bioszen/BIOSZEN for additional documentation and source code.",
+    "## Please cite software as:",
+    "##   Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210",
+    "##",
+    sep = "\n"
+  ))
+  invisible(TRUE)
+}
+
+.bioszen_emit_app_startup_citation()
+
 shiny::shinyApp(app_env$ui, app_env$server)

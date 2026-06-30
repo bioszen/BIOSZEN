@@ -165,6 +165,20 @@ identify_exponential_phase_permissive <- function(df, time_col, measure_col,
 # ============================================================
 # 3) Calcular parámetros – ROBUSTO (paralelo + orden estable)
 # ============================================================
+.bioszen_growth_initial_od <- function(df) {
+  if (is.null(df) || !nrow(df) || !"Measurements" %in% names(df)) {
+    return(NA_real_)
+  }
+  measurements <- suppressWarnings(as.numeric(df$Measurements))
+  if ("Time" %in% names(df)) {
+    time <- suppressWarnings(as.numeric(df$Time))
+    ord <- order(time, seq_along(time), na.last = TRUE)
+    measurements <- measurements[ord]
+  }
+  measurements <- measurements[is.finite(measurements)]
+  if (!length(measurements)) NA_real_ else measurements[[1]]
+}
+
 calculate_growth_rates_robust <- function(df, should_abort = NULL, progress_callback = NULL) {
   .bioszen_abort_if_requested(should_abort)
   # claves en el MISMO orden que aparecen en el df
@@ -190,7 +204,8 @@ calculate_growth_rates_robust <- function(df, should_abort = NULL, progress_call
         lag_time        = lag_time,
         ODmax           = max(d$Measurements),
         max_time        = d$Time[which.max(d$Measurements)],
-        AUC             = gcplyr::auc(x = d$Time, y = d$Measurements)
+        AUC             = gcplyr::auc(x = d$Time, y = d$Measurements),
+        OD0             = .bioszen_growth_initial_od(d)
       )
     } else {
       dplyr::tibble(
@@ -201,7 +216,8 @@ calculate_growth_rates_robust <- function(df, should_abort = NULL, progress_call
         lag_time        = NA_real_,
         ODmax           = max(d$Measurements),
         max_time        = NA_real_,
-        AUC             = NA_real_
+        AUC             = NA_real_,
+        OD0             = .bioszen_growth_initial_od(d)
       )
     }
   }
@@ -248,7 +264,8 @@ calculate_growth_rates_permissive <- function(df, should_abort = NULL, progress_
         lag_time        = lag_time,
         ODmax           = max(d$Measurements),
         max_time        = d$Time[which.max(d$Measurements)],
-        AUC             = gcplyr::auc(x = d$Time, y = d$Measurements)
+        AUC             = gcplyr::auc(x = d$Time, y = d$Measurements),
+        OD0             = .bioszen_growth_initial_od(d)
       )
     } else {
       dplyr::tibble(
@@ -259,7 +276,8 @@ calculate_growth_rates_permissive <- function(df, should_abort = NULL, progress_
         lag_time        = NA_real_,
         ODmax           = max(d$Measurements),
         max_time        = NA_real_,
-        AUC             = NA_real_
+        AUC             = NA_real_,
+        OD0             = .bioszen_growth_initial_od(d)
       )
     }
   }

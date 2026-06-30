@@ -45,12 +45,16 @@ test_that("language-refresh title updates keep a real parameter in default title
 
 test_that("dynamic Y-axis labels use the active language", {
   server_txt <- read_app_text("server", "server_main.R")
+  ui_txt <- read_app_text("ui", "ui_main.R")
   es <- read.csv(app_test_path("i18n", "translation_es.csv"), stringsAsFactors = FALSE, fileEncoding = "UTF-8")
 
   expect_false(grepl('paste0\\("Y max', server_txt, perl = TRUE))
   expect_false(grepl('paste0\\("Int Y', server_txt, perl = TRUE))
   expect_match(server_txt, 'tr_text\\("y_max", lang\\)', perl = TRUE)
   expect_match(server_txt, 'tr_text\\("y_interval", lang\\)', perl = TRUE)
+  expect_match(ui_txt, "bioszen-axis-input-row", fixed = TRUE)
+  expect_match(ui_txt, "min-height: 2\\.45em", perl = TRUE)
+  expect_match(ui_txt, "numericInput\\('ymax'[\\s\\S]*?numericInput\\('ybreak'", perl = TRUE)
   expect_equal(es$es[match("y_max", es$key)], "Máx. Y")
   expect_equal(es$es[match("y_interval", es$key)], "Intervalo Y")
   expect_equal(es$es[match("file_browse", es$key)], "Examinar...")

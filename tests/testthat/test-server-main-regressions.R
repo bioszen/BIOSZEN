@@ -128,7 +128,7 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     server_txt,
-    "begin_deferred_reactive_flag\\(\\s*dataset_loading,[\\s\\S]*?flush_cycles = 3L[\\s\\S]*?timeout_ms = 850L",
+    "begin_deferred_reactive_flag\\(\\s*dataset_loading,[\\s\\S]*?flush_cycles = 5L[\\s\\S]*?timeout_ms = 1500L",
     perl = TRUE,
     info = "Dataset uploads should hold the plot gate long enough for upload-driven UI updates to settle."
   )
@@ -139,8 +139,18 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     server_txt,
+    "begin_plot_input_sync\\s*<-\\s*function",
+    info = "Programmatic selector refreshes need a short sync guard before plotting."
+  )
+  expect_match(
+    server_txt,
     "filter_selection_sync_inflight <- reactiveVal\\(FALSE\\)",
     info = "The plot output must be able to observe filter sync state."
+  )
+  expect_match(
+    server_txt,
+    "plot_input_sync_inflight <- reactiveVal\\(FALSE\\)",
+    info = "The plot output must be able to observe selector sync state."
   )
   expect_match(
     server_txt,
@@ -201,6 +211,18 @@ test_that("upload and filter updates are batched before plot redraws", {
     info = "Plot rendering should wait while selected groups/conditions settle."
   )
   expect_match(
+    plot_output,
+    "if \\(isTRUE\\(isolate\\(plot_input_sync_inflight\\(\\)\\)\\)\\) req\\(FALSE, cancelOutput = TRUE\\)",
+    perl = TRUE,
+    info = "Plot rendering should wait while plot-related selectors settle."
+  )
+  expect_match(
+    server_txt,
+    "begin_plot_input_sync\\(\\)[\\s\\S]*?update_selectize_adaptive\\(\\s*\"param\"",
+    perl = TRUE,
+    info = "Parameter selector refresh should hold the plot until the final selection reaches Shiny."
+  )
+  expect_match(
     server_txt,
     "observeEvent\\(\\s*list\\(input\\$scope, input\\$strain, input\\$showMedios, input\\$showGroups\\)",
     perl = TRUE,
@@ -226,6 +248,79 @@ test_that("upload and filter updates are batched before plot redraws", {
     server_txt,
     perl = TRUE
   ))
+
+  data_loader_section <- sub(
+    "^[\\s\\S]*?observeEvent\\(input\\$dataFile, \\{",
+    "observeEvent(input$dataFile, {",
+    server_txt,
+    perl = TRUE
+  )
+  data_loader_section <- sub(
+    "\\n\\s*observeEvent\\(input\\$mergePlatemaps,[\\s\\S]*$",
+    "",
+    data_loader_section,
+    perl = TRUE
+  )
+  expect_match(
+    data_loader_section,
+    "refresh_static_choices\\(force_default_type = TRUE\\)",
+    perl = TRUE,
+    info = "Dataset loading should set the final plot type through one centralized path."
+  )
+  expect_false(grepl(
+    "updateRadioButtons\\(\\s*session,\\s*\"tipo\"",
+    data_loader_section,
+    perl = TRUE
+  ))
+
+  merge_loader_section <- sub(
+    "^[\\s\\S]*?observeEvent\\(input\\$mergePlatemaps, \\{",
+    "observeEvent(input$mergePlatemaps, {",
+    server_txt,
+    perl = TRUE
+  )
+  merge_loader_section <- sub(
+    "\\n\\s*merged_platemap_filename <- function[\\s\\S]*$",
+    "",
+    merge_loader_section,
+    perl = TRUE
+  )
+  expect_match(
+    merge_loader_section,
+    "refresh_static_choices\\(force_default_type = TRUE\\)",
+    perl = TRUE,
+    info = "Merged platemap loading should also use the centralized plot-type update."
+  )
+  expect_false(grepl(
+    "updateRadioButtons\\(\\s*session,\\s*\"tipo\"",
+    merge_loader_section,
+    perl = TRUE
+  ))
+  expect_false(grepl("cur_data_all\\(", server_txt, fixed = FALSE))
+  expect_match(
+    server_txt,
+    "dplyr::pick\\(dplyr::everything\\(\\)\\)",
+    perl = TRUE,
+    info = "Technical replicate summaries should use dplyr::pick() instead of deprecated cur_data_all()."
+  )
+})
+
+test_that("stacked parameter selector exposes available parameters without typing", {
+  server_file <- app_test_path("server", "server_main.R")
+  server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(
+    server_txt,
+    "selectizeInput\\(\\s*\"stackParams\"[\\s\\S]*?choices = params[\\s\\S]*?selected = default_stack_params\\(params\\)[\\s\\S]*?openOnFocus = TRUE",
+    perl = TRUE,
+    info = "Large stacked parameter sets should be loaded into the picker so users can browse them."
+  )
+  expect_match(
+    server_txt,
+    "update_selectize_adaptive\\(\\s*\"stackParams\"[\\s\\S]*?server = FALSE[\\s\\S]*?openOnFocus = TRUE[\\s\\S]*?maxOptions = min\\(1000L, length\\(params\\)\\)",
+    perl = TRUE,
+    info = "Stacked parameter updates should keep browseable client-side choices."
+  )
 })
 
 test_that("core reactive controls keep loop guards around programmatic updates", {

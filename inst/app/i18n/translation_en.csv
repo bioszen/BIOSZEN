@@ -142,7 +142,7 @@ growth_selection_cleared,Growth file selection cleared.
 growth_need_selected_files,Select at least one growth file to process.
 growth_output_dir,Autosave output folder (optional)
 growth_output_dir_placeholder,C:/Users/name/Documents/BIOSZEN_growth_results
-growth_output_dir_help,"If set, final files are saved there. Per-well checkpoints are kept only after an interrupted run and are deleted after a successful completion or resume."
+growth_output_dir_help,"Optional. If you do not want autosave, leave this blank and download results at the end. If set, choose an existing folder; BIOSZEN will ask you to correct the path if it does not exist. Final files are also saved there. Per-well checkpoints are kept only after an interrupted run and are deleted after a successful completion or resume."
 growth_browse_dir,Browse...
 growth_browse_dir_caption,Select growth output folder
 growth_max_time,Max time

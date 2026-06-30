@@ -722,6 +722,7 @@ server <- function(input, output, session) {
   filter_selection_sync_inflight <- reactiveVal(FALSE)
   filter_toggle_sync_inflight <- reactiveVal(FALSE)
   axis_sync_inflight <- reactiveVal(FALSE)
+  plot_input_sync_inflight <- reactiveVal(FALSE)
   plot_settle_tick <- reactiveVal(0L)
   input_update_cache <- new.env(parent = emptyenv())
   deferred_flag_tokens <- new.env(parent = emptyenv())
@@ -779,8 +780,8 @@ server <- function(input, output, session) {
     begin_deferred_reactive_flag(
       dataset_loading,
       flag_key = "dataset_loading",
-      flush_cycles = 3L,
-      timeout_ms = 850L
+      flush_cycles = 5L,
+      timeout_ms = 1500L
     )
   }
 
@@ -800,6 +801,16 @@ server <- function(input, output, session) {
       flag_key = "axis_sync_inflight",
       flush_cycles = 1L,
       timeout_ms = 250L
+    )
+    invisible(TRUE)
+  }
+
+  begin_plot_input_sync <- function() {
+    begin_deferred_reactive_flag(
+      plot_input_sync_inflight,
+      flag_key = "plot_input_sync_inflight",
+      flush_cycles = 3L,
+      timeout_ms = 900L
     )
     invisible(TRUE)
   }
@@ -1841,7 +1852,7 @@ server <- function(input, output, session) {
           height = eff_height / 96,
           units = "in",
           limitsize = FALSE,
-          device = cairo_pdf,
+          device = grDevices::cairo_pdf,
           bg = "white"
         )
         return(invisible(TRUE))
@@ -1873,11 +1884,12 @@ server <- function(input, output, session) {
         height = eff_height / 96,
         units = "in",
         limitsize = FALSE,
-        device = cairo_pdf,
+        device = grDevices::cairo_pdf,
         bg = "white"
       )
       return(invisible(TRUE))
     }
+
     stop("Plot export failed.")
   }
 
@@ -1910,7 +1922,7 @@ server <- function(input, output, session) {
     )
   }, ignoreInit = FALSE)
 
-    refresh_static_choices <- function() {
+    refresh_static_choices <- function(force_default_type = FALSE) {
     lang <- input$app_lang %||% i18n_lang
     updateRadioButtons(
       session,
@@ -1958,7 +1970,11 @@ server <- function(input, output, session) {
       )
       default_type <- "Boxplot"
     }
-    selected_type <- input$tipo %||% isolate(last_plot_type()) %||% default_type
+    selected_type <- if (isTRUE(force_default_type)) {
+      default_type
+    } else {
+      input$tipo %||% isolate(last_plot_type()) %||% default_type
+    }
     if (!selected_type %in% type_ids) {
       sticky_type <- isolate(last_plot_type()) %||% ""
       if (nzchar(sticky_type) && sticky_type %in% type_ids) {
@@ -3763,7 +3779,7 @@ server <- function(input, output, session) {
       summary_input_mode(isTRUE(summary_mode_this))
       is_group_data(is_group)
       # Keep default plot type in sync with the newly loaded dataset.
-      refresh_static_choices()
+      refresh_static_choices(force_default_type = TRUE)
 
       if ((isTRUE(summary_mode_this) || isTRUE(is_group)) && !isTRUE(is_csv_input)) {
         curve_conv <- tryCatch(
@@ -3846,54 +3862,7 @@ server <- function(input, output, session) {
       }
     }
     
-    # 2.a) actualiza selector de tipo de grÃƒÂ¡fico ------------------------------
-    if (length(params) == 0 || identical(params, "Parametro_dummy")) {
-      updateRadioButtons(
-        session,
-        "tipo",
-        choices  = named_choices(c("Curvas"), list(tr("plot_curves"))),
-        selected = "Curvas"
-      )
-    } else if (isTRUE(is_summary_mode())) {
-      updateRadioButtons(
-        session,
-        "tipo",
-        choices  = named_choices(
-          c("Barras", "Curvas", "Apiladas", "Correlacion", "Heatmap", "MatrizCorrelacion"),
-          list(
-            tr("plot_bars"),
-            tr("plot_curves"),
-            tr("plot_stacked"),
-            tr("plot_correlation"),
-            tr("plot_heatmap"),
-            tr("plot_corr_matrix")
-          )
-        ),
-        selected = "Barras"
-      )
-    } else {
-      updateRadioButtons(
-        session,
-        "tipo",
-        choices  = named_choices(
-          c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion",
-            "Heatmap", "MatrizCorrelacion"),
-          list(
-            tr("plot_boxplot"),
-            tr("plot_bars"),
-            tr("plot_violin"),
-            tr("plot_curves"),
-            tr("plot_stacked"),
-            tr("plot_correlation"),
-            tr("plot_heatmap"),
-            tr("plot_corr_matrix")
-          )
-        ),
-        selected = "Boxplot"
-      )
-    }
-    
-    # 2.b) selector de parÃƒÂ¡metro (lo deje vacÃƒÂ­o si no hay)
+    # 2.a) selector de parÃƒÂ¡metro (lo deje vacÃƒÂ­o si no hay)
       selected_param_default <- if (length(params)) params[1] else character(0)
       update_selectize_adaptive(
         "param",
@@ -3992,38 +3961,9 @@ server <- function(input, output, session) {
       plot_cfg_box(cfg)
       summary_input_mode(FALSE)
       is_group_data(FALSE)
-      refresh_static_choices()
+      refresh_static_choices(force_default_type = TRUE)
 
       params <- plot_cfg_box()$Parameter
-      if (length(params) == 0 || identical(params, "Parametro_dummy")) {
-        updateRadioButtons(
-          session,
-          "tipo",
-          choices = named_choices(c("Curvas"), list(tr("plot_curves"))),
-          selected = "Curvas"
-        )
-      } else {
-        updateRadioButtons(
-          session,
-          "tipo",
-          choices = named_choices(
-            c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion",
-              "Heatmap", "MatrizCorrelacion"),
-            list(
-              tr("plot_boxplot"),
-              tr("plot_bars"),
-              tr("plot_violin"),
-              tr("plot_curves"),
-              tr("plot_stacked"),
-              tr("plot_correlation"),
-              tr("plot_heatmap"),
-              tr("plot_corr_matrix")
-            )
-          ),
-          selected = "Boxplot"
-        )
-      }
-
       selected_param_default <- if (length(params)) params[1] else character(0)
       update_selectize_adaptive(
         "param",
@@ -4421,7 +4361,15 @@ server <- function(input, output, session) {
       update_selectize_adaptive(
         "stackParams",
         choices = params,
-        selected = selected
+        selected = selected,
+        server = FALSE,
+        options = list(
+          plugins = list("remove_button"),
+          openOnFocus = TRUE,
+          closeAfterSelect = FALSE,
+          maxOptions = min(1000L, length(params)),
+          placeholder = tr_text("select_params_prompt", input$app_lang %||% i18n_lang)
+        )
       )
     } else {
       updateCheckboxGroupInput(
@@ -4465,6 +4413,7 @@ server <- function(input, output, session) {
     ),
     {
       req(plot_settings())
+      begin_plot_input_sync()
       params <- unique(as.character(plot_settings()$Parameter %||% character(0)))
       params <- params[!is.na(params) & nzchar(params)]
       high_dim <- is_large_param_set(params)
@@ -4757,11 +4706,14 @@ server <- function(input, output, session) {
       selectizeInput(
         "stackParams",
         tr("stack_params"),
-        choices = NULL,
-        selected = NULL,
+        choices = params,
+        selected = default_stack_params(params),
         multiple = TRUE,
         options = list(
           plugins = list("remove_button"),
+          openOnFocus = TRUE,
+          closeAfterSelect = FALSE,
+          maxOptions = min(1000L, length(params)),
           placeholder = tr_text("select_params_prompt", input$app_lang %||% i18n_lang)
         )
       )
@@ -8848,7 +8800,7 @@ server <- function(input, output, session) {
       dplyr::group_by(Group) %>%
       dplyr::summarise(
         TechnicalReplicates = {
-          group_tbl <- dplyr::cur_data_all()
+          group_tbl <- dplyr::pick(dplyr::everything())
           positive_tbl <- group_tbl[group_tbl$TechnicalReplicates > 0, , drop = FALSE]
           if (!nrow(positive_tbl)) {
             ""
@@ -10755,6 +10707,31 @@ server <- function(input, output, session) {
       selfcontained = FALSE,
       libdir = tmp_lib
     )
+
+    if (identical(tolower(tools::file_ext(file)), "pdf")) {
+      width_in <- max(as.numeric(width %||% 1000) / 96, 1)
+      height_in <- max(as.numeric(height %||% 700) / 96, 1)
+      page_css <- sprintf(
+        paste0(
+          "<style>",
+          "@page { size: %.4fin %.4fin; margin: 0; }",
+          "html, body { margin: 0; padding: 0; width: %dpx; height: %dpx; overflow: visible; background: %s; }",
+          ".html-widget, .plotly, .js-plotly-plot { width: %dpx !important; height: %dpx !important; }",
+          "</style>"
+        ),
+        width_in, height_in,
+        as.integer(width), as.integer(height), bg,
+        as.integer(width), as.integer(height)
+      )
+      html_lines <- readLines(tmp_html, warn = FALSE, encoding = "UTF-8")
+      head_close <- grep("</head>", html_lines, fixed = TRUE)[1]
+      if (is.na(head_close)) {
+        html_lines <- c(page_css, html_lines)
+      } else {
+        html_lines <- append(html_lines, page_css, after = head_close - 1L)
+      }
+      writeLines(html_lines, tmp_html, useBytes = TRUE)
+    }
 
     attempts <- list(
       list(delay = delay, zoom = zoom),
@@ -12738,6 +12715,7 @@ server <- function(input, output, session) {
     if (isTRUE(isolate(replicate_bulk_updating()))) req(FALSE, cancelOutput = TRUE)
     if (isTRUE(isolate(filter_selection_sync_inflight()))) req(FALSE, cancelOutput = TRUE)
     if (isTRUE(isolate(axis_sync_inflight()))) req(FALSE, cancelOutput = TRUE)
+    if (isTRUE(isolate(plot_input_sync_inflight()))) req(FALSE, cancelOutput = TRUE)
     if (isTRUE(isolate(dataset_loading()))) req(FALSE, cancelOutput = TRUE)
     if (isTRUE(isolate(is_session_closing()))) req(FALSE, cancelOutput = TRUE)
 
@@ -14456,7 +14434,7 @@ server <- function(input, output, session) {
         height = dims$height_in,
         units = "in",
         limitsize = FALSE,
-        device = cairo_pdf,
+        device = grDevices::cairo_pdf,
         bg = "white"
       )
     },

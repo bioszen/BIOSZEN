@@ -99,6 +99,44 @@ test_that("compute_growth_results_batch supports fast cancellation", {
   expect_lt(elapsed, 20)
 })
 
+test_that("growth progress display follows completed wells instead of fallback stage counts", {
+  first <- .bioszen_growth_progress_view(
+    stage = "robust",
+    done = 4,
+    total = 96,
+    well = "A4",
+    last_done = 0,
+    last_progress = 0
+  )
+  expect_equal(first$done, 4L)
+  expect_match(first$detail, "A4 \\[4/96\\]")
+  expect_gt(first$progress, 0)
+
+  fallback <- .bioszen_growth_progress_view(
+    stage = "permissive",
+    done = 1,
+    total = 96,
+    well = "A4",
+    last_done = first$done,
+    last_progress = first$progress
+  )
+  expect_equal(fallback$done, 4L)
+  expect_equal(fallback$progress, first$progress)
+  expect_match(fallback$detail, "A4 \\[4/96\\]")
+
+  complete <- .bioszen_growth_progress_view(
+    stage = "permissive_done",
+    done = 1,
+    total = 96,
+    well = NA_character_,
+    last_done = fallback$done,
+    last_progress = fallback$progress
+  )
+  expect_equal(complete$done, 96L)
+  expect_equal(complete$progress, 1)
+  expect_match(complete$detail, "\\[96/96\\]")
+})
+
 test_that("growth uploads are copied before processing", {
   skip_if_not_installed("openxlsx")
   skip_if_not_installed("readxl")
@@ -151,6 +189,11 @@ test_that("checkpointed growth results match the original strong-first calculati
   }))
 
   full <- compute_growth_results_batch(tidy_df)
+  expect_identical(tail(names(full), 1), "OD0")
+  expected_od0 <- vapply(wells, function(w) {
+    tidy_df$Measurements[tidy_df$Well == w][[1]]
+  }, numeric(1), USE.NAMES = FALSE)
+  expect_equal(unname(full$OD0), expected_od0, tolerance = sqrt(.Machine$double.eps))
   checkpoint_dir <- tempfile("growth_checkpoint_resume_")
   dir.create(checkpoint_dir, recursive = TRUE)
   on.exit(unlink(checkpoint_dir, recursive = TRUE, force = TRUE), add = TRUE)
@@ -174,11 +217,134 @@ test_that("checkpointed growth results match the original strong-first calculati
     x
   }
   expect_equal(normalize_growth(resumed), normalize_growth(full), tolerance = 1e-12)
+  expect_identical(tail(names(resumed), 1), "OD0")
   expect_true(file.exists(checkpoint$rds_file))
   expect_true(file.exists(checkpoint$partial_file))
   saved <- readRDS(checkpoint$rds_file)
   expect_true(isTRUE(saved$completed))
   expect_equal(sort(as.character(saved$results$Well)), sort(wells))
+})
+
+test_that("cancelled checkpointed growth resumes without changing final parameters", {
+  skip_if_not_installed("dplyr")
+  skip_if_not_installed("gcplyr")
+  skip_if_not_installed("openxlsx")
+  skip_if_not_installed("digest")
+
+  n_wells <- 5
+  n_points <- 32
+  wells <- paste0("W", seq_len(n_wells))
+  time <- seq(0, n_points - 1)
+  tidy_df <- dplyr::bind_rows(lapply(seq_along(wells), function(i) {
+    data.frame(
+      Time = time,
+      Well = wells[[i]],
+      Measurements = exp((0.052 + i * 0.011) * time) * (1 + 0.01 * cos(time + i))
+    )
+  }))
+
+  full <- compute_growth_results_batch(tidy_df)
+  checkpoint_dir <- tempfile("growth_cancel_resume_")
+  dir.create(checkpoint_dir, recursive = TRUE)
+  on.exit(unlink(checkpoint_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  checkpoint <- .bioszen_growth_checkpoint(
+    checkpoint_dir,
+    stem = "cancel_resume_plate",
+    source_name = "cancel_resume_plate.xlsx",
+    source_hash = "hash-for-cancel-resume-test",
+    max_time = max(time),
+    time_interval = 1,
+    format = "raw"
+  )
+
+  should_abort_after_first_checkpoint <- function() {
+    if (!file.exists(checkpoint$rds_file)) return(FALSE)
+    saved <- tryCatch(readRDS(checkpoint$rds_file), error = function(e) NULL)
+    is.list(saved) && is.data.frame(saved$results) && nrow(saved$results) >= 1L
+  }
+  expect_error(
+    compute_growth_results_batch(
+      tidy_df,
+      should_abort = should_abort_after_first_checkpoint,
+      checkpoint = checkpoint
+    ),
+    class = "bioszen_growth_cancelled"
+  )
+  expect_true(file.exists(checkpoint$rds_file))
+  expect_true(file.exists(checkpoint$partial_file))
+  partial <- readRDS(checkpoint$rds_file)
+  expect_gt(nrow(partial$results), 0)
+  expect_lt(nrow(partial$results), n_wells)
+
+  stages <- character()
+  resumed <- compute_growth_results_batch(
+    tidy_df,
+    checkpoint = checkpoint,
+    progress_callback = function(stage, done, total, well) {
+      stages <<- c(stages, stage)
+    }
+  )
+
+  normalize_growth <- function(x) {
+    x <- as.data.frame(x)
+    x$Well <- as.character(x$Well)
+    x
+  }
+  expect_true("checkpoint_loaded" %in% stages)
+  expect_equal(normalize_growth(resumed), normalize_growth(full), tolerance = 1e-12)
+  expect_identical(tail(names(resumed), 1), "OD0")
+  completed <- readRDS(checkpoint$rds_file)
+  expect_true(isTRUE(completed$completed))
+  expect_equal(sort(as.character(completed$results$Well)), sort(wells))
+})
+
+test_that("checkpoint restore tolerates pre-OD0 partial results", {
+  skip_if_not_installed("dplyr")
+  skip_if_not_installed("gcplyr")
+  skip_if_not_installed("digest")
+
+  wells <- c("W1", "W2")
+  time <- seq(0, 24)
+  tidy_df <- dplyr::bind_rows(lapply(seq_along(wells), function(i) {
+    data.frame(
+      Time = time,
+      Well = wells[[i]],
+      Measurements = (0.2 * i) + exp((0.055 + i * 0.01) * time)
+    )
+  }))
+  full <- compute_growth_results_batch(tidy_df)
+  checkpoint_dir <- tempfile("growth_old_checkpoint_")
+  dir.create(checkpoint_dir, recursive = TRUE)
+  on.exit(unlink(checkpoint_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  checkpoint <- .bioszen_growth_checkpoint(
+    checkpoint_dir,
+    stem = "old_checkpoint_plate",
+    source_name = "old_checkpoint_plate.xlsx",
+    source_hash = "hash-for-old-checkpoint-test",
+    max_time = max(time),
+    time_interval = 1,
+    format = "raw"
+  )
+  old_results <- full[1, setdiff(names(full), "OD0"), drop = FALSE]
+  saveRDS(
+    list(
+      key = checkpoint$key,
+      metadata = checkpoint$metadata,
+      completed = FALSE,
+      updated_at = as.character(Sys.time()),
+      results = old_results
+    ),
+    checkpoint$rds_file
+  )
+
+  resumed <- compute_growth_results_batch(tidy_df, checkpoint = checkpoint)
+  normalize_growth <- function(x) {
+    x <- as.data.frame(x)
+    x$Well <- as.character(x$Well)
+    x
+  }
+  expect_equal(normalize_growth(resumed), normalize_growth(full), tolerance = 1e-12)
+  expect_identical(tail(names(resumed), 1), "OD0")
 })
 
 test_that("growth backgrounding is not wired as cancellation", {
@@ -335,7 +501,145 @@ test_that("growth output directory receives final files and cleans completed che
       x
     }
     expect_equal(normalize_growth(res), normalize_growth(full_expected), tolerance = 1e-12)
+    expect_identical(tail(names(res), 1), "OD0")
     expect_false(dir.exists(file.path(output_dir, "BIOSZEN_growth_checkpoints")))
+  })
+})
+
+test_that("multiple growth files resume matching output checkpoints and finish cleanly", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("readxl")
+  skip_if_not_installed("writexl")
+  skip_if_not_installed("gcplyr")
+  skip_if_not_installed("openxlsx")
+  skip_if_not_installed("dplyr")
+  skip_if_not_installed("digest")
+
+  old_force <- getOption("bioszen_growth_force_sync", NA)
+  on.exit(options(bioszen_growth_force_sync = old_force), add = TRUE)
+  options(bioszen_growth_force_sync = TRUE)
+
+  tmp1 <- tempfile("growth_multi_output_one_", fileext = ".xlsx")
+  tmp2 <- tempfile("growth_multi_output_two_", fileext = ".xlsx")
+  output_dir <- tempfile("growth_multi_output_dir_")
+  dir.create(output_dir, recursive = TRUE)
+  on.exit(unlink(c(tmp1, tmp2, output_dir), recursive = TRUE, force = TRUE), add = TRUE)
+  make_growth_input_file(tmp1, n_points = 18, n_wells = 2)
+  make_growth_input_file(tmp2, n_points = 20, n_wells = 3)
+
+  stems <- .bioszen_unique_growth_stems(c(basename(tmp1), basename(tmp2)))
+  prepared1 <- .bioszen_build_curves_sheet(tmp1, max_time = 17, time_interval = 1)
+  prepared2 <- .bioszen_build_curves_sheet(tmp2, max_time = 17, time_interval = 1)
+  expected1 <- compute_growth_results_batch(gcplyr::trans_wide_to_tidy(prepared1$new_data, id_cols = "Time"))
+  expected2 <- compute_growth_results_batch(gcplyr::trans_wide_to_tidy(prepared2$new_data, id_cols = "Time"))
+
+  checkpoint2 <- .bioszen_growth_checkpoint(
+    output_dir,
+    stem = stems[[2]],
+    source_name = basename(tmp2),
+    source_hash = .bioszen_growth_file_hash(tmp2),
+    max_time = 17,
+    time_interval = 1,
+    format = prepared2$format
+  )
+  .bioszen_write_growth_checkpoint(checkpoint2, expected2[1, , drop = FALSE], completed = FALSE)
+  expect_true(file.exists(checkpoint2$rds_file))
+  expect_true(file.exists(checkpoint2$partial_file))
+
+  shiny::testServer(setup_growth_module, {
+    session$setInputs(
+      maxTime = 17,
+      timeInterval = 1,
+      growthOutputDir = output_dir,
+      growthFiles = data.frame(
+        datapath = c(tmp1, tmp2),
+        name = c(basename(tmp1), basename(tmp2)),
+        stringsAsFactors = FALSE
+      ),
+      runGrowth = 1
+    )
+    session$flushReact()
+
+    expect_identical(status_text(), "Completed.")
+    final_params <- list.files(output_dir, pattern = "^(Parametros|Parameters)_.*\\.xlsx$", full.names = TRUE)
+    final_curves <- list.files(output_dir, pattern = "^(Curvas|Curves)_.*\\.xlsx$", full.names = TRUE)
+    expect_length(final_params, 2)
+    expect_length(final_curves, 2)
+    params1 <- final_params[grepl(stems[[1]], basename(final_params), fixed = TRUE)]
+    params2 <- final_params[grepl(stems[[2]], basename(final_params), fixed = TRUE)]
+    expect_length(params1, 1)
+    expect_length(params2, 1)
+
+    normalize_growth <- function(x) {
+      x <- as.data.frame(x)
+      x$Well <- as.character(x$Well)
+      x
+    }
+    expect_equal(normalize_growth(readxl::read_excel(params1[[1]])), normalize_growth(expected1), tolerance = 1e-12)
+    expect_equal(normalize_growth(readxl::read_excel(params2[[1]])), normalize_growth(expected2), tolerance = 1e-12)
+    expect_identical(tail(names(readxl::read_excel(params1[[1]])), 1), "OD0")
+    expect_identical(tail(names(readxl::read_excel(params2[[1]])), 1), "OD0")
+    expect_false(dir.exists(file.path(output_dir, "BIOSZEN_growth_checkpoints")))
+  })
+})
+
+test_that("growth output directory is optional and missing paths are user-correctable", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("readxl")
+  skip_if_not_installed("writexl")
+  skip_if_not_installed("gcplyr")
+  skip_if_not_installed("openxlsx")
+  skip_if_not_installed("dplyr")
+
+  expect_null(.bioszen_resolve_growth_output_dir(""))
+  expect_null(.bioszen_resolve_growth_output_dir("  "))
+  existing_dir <- tempfile("growth_existing_output_")
+  dir.create(existing_dir, recursive = TRUE)
+  missing_dir <- tempfile("growth_missing_output_")
+  on.exit(unlink(c(existing_dir, missing_dir), recursive = TRUE, force = TRUE), add = TRUE)
+  expect_equal(.bioszen_resolve_growth_output_dir(existing_dir), normalizePath(existing_dir, winslash = "/", mustWork = TRUE))
+  expect_error(
+    .bioszen_resolve_growth_output_dir(missing_dir),
+    "does not exist",
+    fixed = TRUE
+  )
+  expect_false(dir.exists(missing_dir))
+
+  old_force <- getOption("bioszen_growth_force_sync", NA)
+  on.exit(options(bioszen_growth_force_sync = old_force), add = TRUE)
+  options(bioszen_growth_force_sync = TRUE)
+
+  tmp_input <- tempfile("growth_missing_dir_", fileext = ".xlsx")
+  on.exit(unlink(tmp_input, recursive = TRUE, force = TRUE), add = TRUE)
+  make_growth_input_file(tmp_input, n_points = 18, n_wells = 2)
+
+  shiny::testServer(setup_growth_module, {
+    session$setInputs(
+      maxTime = 17,
+      timeInterval = 1,
+      growthOutputDir = missing_dir,
+      growthFiles = data.frame(datapath = tmp_input, name = basename(tmp_input), stringsAsFactors = FALSE),
+      runGrowth = 1
+    )
+    session$flushReact()
+
+    expect_true(grepl("^Error:", status_text()))
+    expect_match(status_text(), "does not exist", fixed = TRUE)
+    expect_false(isTRUE(growth_running()))
+    expect_false(dir.exists(missing_dir))
+
+    session$setInputs(
+      growthOutputDir = "",
+      runGrowth = 2
+    )
+    session$flushReact()
+
+    growth_dir <- file.path(tempdir(), "growth_results")
+    params <- list.files(growth_dir, pattern = "^(Parametros|Parameters)_.*\\.xlsx$", full.names = TRUE)
+    expect_length(params, 1)
+    expect_identical(status_text(), "Completed.")
+    res <- readxl::read_excel(params[[1]])
+    expect_identical(tail(names(res), 1), "OD0")
   })
 })
 
@@ -569,6 +873,23 @@ test_that("failed growth upload preparation clears stale results first", {
     params <- list.files(stale_dir, pattern = "^(Parametros|Parameters)_.*\\.xlsx$", full.names = TRUE)
     expect_length(params, 0)
     expect_true(grepl("^Error:", status_text()))
+  })
+})
+
+test_that("new growth sessions start with an empty internal results table", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("openxlsx")
+
+  stale_dir <- file.path(tempdir(), "growth_results")
+  dir.create(stale_dir, recursive = TRUE, showWarnings = FALSE)
+  stale_file <- file.path(stale_dir, "Parameters_previous_session.xlsx")
+  openxlsx::write.xlsx(data.frame(Well = "A1", uMax = 1), stale_file, rowNames = FALSE)
+  expect_true(file.exists(stale_file))
+
+  shiny::testServer(setup_growth_module, {
+    params <- list.files(stale_dir, pattern = "^(Parametros|Parameters)_.*\\.xlsx$", full.names = TRUE)
+    expect_length(params, 0)
+    expect_identical(status_text(), "")
   })
 })
 

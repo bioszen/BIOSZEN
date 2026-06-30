@@ -451,6 +451,7 @@ Parámetros extraídos:
 - `ODmax`: señal/OD máxima medida.
 - `max_time`: tiempo en que se alcanza `ODmax`.
 - `AUC`: área bajo la curva.
+- `OD0`: señal/OD inicial en el primer punto medido de cada curva.
 
 Flujo típico:
 
@@ -463,6 +464,8 @@ Flujo típico:
 Autoguardado y manejo de interrupciones:
 
 - La **Carpeta de autoguardado** opcional se puede escribir manualmente o seleccionar con **Examinar...**.
+- Si no quieres autoguardado, deja esta carpeta en blanco y descarga el ZIP con **Descargar resultados** al final.
+- Si escribes una carpeta, debe existir previamente. Si la ruta no existe, BIOSZEN muestra un mensaje para corregirla y no inicia esa corrida hasta que la ruta se corrija o se borre.
 - Cuando se define una carpeta de autoguardado, los archivos finales `Curvas_*.xlsx` / `Parametros_*.xlsx` se copian allí automáticamente, y la opción normal **Descargar resultados** en ZIP sigue disponible.
 - Durante procesos largos, BIOSZEN guarda puntos de control por well en una carpeta temporal `BIOSZEN_growth_checkpoints` dentro de la carpeta de autoguardado seleccionada. Estos puntos de control permiten reanudar una corrida interrumpida desde los wells ya completados, en lugar de empezar desde cero.
 - Los puntos de control se eliminan automáticamente después de completar correctamente el proceso o después de reanudarlo con éxito. Solo se conservan cuando el procesamiento se interrumpe antes de terminar.

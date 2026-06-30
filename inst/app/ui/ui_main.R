@@ -168,6 +168,13 @@ ui <- fluidPage(
         margin-bottom: 10px;
       }
 
+      .bioszen-axis-input-row .form-group > label {
+        min-height: 2.45em;
+        display: flex;
+        align-items: flex-end;
+        line-height: 1.22;
+      }
+
       .bioszen-sidebar-content .btn {
         width: 100%;
         word-break: normal;
@@ -1845,9 +1852,12 @@ ui <- fluidPage(
                   conditionalPanel(
                     condition = "['Boxplot','Barras','Violin','Apiladas'].indexOf(input.tipo) >= 0",
                     h4(tr("y_axis_settings")),
-                    fluidRow(
-                      column(6, numericInput('ymax',   tr("y_max"),  value = 0, min = 0)),
-                      column(6, numericInput('ybreak', tr("y_interval"),  value = 1, min = 0.001))
+                    tags$div(
+                      class = "bioszen-axis-input-row",
+                      fluidRow(
+                        column(6, numericInput('ymax',   tr("y_max"),  value = 0, min = 0)),
+                        column(6, numericInput('ybreak', tr("y_interval"),  value = 1, min = 0.001))
+                      )
                     ),
                     tags$p(class = "qc-help", tr("interval_hint_general"))
                   ),

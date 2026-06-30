@@ -510,6 +510,44 @@ expect_nonempty_download <- function(path, label) {
   )
 }
 
+expect_grouped_download_accepts_filtered_tabs <- function(path, require_filtered = FALSE) {
+  skip_if_not_installed("readxl")
+
+  tabs <- readxl::excel_sheets(path)
+  expect_true(
+    length(tabs) > 0,
+    info = "Grouped data workbook should contain at least one sheet."
+  )
+
+  filtered <- grep("_filt$", tabs, value = TRUE)
+  if (isTRUE(require_filtered)) {
+    expect_gt(
+      length(filtered),
+      0,
+      info = paste("Expected at least one _filt sheet. Available sheets:", paste(tabs, collapse = ", "))
+    )
+  }
+
+  for (sheet in filtered) {
+    base_sheet <- sub("_filt$", "", sheet)
+    expect_true(
+      base_sheet %in% tabs,
+      info = sprintf("Filtered sheet %s should have matching base sheet %s.", sheet, base_sheet)
+    )
+  }
+
+  non_filtered <- tabs[!grepl("_filt$", tabs)]
+  check_tabs <- unique(c(utils::head(non_filtered, 3L), filtered))
+  check_tabs <- check_tabs[!is.na(check_tabs) & nzchar(check_tabs)]
+  for (sheet in check_tabs) {
+    expect_no_error(
+      readxl::read_excel(path, sheet = sheet, col_names = FALSE, n_max = 20)
+    )
+  }
+
+  invisible(tabs)
+}
+
 test_that("browser upload flow keeps searchable selectors and no critical frontend errors", {
   skip_if_shiny_e2e_unavailable()
 
@@ -796,6 +834,9 @@ test_that("core user processes settle without reload loops", {
     output_id <- download_specs[[label]]
     out <- app$get_download(output = output_id)
     expect_nonempty_download(out, label)
+    if (identical(label, "data")) {
+      expect_grouped_download_accepts_filtered_tabs(out)
+    }
     expect_app_idle_without_loop(app, sprintf("%s download", label), idle_timeout = 45)
   }
 

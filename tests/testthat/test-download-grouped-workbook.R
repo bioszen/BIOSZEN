@@ -60,6 +60,49 @@ read_strain_detail_block <- function(path, sheet, strain) {
   block
 }
 
+expect_grouped_workbook_sheets <- function(
+    path,
+    required = character(0),
+    expected_filtered = character(0),
+    absent_filtered = character(0)) {
+  sheets <- openxlsx::getSheetNames(path)
+  sheet_list <- paste(sheets, collapse = ", ")
+
+  expect_true(
+    all(required %in% sheets),
+    info = paste("Missing required workbook sheets. Available sheets:", sheet_list)
+  )
+  expect_true(
+    all(expected_filtered %in% sheets),
+    info = paste("Missing expected filtered workbook sheets. Available sheets:", sheet_list)
+  )
+  expect_false(
+    any(absent_filtered %in% sheets),
+    info = paste("Unexpected filtered workbook sheets. Available sheets:", sheet_list)
+  )
+
+  readable <- unique(c(required, expected_filtered))
+  for (sheet in readable[readable %in% sheets]) {
+    expect_no_error(
+      readxl::read_excel(path, sheet = sheet, col_names = FALSE, n_max = 20)
+    )
+  }
+
+  filtered <- grep("_filt$", sheets, value = TRUE)
+  for (sheet in filtered) {
+    base_sheet <- sub("_filt$", "", sheet)
+    expect_true(
+      base_sheet %in% sheets,
+      info = sprintf("Filtered sheet %s should have matching base sheet %s.", sheet, base_sheet)
+    )
+    expect_no_error(
+      readxl::read_excel(path, sheet = sheet, col_names = FALSE, n_max = 20)
+    )
+  }
+
+  invisible(sheets)
+}
+
 build_download_fixture <- function(drop_replicate = NULL, na_param_for_rep = NULL) {
   datos <- expand.grid(
     Strain = c("S1", "S2"),
@@ -134,12 +177,10 @@ test_that("grouped-parameter workbook download builds without errors", {
   expect_true(file.exists(out_path))
   expect_gt(file.info(out_path)$size, 0)
 
-  sheets <- openxlsx::getSheetNames(out_path)
-  expect_true(all(c("uMax", "ODmax", "Curvas por grupo") %in% sheets))
-
-  expect_no_error(readxl::read_excel(out_path, sheet = "uMax", col_names = FALSE))
-  expect_no_error(readxl::read_excel(out_path, sheet = "ODmax", col_names = FALSE))
-  expect_no_error(readxl::read_excel(out_path, sheet = "Curvas por grupo", col_names = FALSE))
+  expect_grouped_workbook_sheets(
+    out_path,
+    required = c("uMax", "ODmax", "Curvas por grupo")
+  )
 
   detail <- read_strain_detail_block(out_path, "uMax", "S1")
   expect_true(all(c("RepBiol", "RepTec", "M1", "M2") %in% names(detail)))
@@ -202,9 +243,12 @@ test_that("download workbook adds filtered tabs only for affected parameters", {
   expect_true(file.exists(out_path))
   expect_gt(file.info(out_path)$size, 0)
 
-  sheets <- openxlsx::getSheetNames(out_path)
-  expect_true(all(c("uMax_filt", "Curvas por grupo_filt") %in% sheets))
-  expect_false("ODmax_filt" %in% sheets)
+  expect_grouped_workbook_sheets(
+    out_path,
+    required = c("uMax", "ODmax", "Curvas por grupo"),
+    expected_filtered = c("uMax_filt", "Curvas por grupo_filt"),
+    absent_filtered = "ODmax_filt"
+  )
 
   umax_raw <- readxl::read_excel(out_path, sheet = "uMax_filt", col_names = FALSE)
   curves_raw <- readxl::read_excel(out_path, sheet = "Curvas por grupo_filt", col_names = FALSE)
@@ -474,8 +518,11 @@ test_that("technical replicate filtering produces filtered grouped workbook shee
     openxlsx::saveWorkbook(wb, out_path, overwrite = TRUE)
   })
 
-  sheets <- openxlsx::getSheetNames(out_path)
-  expect_true(all(c("uMax_filt", "ODmax_filt", "Curvas por grupo_filt") %in% sheets))
+  expect_grouped_workbook_sheets(
+    out_path,
+    required = c("uMax", "ODmax", "Curvas por grupo"),
+    expected_filtered = c("uMax_filt", "ODmax_filt", "Curvas por grupo_filt")
+  )
 
   raw_detail <- read_strain_detail_block(out_path, "uMax", "S1")
   filt_detail <- read_strain_detail_block(out_path, "uMax_filt", "S1")
@@ -569,8 +616,11 @@ test_that("technical outlier deselection creates filtered parameter workbook tab
     openxlsx::saveWorkbook(wb, out_path, overwrite = TRUE)
   })
 
-  sheets <- openxlsx::getSheetNames(out_path)
-  expect_true(all(c("uMax", "uMax_filt") %in% sheets))
+  expect_grouped_workbook_sheets(
+    out_path,
+    required = "uMax",
+    expected_filtered = "uMax_filt"
+  )
 
   raw_detail <- read_strain_detail_block(out_path, "uMax", "LysoR-")
   filt_detail <- read_strain_detail_block(out_path, "uMax_filt", "LysoR-")
@@ -623,8 +673,11 @@ test_that("technical replicate filt sheets use the stored map for each parameter
     openxlsx::saveWorkbook(wb, out_path, overwrite = TRUE)
   })
 
-  sheets <- openxlsx::getSheetNames(out_path)
-  expect_true(all(c("uMax_filt", "ODmax_filt") %in% sheets))
+  expect_grouped_workbook_sheets(
+    out_path,
+    required = fixture$params,
+    expected_filtered = c("uMax_filt", "ODmax_filt")
+  )
 
   umax_s1 <- read_strain_detail_block(out_path, "uMax_filt", "S1")
   umax_s2 <- read_strain_detail_block(out_path, "uMax_filt", "S2")
@@ -676,5 +729,5 @@ test_that("download workbook ignores blank uploaded headers", {
   })
   expect_true(file.exists(out_path))
   expect_gt(file.info(out_path)$size, 0)
-  expect_true(all(fixture$params %in% openxlsx::getSheetNames(out_path)))
+  expect_grouped_workbook_sheets(out_path, required = fixture$params)
 })

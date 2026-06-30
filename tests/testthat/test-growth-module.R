@@ -112,7 +112,7 @@ test_that("growth module extracts growth parameters per well with expected field
     expect_length(params, 1)
 
     res <- readxl::read_excel(params[[1]])
-    expected_cols <- c("Well", "µMax", "ODmax", "AUC", "lag_time", "max_percap_time", "doub_time", "max_time")
+    expected_cols <- c("Well", "µMax", "ODmax", "AUC", "lag_time", "max_percap_time", "doub_time", "max_time", "OD0")
     expect_equal(names(res), expected_cols)
 
     expect_equal(nrow(res), 3)
@@ -122,6 +122,8 @@ test_that("growth module extracts growth parameters per well with expected field
     expect_true(all(res$ODmax > 0))
     expect_true(all(is.finite(res$AUC)))
     expect_true(all(res$AUC > 0))
+    expect_true(all(is.finite(res$OD0)))
+    expect_equal(unname(res$OD0), unname(c(raw_data$W1[[1]], raw_data$W2[[1]], raw_data$W3[[1]])), tolerance = sqrt(.Machine$double.eps))
 
     expect_true(all(is.finite(res$`µMax`)))
     expect_true(all(res$`µMax` > 0))
@@ -156,7 +158,7 @@ test_that("batch growth path preserves legacy per-well results on synthetic curv
     dplyr::bind_rows(all_results) %>%
       dplyr::mutate(Well = factor(Well, levels = wells)) %>%
       dplyr::arrange(Well) %>%
-      dplyr::select(Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time)
+      dplyr::select(Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time, OD0)
   }
 
   n_points <- 30

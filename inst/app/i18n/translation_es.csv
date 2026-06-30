@@ -142,7 +142,7 @@ growth_selection_cleared,Selección de archivos de crecimiento limpiada.
 growth_need_selected_files,Selecciona al menos un archivo de crecimiento para procesar.
 growth_output_dir,Carpeta de autoguardado (opcional)
 growth_output_dir_placeholder,C:/Users/nombre/Documents/BIOSZEN_growth_results
-growth_output_dir_help,"Si se define, los archivos finales se guardan ahí. Los puntos de control por pozo solo se conservan después de una interrupción y se borran al completar o reanudar con éxito."
+growth_output_dir_help,"Opcional. Si no quieres autoguardado, déjala en blanco y descarga los resultados al final. Si se define, selecciona una carpeta existente; BIOSZEN pedirá corregir la ruta si no existe. Los archivos finales también se guardan ahí. Los puntos de control por pozo solo se conservan después de una interrupción y se borran al completar o reanudar con éxito."
 growth_browse_dir,Examinar...
 growth_browse_dir_caption,Seleccionar carpeta de salida de crecimiento
 growth_max_time,Tiempo máximo

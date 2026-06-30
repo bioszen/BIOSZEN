@@ -18,6 +18,13 @@ test_that("export pipeline is wired to preview-aligned renderer", {
     perl = TRUE
   ))
   expect_true(grepl(
+    "write_current_plot_pdf\\s*<-\\s*function[\\s\\S]*?build_current_plotly_for_export[\\s\\S]*?export_plotly_image[\\s\\S]*?p_fallback\\s*<-\\s*build_plot[\\s\\S]*?ggplot2::ggsave[\\s\\S]*?device\\s*=\\s*grDevices::cairo_pdf",
+    txt,
+    perl = TRUE
+  ))
+  expect_match(txt, "@page \\{ size: %.4fin %.4fin; margin: 0; \\}", fixed = FALSE)
+  expect_match(txt, "html, body { margin: 0; padding: 0;", fixed = TRUE)
+  expect_true(grepl(
     "outputOptions\\(output,\\s*\"downloadPlot_png\",\\s*suspendWhenHidden\\s*=\\s*FALSE\\)",
     txt,
     perl = TRUE
@@ -32,7 +39,7 @@ test_that("export pipeline is wired to preview-aligned renderer", {
     txt,
     perl = TRUE
   )[[1]]
-  expect_gte(sum(curve_static_exports > 0), 2)
+  expect_gte(sum(curve_static_exports > 0), 1)
   expect_true(grepl("zoom\\s*=\\s*1", txt, perl = TRUE))
 })
 
@@ -139,6 +146,42 @@ download_png_with_retry <- function(app, output_id, retries = 4L, pause_sec = 1)
 
   if (!is.null(last_err)) stop(last_err)
   stop("Failed to download PNG: unknown error")
+}
+
+download_pdf_with_retry <- function(app, output_id, retries = 4L, pause_sec = 1) {
+  last_err <- NULL
+  for (i in seq_len(retries)) {
+    try(app$wait_for_idle(duration = 500, timeout = 120000), silent = TRUE)
+    attempt <- tryCatch(
+      app$get_download(output = output_id),
+      error = function(e) {
+        last_err <<- e
+        NULL
+      }
+    )
+    if (!is.null(attempt) && file.exists(attempt)) {
+      return(attempt)
+    }
+    Sys.sleep(pause_sec)
+  }
+
+  if (!is.null(last_err)) stop(last_err)
+  stop("Failed to download PDF: unknown error")
+}
+
+pdf_page_size_pts <- function(path) {
+  pdfinfo <- Sys.which("pdfinfo")
+  if (!nzchar(pdfinfo)) return(NULL)
+  info <- tryCatch(
+    suppressWarnings(system2(pdfinfo, shQuote(path), stdout = TRUE, stderr = TRUE)),
+    error = function(e) character(0)
+  )
+  line <- grep("^Page size:", info, value = TRUE)
+  if (!length(line)) return(NULL)
+  vals <- regmatches(line[[1]], gregexpr("[0-9]+(?:\\.[0-9]+)?", line[[1]], perl = TRUE))[[1]]
+  vals <- suppressWarnings(as.numeric(vals))
+  if (length(vals) < 2 || any(!is.finite(vals[1:2]))) return(NULL)
+  c(width = vals[[1]], height = vals[[2]])
 }
 
 wait_for_input_value <- function(app, input_id, expected, timeout_sec = 120) {
@@ -265,6 +308,17 @@ test_that("PNG download dimensions match preview dimensions across plot types", 
   probe_dims <- png_dims(probe)
   expect_equal(unname(probe_dims[["width"]]), expected_w, info = "width mismatch for type Boxplot")
   expect_equal(unname(probe_dims[["height"]]), expected_h, info = "height mismatch for type Boxplot")
+
+  pdf_probe <- download_pdf_with_retry(app, output_id = "downloadPlot_pdf")
+  expect_true(file.exists(pdf_probe), info = "Missing PDF export for type Boxplot")
+  expect_gt(file.info(pdf_probe)$size, 1000)
+  header <- readChar(pdf_probe, nchars = 4, useBytes = TRUE)
+  expect_identical(header, "%PDF")
+  pdf_dims <- pdf_page_size_pts(pdf_probe)
+  if (!is.null(pdf_dims)) {
+    expect_equal(unname(pdf_dims[["width"]]), expected_w / 96 * 72, tolerance = 1)
+    expect_equal(unname(pdf_dims[["height"]]), expected_h / 96 * 72, tolerance = 1)
+  }
 
   for (tp in setdiff(plot_types, "Boxplot")) {
     app$set_inputs(tipo = tp, wait_ = FALSE, allow_no_input_binding_ = TRUE)

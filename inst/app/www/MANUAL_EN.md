@@ -450,6 +450,7 @@ Extracted parameters:
 - `ODmax`: maximum measured OD/signal.
 - `max_time`: time at `ODmax`.
 - `AUC`: area under the curve.
+- `OD0`: initial OD/signal at the first measured point of each curve.
 
 Typical flow:
 
@@ -462,6 +463,8 @@ Typical flow:
 Autosave and interruption handling:
 
 - The optional **Autosave output folder** can be typed manually or selected with **Browse...**.
+- If you do not want autosave, leave this folder blank and download the ZIP with **Download results** at the end.
+- If you type a folder, it must already exist. If the path does not exist, BIOSZEN shows a correction message and does not start that run until the path is fixed or cleared.
 - When an autosave folder is set, final `Curves_*.xlsx` / `Parameters_*.xlsx` files are copied there automatically while the regular **Download results** ZIP remains available.
 - During long runs, BIOSZEN writes per-well checkpoints under a temporary `BIOSZEN_growth_checkpoints` folder inside the selected autosave folder. These checkpoints allow an interrupted run to resume from completed wells instead of starting from zero.
 - Checkpoints are deleted automatically after a successful completion or successful resume. They are kept only when processing is interrupted before completion.

@@ -130,6 +130,27 @@ print(.libPaths())
 
 pkg <- "BIOSZEN"
 
+bioszen_startup_citation <- function() {
+  if (!isTRUE(getOption("BIOSZEN.show_startup_citation", TRUE))) {
+    return(invisible(FALSE))
+  }
+  if (isTRUE(getOption("BIOSZEN.startup_citation_shown", FALSE))) {
+    return(invisible(FALSE))
+  }
+
+  options(BIOSZEN.startup_citation_shown = TRUE)
+  packageStartupMessage(paste(
+    "##",
+    "## BIOSZEN",
+    "## See https://github.com/bioszen/BIOSZEN for additional documentation and source code.",
+    "## Please cite software as:",
+    "##   Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210",
+    "##",
+    sep = "\n"
+  ))
+  invisible(TRUE)
+}
+
 # -------- base64 decode (pure R) --------
 base64_decode <- function(x) {
   x <- gsub("\\s", "", x)
@@ -1053,6 +1074,7 @@ if (!loadable_with_local_library(pkg, local_lib)) {
 }
 
 cat("\nBIOSZEN version: ", as.character(packageVersion(pkg, lib.loc = local_lib)), "\n", sep = "")
+options(BIOSZEN.startup_citation_shown = FALSE)
 
 # -------- run app --------
 run_fun <- tryCatch(getExportedValue(pkg, "run_app"), error = function(e) NULL)

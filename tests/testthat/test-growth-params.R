@@ -47,6 +47,8 @@ test_that("calculate_growth_rates_robust returns stable order and metrics", {
     expect_equal(res$doub_time, log(2) / mu, tolerance = 1e-6)
     expect_true(all(res$ODmax > 0))
     expect_true(all(res$AUC > 0))
+    expect_identical(tail(names(res), 1), "OD0")
+    expect_equal(unname(res$OD0), c(1, 1), tolerance = sqrt(.Machine$double.eps))
   })
 })
 
@@ -67,6 +69,11 @@ test_that("combine_growth_results fills gaps with permissive estimates", {
     expect_equal(unname(b_mu), unname(perm$µMax[perm$Well == "B"]))
     expect_true(all(is.finite(merged$AUC[merged$Well == "B"])))
     expect_equal(
+      unname(merged$OD0),
+      unname(rob$OD0),
+      tolerance = sqrt(.Machine$double.eps)
+    )
+    expect_equal(
       unname(merged$doub_time[merged$Well == "A"]),
       unname(rob$doub_time[rob$Well == "A"])
     )
@@ -86,6 +93,8 @@ test_that("calculate_growth_rates_permissive returns stable order and metrics", 
     expect_equal(res$doub_time, log(2) / mu, tolerance = 1e-6)
     expect_true(all(res$ODmax > 0))
     expect_true(all(res$AUC > 0))
+    expect_identical(tail(names(res), 1), "OD0")
+    expect_equal(unname(res$OD0), c(1, 1), tolerance = sqrt(.Machine$double.eps))
   })
 })
 
@@ -101,6 +110,7 @@ test_that("calculate_growth_rates_robust tolerates flat growth curves", {
     expect_equal(as.character(res$Well), "Z")
     expect_equal(res$ODmax, 1)
     expect_true(is.na(res$AUC))
+    expect_equal(res$OD0, 1)
   })
 })
 

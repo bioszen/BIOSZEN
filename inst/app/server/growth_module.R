@@ -49,7 +49,65 @@
   make.unique(stems, sep = "_")
 }
 
-.bioszen_growth_result_columns <- c("Well", "µMax", "ODmax", "AUC", "lag_time", "max_percap_time", "doub_time", "max_time")
+.bioszen_growth_progress_view <- function(stage,
+                                          done,
+                                          total,
+                                          well = NA_character_,
+                                          last_done = 0L,
+                                          last_progress = 0) {
+  as_count <- function(x, default = 0L) {
+    if (is.null(x) || !length(x)) return(default)
+    out <- suppressWarnings(as.integer(x[[1]]))
+    if (!length(out) || is.na(out) || !is.finite(out)) default else max(0L, out)
+  }
+  as_fraction <- function(x, default = 0) {
+    if (is.null(x) || !length(x)) return(default)
+    out <- suppressWarnings(as.numeric(x[[1]]))
+    if (!length(out) || is.na(out) || !is.finite(out)) default else max(0, min(1, out))
+  }
+
+  stage <- if (is.null(stage) || !length(stage) || is.na(stage[[1]])) "" else as.character(stage[[1]])
+  total <- as_count(total)
+  done <- as_count(done)
+  last_done <- as_count(last_done)
+  last_progress <- as_fraction(last_progress)
+
+  final_stage <- stage %in% c("permissive_done", "permissive_skipped")
+  advances_wells <- stage %in% c("checkpoint_loaded", "robust")
+  visible_done <- last_done
+  if (advances_wells) {
+    visible_done <- max(last_done, done)
+  }
+  if (final_stage) {
+    visible_done <- total
+  }
+  visible_done <- max(0L, min(visible_done, total))
+
+  target <- last_progress
+  if (total > 0L) {
+    target <- if (final_stage) 1 else min(0.95, visible_done / total)
+  }
+  target <- max(last_progress, max(0, min(1, target)))
+
+  well_label <- if (!is.null(well) && length(well) && !is.na(well[[1]]) && nzchar(as.character(well[[1]]))) {
+    as.character(well[[1]])
+  } else {
+    ""
+  }
+  detail <- if (total > 0L) {
+    if (nzchar(well_label)) {
+      sprintf("%s [%d/%d]", well_label, visible_done, total)
+    } else {
+      sprintf("[%d/%d]", visible_done, total)
+    }
+  } else {
+    well_label
+  }
+
+  list(done = visible_done, progress = target, detail = detail)
+}
+
+.bioszen_growth_result_columns <- c("Well", "µMax", "ODmax", "AUC", "lag_time", "max_percap_time", "doub_time", "max_time", "OD0")
 
 .bioszen_growth_file_hash <- function(path) {
   if (!file.exists(path)) return(NA_character_)
@@ -66,10 +124,13 @@
     stop(sprintf("The growth output path exists but is not a directory: %s", path), call. = FALSE)
   }
   if (!dir.exists(path)) {
-    dir.create(path, recursive = TRUE, showWarnings = FALSE)
-  }
-  if (!dir.exists(path)) {
-    stop(sprintf("Could not create growth output directory: %s", path), call. = FALSE)
+    stop(
+      sprintf(
+        "The growth output folder does not exist. Choose an existing folder or leave it blank to download results at the end: %s",
+        path
+      ),
+      call. = FALSE
+    )
   }
   normalizePath(path, winslash = "/", mustWork = TRUE)
 }
@@ -161,6 +222,33 @@
   out
 }
 
+.bioszen_growth_od0_lookup <- function(tidy_df) {
+  if (is.null(tidy_df) || !is.data.frame(tidy_df) ||
+      !all(c("Well", "Time", "Measurements") %in% names(tidy_df))) {
+    return(stats::setNames(numeric(0), character(0)))
+  }
+  split_df <- split(tidy_df, as.character(tidy_df$Well), drop = TRUE)
+  vapply(split_df, function(d) {
+    measurements <- suppressWarnings(as.numeric(d$Measurements))
+    time <- suppressWarnings(as.numeric(d$Time))
+    ord <- order(time, seq_along(time), na.last = TRUE)
+    measurements <- measurements[ord]
+    measurements <- measurements[is.finite(measurements)]
+    if (!length(measurements)) NA_real_ else measurements[[1]]
+  }, numeric(1), USE.NAMES = TRUE)
+}
+
+.bioszen_fill_restored_od0 <- function(results, tidy_df) {
+  if (is.null(results) || !is.data.frame(results) || !nrow(results)) return(results)
+  if (!"OD0" %in% names(results)) results$OD0 <- NA_real_
+  lookup <- .bioszen_growth_od0_lookup(tidy_df)
+  if (!length(lookup)) return(results)
+  idx <- match(as.character(results$Well), names(lookup))
+  needs <- is.na(results$OD0) & !is.na(idx)
+  results$OD0[needs] <- unname(lookup[idx[needs]])
+  results
+}
+
 .bioszen_restore_growth_checkpoint <- function(checkpoint) {
   if (is.null(checkpoint) || !file.exists(checkpoint$rds_file)) {
     return(.bioszen_empty_growth_results())
@@ -171,6 +259,10 @@
   }
   results <- obj$results
   missing_cols <- setdiff(.bioszen_growth_result_columns, names(results))
+  if (length(missing_cols) && setequal(missing_cols, "OD0")) {
+    results$OD0 <- NA_real_
+    missing_cols <- character(0)
+  }
   if (length(missing_cols)) return(.bioszen_empty_growth_results())
   results <- results[, .bioszen_growth_result_columns, drop = FALSE]
   results$Well <- as.character(results$Well)
@@ -339,7 +431,7 @@
   combine_growth_results(robust, permissive) %>%
     dplyr::mutate(Well = factor(Well, levels = wells)) %>%
     dplyr::arrange(Well) %>%
-    dplyr::select(Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time)
+    dplyr::select(Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time, OD0)
 }
 
 .bioszen_compute_growth_results_batch_checkpointed <- function(tidy_df,
@@ -355,6 +447,7 @@
 
   restored <- .bioszen_restore_growth_checkpoint(checkpoint)
   restored <- restored[as.character(restored$Well) %in% as.character(wells), , drop = FALSE]
+  restored <- .bioszen_fill_restored_od0(restored, tidy_df)
   if (nrow(restored)) {
     restored$Well <- factor(as.character(restored$Well), levels = wells)
     restored <- restored[!duplicated(as.character(restored$Well)), , drop = FALSE]
@@ -406,7 +499,7 @@
     combined <- combine_growth_results(robust, permissive) %>%
       dplyr::mutate(Well = factor(as.character(Well), levels = wells)) %>%
       dplyr::arrange(Well) %>%
-      dplyr::select(Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time)
+      dplyr::select(Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time, OD0)
     results <- dplyr::bind_rows(results, combined)
     results$Well <- factor(as.character(results$Well), levels = wells)
     results <- results[!duplicated(as.character(results$Well)), , drop = FALSE]
@@ -420,7 +513,8 @@
   .bioszen_abort_if_requested(should_abort)
   results$Well <- factor(as.character(results$Well), levels = wells)
   results <- dplyr::arrange(results, Well)
-  results <- dplyr::select(results, Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time)
+  results <- .bioszen_fill_restored_od0(results, tidy_df)
+  results <- dplyr::select(results, Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time, OD0)
   .bioszen_write_growth_checkpoint(checkpoint, results, completed = TRUE)
   results
 }
@@ -765,7 +859,7 @@ setup_growth_module <- function(input, output, session) {
     status_text()
   })
 
-  render_growth_results_table()
+  reset_growth_results()
 
   clear_growth_upload_ui <- function() {
     if (requireNamespace("shinyjs", quietly = TRUE)) {
@@ -980,6 +1074,7 @@ setup_growth_module <- function(input, output, session) {
             format = prepared$format
           )
           last_progress <- 0
+          last_visible_done <- 0L
           final_df <- NULL
           with_growth_progress(message = sprintf(growth_tr("growth_progress_curves", "Processing curves for %s", lang), nm), value = 0, {
             final_df <- compute_growth_results_batch(
@@ -987,40 +1082,26 @@ setup_growth_module <- function(input, output, session) {
               should_abort = should_abort,
               checkpoint = checkpoint,
               progress_callback = function(stage, done, total, well) {
-                target <- last_progress
-                if (identical(stage, "checkpoint_loaded") && total > 0) {
-                  target <- 0.5 * (done / total)
-                } else if (identical(stage, "robust") && total > 0) {
-                  target <- 0.5 * (done / total)
-                } else if (identical(stage, "permissive") && total > 0) {
-                  target <- 0.5 + 0.5 * (done / total)
-                } else if (identical(stage, "permissive_skipped") || identical(stage, "permissive_done")) {
-                  target <- 1
-                }
-                delta <- target - last_progress
+                progress_view <- .bioszen_growth_progress_view(
+                  stage = stage,
+                  done = done,
+                  total = total_wells,
+                  well = well,
+                  last_done = last_visible_done,
+                  last_progress = last_progress
+                )
+                delta <- progress_view$progress - last_progress
                 if (delta > 0) {
-                  detail_label <- if (!is.null(well) && !is.na(well) && nzchar(as.character(well))) {
-                    as.character(well)
-                  } else {
-                    display_nm
-                  }
-                  phase_label <- if (identical(stage, "checkpoint_loaded")) {
-                    "Resumed"
-                  } else if (identical(stage, "robust")) {
-                    "Strict"
-                  } else {
-                    "Permissive"
-                  }
-                  if (identical(stage, "permissive_skipped")) phase_label <- "Permissive skipped"
                   status_text(sprintf(
-                    "File %d/%d (%s): %s [%d/%d]",
-                    i, n_files, display_nm, phase_label, min(done, total_wells), total_wells
+                    "File %d/%d (%s): %s",
+                    i, n_files, display_nm, progress_view$detail
                   ))
                   safe_inc_progress(
                     delta,
-                    detail = sprintf("%s - %s [%d/%d]", phase_label, detail_label, min(done, total_wells), total_wells)
+                    detail = progress_view$detail
                   )
-                  last_progress <<- target
+                  last_progress <<- progress_view$progress
+                  last_visible_done <<- progress_view$done
                 }
               }
             )

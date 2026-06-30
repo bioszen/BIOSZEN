@@ -3,6 +3,27 @@ bioszen_r_version_key <- function() {
   paste(R.version$major, minor, sep = ".")
 }
 
+.bioszen_startup_citation <- function(force = FALSE) {
+  if (!isTRUE(getOption("BIOSZEN.show_startup_citation", TRUE))) {
+    return(invisible(FALSE))
+  }
+  if (!isTRUE(force) && isTRUE(getOption("BIOSZEN.startup_citation_shown", FALSE))) {
+    return(invisible(FALSE))
+  }
+
+  options(BIOSZEN.startup_citation_shown = TRUE)
+  packageStartupMessage(paste(
+    "##",
+    "## BIOSZEN",
+    "## See https://github.com/bioszen/BIOSZEN for additional documentation and source code.",
+    "## Please cite software as:",
+    "##   Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210",
+    "##",
+    sep = "\n"
+  ))
+  invisible(TRUE)
+}
+
 bioszen_find_source_root <- function(start = getwd()) {
   current <- normalizePath(start, winslash = "/", mustWork = FALSE)
   repeat {

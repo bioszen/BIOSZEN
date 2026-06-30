@@ -1,7 +1,12 @@
-.bioszen_startup_citation <- function() {
+.bioszen_startup_citation <- function(force = FALSE) {
   if (!isTRUE(getOption("BIOSZEN.show_startup_citation", TRUE))) {
     return(invisible(FALSE))
   }
+  if (!isTRUE(force) && isTRUE(getOption("BIOSZEN.startup_citation_shown", FALSE))) {
+    return(invisible(FALSE))
+  }
+
+  options(BIOSZEN.startup_citation_shown = TRUE)
   packageStartupMessage(paste(
     "##",
     "## BIOSZEN",
@@ -32,7 +37,6 @@ run_app <- function(host = getOption("shiny.host", "127.0.0.1"),
   }
 
   app_dir <- system.file("app", package = "BIOSZEN")
-  .bioszen_startup_citation()
   shiny::runApp(
     app_dir,
     host = host,
