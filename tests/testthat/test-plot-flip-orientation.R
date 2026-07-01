@@ -74,6 +74,11 @@ test_that("flip orientation control is scoped to supported plot types and metada
     srv_txt,
     perl = TRUE
   ))
+  expect_true(grepl(
+    "(?s)build_current_plotly_for_export\\s*<-\\s*function\\([^)]*\\).*identical\\(input\\$tipo, \"Apiladas\"\\).*isTRUE\\(input\\$plot_flip.*p_stack <- build_plot\\(scope_sel, strain_sel, \"Apiladas\"",
+    srv_txt,
+    perl = TRUE
+  ))
 })
 
 test_that("flip orientation and error-bar labels exist in both translation files", {
@@ -251,6 +256,34 @@ test_that("distribution plot builders toggle CoordFlip only when requested", {
   p_violin_h <- build_violin_plot_impl(make_dist_ctx(flip = TRUE))
   expect_false(inherits(p_violin_v$coordinates, "CoordFlip"))
   expect_true(inherits(p_violin_h$coordinates, "CoordFlip"))
+
+  sig_layers <- function(p, ...) {
+    p + geom_text(
+      data = data.frame(x = 1, y = 4.5, label = "*", .sig_layer = TRUE),
+      inherit.aes = FALSE,
+      aes(x = x, y = y, label = label),
+      size = 4
+    )
+  }
+  legend_called <- FALSE
+  flipped_elements_ctx <- make_dist_ctx(flip = TRUE)
+  flipped_elements_ctx$apply_sig_layers <- sig_layers
+  flipped_elements_ctx$legend_right_enabled <- function(color_mode) TRUE
+  flipped_elements_ctx$apply_square_legend_right <- function(p, ...) {
+    legend_called <<- TRUE
+    p + theme(legend.position = "right")
+  }
+  p_elements <- build_boxplot_plot_impl(flipped_elements_ctx)
+  expect_true(inherits(p_elements$coordinates, "CoordFlip"))
+  expect_true(legend_called)
+  expect_true(any(vapply(p_elements$layers, function(layer) {
+    is.data.frame(layer$data) &&
+      ".sig_layer" %in% names(layer$data) &&
+      any(layer$data$.sig_layer %in% TRUE)
+  }, logical(1))))
+  expect_identical(p_elements$theme$legend.position, "right")
+  expect_error(ggplot2::ggplot_build(p_elements), NA)
+  expect_error(plotly::ggplotly(p_elements, originalData = TRUE), NA)
 })
 
 test_that("stacked ggplot builder toggles CoordFlip only when requested", {
@@ -332,4 +365,5 @@ test_that("stacked ggplot builder toggles CoordFlip only when requested", {
   expect_true(inherits(p_stack_h$coordinates, "CoordFlip"))
   expect_identical(attr(p_stack_sig, "sig_default_param"), "ParamB")
   expect_setequal(attr(p_stack_sig, "sig_label_params"), c("ParamA", "ParamB"))
+  expect_error(ggplot2::ggplot_build(p_stack_h), NA)
 })

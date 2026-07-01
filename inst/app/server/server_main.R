@@ -780,8 +780,8 @@ server <- function(input, output, session) {
     begin_deferred_reactive_flag(
       dataset_loading,
       flag_key = "dataset_loading",
-      flush_cycles = 5L,
-      timeout_ms = 1500L
+      flush_cycles = 8L,
+      timeout_ms = 2500L
     )
   }
 
@@ -790,8 +790,8 @@ server <- function(input, output, session) {
     begin_deferred_reactive_flag(
       filter_selection_sync_inflight,
       flag_key = "filter_selection_sync_inflight",
-      flush_cycles = 2L,
-      timeout_ms = 450L
+      flush_cycles = 3L,
+      timeout_ms = 750L
     )
   }
 
@@ -809,8 +809,8 @@ server <- function(input, output, session) {
     begin_deferred_reactive_flag(
       plot_input_sync_inflight,
       flag_key = "plot_input_sync_inflight",
-      flush_cycles = 3L,
-      timeout_ms = 900L
+      flush_cycles = 5L,
+      timeout_ms = 1400L
     )
     invisible(TRUE)
   }
@@ -1740,7 +1740,23 @@ server <- function(input, output, session) {
 
   build_current_plotly_for_export <- function(scope_sel, strain_sel, width, height) {
     if (identical(input$tipo, "Apiladas")) {
-      plt <- build_plotly_stack(scope_sel, strain_sel, width = width, height = height)
+      if (isTRUE(input$plot_flip %||% FALSE)) {
+        p_stack <- build_plot(scope_sel, strain_sel, "Apiladas", for_interactive = TRUE)
+        plt <- if (inherits(p_stack, "ggplot")) {
+          safe_ggplotly(
+            p_stack,
+            tooltip = c("x", "y", "name", "text"),
+            width = width,
+            height = height,
+            originalData = FALSE
+          )
+        } else {
+          p_stack
+        }
+      } else {
+        plt <- build_plotly_stack(scope_sel, strain_sel, width = width, height = height)
+      }
+      if (is.null(plt)) stop("Unable to build preview-aligned stacked plot for export.")
       plt <- sanitize_plotly_display_labels(plt)
       plt <- apply_plotly_text_style(plt)
       plt <- apply_margin_inputs_to_plotly(plt, legend_in_margin = TRUE)
@@ -3281,7 +3297,16 @@ server <- function(input, output, session) {
     req(input$runSig)
     lang <- input$app_lang %||% i18n_lang
     adjust_method <- input$multitest_method %||% "none"
-    prepare_sig_results_tbl(sig_res(), adjust_method = adjust_method, lang = lang)
+    raw_tbl <- sig_res()
+    if (identical(input$tipo, "Apiladas") && is.data.frame(raw_tbl) && "Parameter" %in% names(raw_tbl)) {
+      params <- unique(as.character(raw_tbl$Parameter))
+      params <- params[!is.na(params) & nzchar(params)]
+      return(dplyr::bind_rows(lapply(params, function(pm) {
+        sub <- raw_tbl[as.character(raw_tbl$Parameter) == pm, , drop = FALSE]
+        prepare_sig_results_tbl(sub, adjust_method = adjust_method, lang = lang)
+      })))
+    }
+    prepare_sig_results_tbl(raw_tbl, adjust_method = adjust_method, lang = lang)
   })
 
   observeEvent(list(sig_list(), input$app_lang), {
@@ -3392,9 +3417,25 @@ server <- function(input, output, session) {
     }
     validate(need(nrow(auto_tbl) > 0, tr_text("sig_auto_no_matches", lang)))
 
+    stacked_label_mode <- identical(input$sig_mode, "labels") && identical(input$tipo, "Apiladas")
+    param_val <- if (stacked_label_mode) {
+      selected_param <- select_sig_stack_param(input$sig_param, resolve_sig_stack_params())
+      if (length(selected_param)) selected_param else NULL
+    } else {
+      NULL
+    }
+    row_params <- if (stacked_label_mode && "Parameter" %in% names(auto_tbl)) {
+      as.character(auto_tbl$Parameter)
+    } else if (stacked_label_mode && !is.null(param_val)) {
+      rep(as.character(param_val), nrow(auto_tbl))
+    } else {
+      rep("", nrow(auto_tbl))
+    }
+    row_params[is.na(row_params)] <- ""
+
     auto_tbl$.pair_key <- vapply(
       seq_len(nrow(auto_tbl)),
-      function(i) sig_pair_key(auto_tbl$group1[i], auto_tbl$group2[i]),
+      function(i) sig_pair_key(auto_tbl$group1[i], auto_tbl$group2[i], row_params[i]),
       character(1)
     )
     auto_tbl <- auto_tbl %>%
@@ -3402,6 +3443,14 @@ server <- function(input, output, session) {
       dplyr::group_by(.pair_key) %>%
       dplyr::slice(1) %>%
       dplyr::ungroup()
+    row_params <- if (stacked_label_mode && "Parameter" %in% names(auto_tbl)) {
+      as.character(auto_tbl$Parameter)
+    } else if (stacked_label_mode && !is.null(param_val)) {
+      rep(as.character(param_val), nrow(auto_tbl))
+    } else {
+      rep("", nrow(auto_tbl))
+    }
+    row_params[is.na(row_params)] <- ""
 
     label_mode <- input$sig_auto_label_mode %||% "stars"
     labels <- if (identical(label_mode, "pvalue")) {
@@ -3412,19 +3461,17 @@ server <- function(input, output, session) {
       stars
     }
 
-    param_val <- if (identical(input$sig_mode, "labels") && identical(input$tipo, "Apiladas")) {
-      selected_param <- select_sig_stack_param(input$sig_param, resolve_sig_stack_params())
-      if (length(selected_param)) selected_param else NULL
-    } else {
-      NULL
-    }
-
     auto_sigs <- lapply(seq_len(nrow(auto_tbl)), function(i) {
+      row_param <- if (stacked_label_mode && length(row_params) >= i && nzchar(row_params[[i]])) {
+        row_params[[i]]
+      } else {
+        param_val
+      }
       list(
         g1 = as.character(auto_tbl$group1[i]),
         g2 = as.character(auto_tbl$group2[i]),
         lab = as.character(labels[[i]]),
-        param = param_val
+        param = row_param
       )
     })
     auto_sigs <- auto_sigs[vapply(auto_sigs, function(x) {
@@ -3445,19 +3492,14 @@ server <- function(input, output, session) {
     }
 
     sl_old <- sig_list()
-    param_key <- if (identical(input$sig_mode, "labels") && identical(input$tipo, "Apiladas")) {
-      param_val %||% ""
-    } else {
-      NULL
-    }
     keys_old <- if (length(sl_old)) {
-      vapply(sl_old, function(cmp) sig_pair_key(cmp$g1, cmp$g2, param_key), character(1))
+      vapply(sl_old, function(cmp) sig_pair_key(cmp$g1, cmp$g2, cmp$param %||% ""), character(1))
     } else {
       character(0)
     }
     to_add <- list()
     for (cmp in auto_sigs) {
-      key <- sig_pair_key(cmp$g1, cmp$g2, param_key)
+      key <- sig_pair_key(cmp$g1, cmp$g2, cmp$param %||% "")
       if (!key %in% keys_old) {
         to_add <- append(to_add, list(cmp))
         keys_old <- c(keys_old, key)
@@ -5471,11 +5513,25 @@ server <- function(input, output, session) {
       )
     )
   })
+
+  observeEvent(input$tipo, {
+    if (identical(input$tipo %||% "", "Apiladas") &&
+        !identical(input$sig_mode %||% "bars", "labels")) {
+      updateRadioButtons(session, "sig_mode", selected = "labels")
+    }
+  }, ignoreInit = TRUE)
   
   
   # -- actualizar listas de Control / Pareo cuando cambian los grupos visibles --  
-  observeEvent(input$showGroups, {  
+  observeEvent(list(input$showGroups, input$labelMode, input$tipo), {
     grps <- input$showGroups  
+    if (identical(input$tipo %||% "", "Apiladas") && isTRUE(input$labelMode)) {
+      grps <- datos_agrupados() |>
+        order_filter_group() |>
+        dplyr::pull(Strain) |>
+        unique() |>
+        sort()
+    }
     current_ctrl <- as.character(isolate(input$controlGroup %||% ""))
     if (!length(current_ctrl) || is.na(current_ctrl[[1]])) current_ctrl <- ""
     current_ctrl <- current_ctrl[[1]]
@@ -6493,7 +6549,12 @@ server <- function(input, output, session) {
     # aseguramos que ya hay configuraciÃƒÂ³n y datos  
     req(plot_settings(), nrow(datos_agrupados()) > 0)  
     
-    df_test <- make_test_df()  
+    df_test <- if (identical(input$tipo, "Apiladas")) {
+      stacked_dfs <- make_stacked_test_dfs(summary_mode = isTRUE(is_summary_mode()))
+      if (length(stacked_dfs)) stacked_dfs[[1]] else tibble::tibble()
+    } else {
+      make_test_df()
+    }
     if (nrow(df_test) == 0 && isTRUE(is_summary_mode())) {
       df_sum <- make_summary_test_df()
       if (nrow(df_sum) > 0) {
@@ -6529,6 +6590,61 @@ server <- function(input, output, session) {
   norm_res <- eventReactive(input$runNorm, {
     lang <- input$app_lang %||% i18n_lang
     withProgress(message = tr_text("progress_normality", lang), value = 0, {
+      if (identical(input$tipo, "Apiladas")) {
+        stacked_dfs <- make_stacked_test_dfs(summary_mode = isTRUE(is_summary_mode()))
+        if (!length(stacked_dfs)) {
+          showNotification(tr_text("norm_min_groups", lang), type = "error", duration = 4)
+          return(tibble::tibble(
+            Parameter = character(), Label = character(), shapiro.stat = numeric(), shapiro.p = numeric(),
+            ks.stat = numeric(), ks.p = numeric(), ad.stat = numeric(), ad.p = numeric()
+          ))
+        }
+        if (isTRUE(is_summary_mode())) {
+          showNotification(
+            "Normality tests are not computable from summary input (Mean/SD/N only).",
+            type = "message",
+            duration = 6
+          )
+          return(dplyr::bind_rows(lapply(names(stacked_dfs), function(pm) {
+            stacked_dfs[[pm]] %>%
+              dplyr::transmute(
+                Parameter = pm,
+                Label = as.character(Label),
+                shapiro.stat = NA_real_,
+                shapiro.p = NA_real_,
+                ks.stat = NA_real_,
+                ks.p = NA_real_,
+                ad.stat = NA_real_,
+                ad.p = NA_real_
+              )
+          })))
+        }
+        n_params <- max(length(stacked_dfs), 1L)
+        return(dplyr::bind_rows(lapply(names(stacked_dfs), function(pm) {
+          df_pm <- stacked_dfs[[pm]]
+          labels <- unique(as.character(df_pm$Label))
+          n_labels <- max(length(labels), 1)
+          out_pm <- dplyr::bind_rows(lapply(seq_along(labels), function(i) {
+            lbl <- labels[[i]]
+            vals <- df_pm$Valor[df_pm$Label == lbl]
+            sw <- safe_shapiro_test(vals)
+            ks <- if ("ks" %in% input$normTests) safe_ks_test(vals) else list(stat = NA_real_, p = NA_real_)
+            ad <- if ("ad" %in% input$normTests) safe_ad_test(vals) else list(stat = NA_real_, p = NA_real_)
+            incProgress((1 / n_params) / n_labels)
+            tibble::tibble(
+              Parameter = pm,
+              Label = lbl,
+              shapiro.stat = sw$stat,
+              shapiro.p = sw$p,
+              ks.stat = ks$stat,
+              ks.p = ks$p,
+              ad.stat = ad$stat,
+              ad.p = ad$p
+            )
+          }))
+          out_pm
+        })))
+      }
       if (isTRUE(is_summary_mode())) {
         df_sum <- make_summary_test_df()
         if (nrow(df_sum) == 0 || dplyr::n_distinct(df_sum$Label) < 2) {
@@ -6588,10 +6704,298 @@ server <- function(input, output, session) {
   
   
   # Ã¢â€â‚¬Ã¢â€â‚¬ Significancia Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬  
+  stacked_grouping_col <- function(scope_sel = current_stats_scope()) {
+    if (identical(scope_sel, "Por Cepa")) return("Media")
+    if (isTRUE(input$labelMode)) return("Strain")
+    "Label"
+  }
+
+  build_stacked_observation_df <- function(src, p, scope_sel = current_stats_scope()) {
+    empty_df <- tibble::tibble(Label = character(), Valor = numeric(), BiologicalReplicate = character())
+    if (!is.data.frame(src) || !nrow(src) || !p %in% names(src)) return(empty_df)
+    label_col <- stacked_grouping_col(scope_sel)
+    if (!label_col %in% names(src)) {
+      if (identical(label_col, "Label") && all(c("Strain", "Media") %in% names(src))) {
+        src$Label <- paste(src$Strain, src$Media, sep = "-")
+      } else {
+        return(empty_df)
+      }
+    }
+    if (!"BiologicalReplicate" %in% names(src)) {
+      src$BiologicalReplicate <- seq_len(nrow(src))
+    }
+    out <- src %>%
+      dplyr::transmute(
+        Label = .data[[label_col]],
+        Valor = .data[[p]],
+        BiologicalReplicate = as.character(BiologicalReplicate)
+      )
+    finalize_stats_test_df(out)
+  }
+
+  build_stacked_summary_stats_df <- function(src, p, scope_sel = current_stats_scope()) {
+    empty_df <- tibble::tibble(Label = character(), Mean = numeric(), SD = numeric(), N = numeric())
+    if (!is.data.frame(src) || !nrow(src) || !p %in% names(src)) return(empty_df)
+    label_col <- stacked_grouping_col(scope_sel)
+    if (!label_col %in% names(src)) {
+      if (identical(label_col, "Label") && all(c("Strain", "Media") %in% names(src))) {
+        src$Label <- paste(src$Strain, src$Media, sep = "-")
+      } else {
+        return(empty_df)
+      }
+    }
+
+    sd_col <- resolve_prefixed_param_col(src, "SD_", p)
+    n_col  <- resolve_prefixed_param_col(src, "N_", p)
+    src %>%
+      dplyr::mutate(Label = as.character(.data[[label_col]])) %>%
+      dplyr::filter(!is.na(Label), nzchar(Label)) %>%
+      dplyr::group_by(Label) %>%
+      dplyr::summarise(
+        Mean = mean(.data[[p]], na.rm = TRUE),
+        SD = if (!is.null(sd_col) && sd_col %in% names(src)) {
+          mean(.data[[sd_col]], na.rm = TRUE)
+        } else {
+          sd(.data[[p]], na.rm = TRUE)
+        },
+        N = if (!is.null(n_col) && n_col %in% names(src)) {
+          mean(.data[[n_col]], na.rm = TRUE)
+        } else if ("BiologicalReplicate" %in% names(src)) {
+          dplyr::n_distinct(BiologicalReplicate)
+        } else {
+          dplyr::n()
+        },
+        .groups = "drop"
+      ) %>%
+      dplyr::mutate(
+        Mean = suppressWarnings(as.numeric(Mean)),
+        SD = suppressWarnings(as.numeric(SD)),
+        N = suppressWarnings(as.numeric(N))
+      ) %>%
+      dplyr::filter(is.finite(Mean), is.finite(N), N > 1)
+  }
+
+  make_stacked_test_dfs <- function(summary_mode = isTRUE(is_summary_mode())) {
+    scope_sel <- current_stats_scope()
+    strain_sel <- if (identical(scope_sel, "Por Cepa")) input$strain %||% NULL else NULL
+    src <- current_stats_scope_df()
+    params <- resolve_stack_params(df = src)
+    build_one <- if (isTRUE(summary_mode)) build_stacked_summary_stats_df else build_stacked_observation_df
+
+    build_list <- function(data, params_now) {
+      params_now <- resolve_stack_params(df = data, selected = params_now)
+      out <- lapply(params_now, function(pm) build_one(data, pm, scope_sel))
+      names(out) <- params_now
+      out <- out[vapply(out, function(x) is.data.frame(x) && has_stats_group_data(x), logical(1))]
+      out
+    }
+
+    out <- build_list(src, params)
+    if (length(out)) return(out)
+
+    snap_src <- stats_snapshot_df(scope_sel, strain_sel)
+    if (is.data.frame(snap_src) && nrow(snap_src)) {
+      out <- build_list(snap_src, params)
+    }
+    out
+  }
+
+  run_raw_significance_for_df <- function(df_raw, lang, adjust_method = "none", notify = TRUE) {
+    df <- filter_min_obs(df_raw)
+    dropped <- setdiff(unique(df_raw$Label), unique(df$Label))
+    if (length(dropped) > 0 && isTRUE(notify)) {
+      showNotification(sprintf(tr_text("norm_low_obs", lang),
+                              paste(dropped, collapse = ", ")), type = "warning", duration = 5)
+    }
+
+    if (n_distinct(df$Label) < 2) {
+      if (isTRUE(notify)) {
+        showNotification(tr_text("norm_groups_insufficient", lang), type = "error", duration = 5)
+      }
+      return(tibble())
+    }
+
+    tryCatch({
+      do_anova <- function() {
+        aovm <- aov(Valor ~ Label, data = df)
+        switch(input$postHoc,
+               "Tukey"      = rstatix::tukey_hsd(df, Valor ~ Label),
+               "Bonferroni" = rstatix::pairwise_t_test(df, Valor ~ Label,
+                                                       p.adjust.method = "bonferroni"),
+               "Sidak"      = safe_pairwise_t(df, "sidak"),
+               "Dunnett"    = dunnett_to_tibble(
+                 DescTools::DunnettTest(Valor ~ Label,
+                                        data = set_control(df, input$controlGroup))),
+               "Scheffe"    = pmcmr_to_tibble(PMCMRplus::scheffeTest(aovm, "Label")),
+               "GamesHowell"= rstatix::games_howell_test(df, Valor ~ Label)
+        )
+      }
+
+      do_kw <- function() {
+        switch(input$postHoc,
+               "Dunn"    = rstatix::dunn_test(df, Valor ~ Label, p.adjust.method = "bonferroni"),
+               "Conover" = pmcmr_to_tibble(PMCMRplus::kwAllPairsConoverTest(df$Valor, df$Label)),
+               "Nemenyi" = pmcmr_to_tibble(PMCMRplus::kwAllPairsNemenyiTest(df$Valor, df$Label)),
+               "DSCF"    = {
+                 f <- if (exists("kwAllPairsDSCFTest", asNamespace("PMCMRplus"), FALSE))
+                   PMCMRplus::kwAllPairsDSCFTest
+                 else
+                   PMCMRplus::kwAllPairsDscfTest
+                 pmcmr_to_tibble(f(df$Valor, df$Label))
+               }
+        )
+      }
+
+      switch(input$sigTest,
+             "ANOVA"          = do_anova(),
+             "Kruskal-Wallis" = do_kw(),
+             "ttest" = {
+               if (input$compMode == "all") {
+                 safe_pairwise_t(df, adjust_method)
+               } else if (input$compMode == "control") {
+                 if (!input$controlGroup %in% df$Label) {
+                   if (isTRUE(notify)) {
+                     showNotification(
+                       sprintf(tr_text("control_group_insufficient", lang), input$controlGroup),
+                       type = "error", duration = 5
+                     )
+                   }
+                   tibble()
+                 } else {
+                   rstatix::t_test(df, Valor ~ Label, ref.group = input$controlGroup)
+                 }
+               } else {
+                 grupos <- c(input$group1, input$group2)
+                 sub <- df %>% filter(Label %in% grupos)
+                 if (is.factor(sub$Label)) {
+                   sub$Label <- droplevels(sub$Label)
+                 } else {
+                   sub$Label <- factor(as.character(sub$Label), levels = unique(as.character(sub$Label)))
+                 }
+                 counts <- table(sub$Label)
+                 faltantes <- c(setdiff(grupos, names(counts)),
+                                 names(counts[counts < 2]))
+                 if (length(faltantes) > 0) {
+                   if (isTRUE(notify)) {
+                     showNotification(
+                       sprintf(tr_text("sig_insufficient_obs", lang), paste(faltantes, collapse = ", ")),
+                       type = "error", duration = 5
+                     )
+                   }
+                   tibble()
+                 } else {
+                   rstatix::t_test(sub, Valor ~ Label, paired = can_paired(sub))
+                 }
+               }
+             },
+             "wilcox" = {
+               if (input$compMode == "all") {
+                 safe_pairwise_wilcox(df, adjust_method)
+               } else if (input$compMode == "control") {
+                 if (!input$controlGroup %in% df$Label) {
+                   if (isTRUE(notify)) {
+                     showNotification(
+                       sprintf(tr_text("control_group_insufficient", lang), input$controlGroup),
+                       type = "error", duration = 5
+                     )
+                   }
+                   tibble()
+                 } else {
+                   rstatix::wilcox_test(df, Valor ~ Label, ref.group = input$controlGroup)
+                 }
+               } else {
+                 grupos <- c(input$group1, input$group2)
+                 sub <- df %>% filter(Label %in% grupos)
+                 if (is.factor(sub$Label)) {
+                   sub$Label <- droplevels(sub$Label)
+                 } else {
+                   sub$Label <- factor(as.character(sub$Label), levels = unique(as.character(sub$Label)))
+                 }
+                 faltantes <- setdiff(grupos, names(table(sub$Label)))
+                 if (length(faltantes) > 0) {
+                   if (isTRUE(notify)) {
+                     showNotification(
+                       sprintf(tr_text("sig_insufficient_obs", lang), paste(faltantes, collapse = ", ")),
+                       type = "error", duration = 5
+                     )
+                   }
+                   tibble()
+                 } else {
+                   rstatix::wilcox_test(sub, Valor ~ Label, paired = can_paired(sub))
+                 }
+               }
+             }
+      )
+    }, error = function(e) {
+      if (isTRUE(notify)) {
+        showNotification(paste(tr_text("sig_test_error_prefix", lang), e$message),
+                         type = "error", duration = 5)
+      }
+      tibble()
+    })
+  }
+
   sig_res <- eventReactive(input$runSig, {
     lang <- input$app_lang %||% i18n_lang
     adjust_method <- input$multitest_method %||% "none"
     if (!adjust_method %in% c("holm", "fdr", "bonferroni", "none")) adjust_method <- "none"
+    if (identical(input$tipo, "Apiladas")) {
+      stacked_dfs <- make_stacked_test_dfs(summary_mode = isTRUE(is_summary_mode()))
+      if (!length(stacked_dfs)) {
+        showNotification(tr_text("norm_groups_insufficient", lang), type = "error", duration = 5)
+        return(tibble())
+      }
+
+      if (isTRUE(is_summary_mode())) {
+        if (input$sigTest %in% c("Kruskal-Wallis", "wilcox")) {
+          showNotification(
+            "Kruskal-Wallis and Wilcoxon require raw observations and are not available for Mean/SD/N input.",
+            type = "warning",
+            duration = 6
+          )
+          return(tibble())
+        }
+        if (!identical(input$sigTest, "ttest")) {
+          showNotification(
+            "Summary input detected: using Welch-style comparisons from Mean/SD/N.",
+            type = "message",
+            duration = 5
+          )
+        }
+        out_summary <- dplyr::bind_rows(lapply(names(stacked_dfs), function(pm) {
+          res_pm <- run_summary_significance(
+            stacked_dfs[[pm]],
+            comp_mode = input$compMode %||% "all",
+            control_group = input$controlGroup,
+            group1 = input$group1,
+            group2 = input$group2
+          )
+          if (!is.data.frame(res_pm) || !nrow(res_pm)) return(tibble())
+          dplyr::mutate(res_pm, Parameter = pm, .before = 1)
+        }))
+        if (!nrow(out_summary)) {
+          showNotification(tr_text("no_sig_results", lang), type = "error", duration = 5)
+          return(tibble())
+        }
+        return(out_summary)
+      }
+
+      out_raw <- dplyr::bind_rows(lapply(names(stacked_dfs), function(pm) {
+        res_pm <- run_raw_significance_for_df(
+          stacked_dfs[[pm]],
+          lang = lang,
+          adjust_method = adjust_method,
+          notify = FALSE
+        )
+        if (!is.data.frame(res_pm) || !nrow(res_pm)) return(tibble())
+        dplyr::mutate(res_pm, Parameter = pm, .before = 1)
+      }))
+      if (!nrow(out_raw)) {
+        showNotification(tr_text("no_sig_results", lang), type = "error", duration = 5)
+        return(tibble())
+      }
+      return(out_raw)
+    }
     if (isTRUE(is_summary_mode())) {
       df_sum <- make_summary_test_df()
       if (nrow(df_sum) < 2 || dplyr::n_distinct(df_sum$Label) < 2) {
@@ -6786,9 +7190,10 @@ server <- function(input, output, session) {
       )  
     
     # Opcional: ordena columnas a gusto  
-    df2 <- df2 %>%   
-      dplyr::select(Label,  
-                    shapiro.stat, shapiro.p, Shapiro,  
+    df2 <- df2 %>%
+      dplyr::select(dplyr::any_of("Parameter"),
+                    Label,
+                    shapiro.stat, shapiro.p, Shapiro,
                     ks.stat,      ks.p,      KS,  
                     ad.stat,      ad.p,      AD)  
     validate(need(nrow(df2) > 0, tr_text("no_data_normality", lang)))  
@@ -12388,7 +12793,7 @@ server <- function(input, output, session) {
 
   plot_base_interactive <- debounce(
     reactive(plot_base()),
-    millis = 250
+    millis = 650
   )
 
   # --- Salidas ---  

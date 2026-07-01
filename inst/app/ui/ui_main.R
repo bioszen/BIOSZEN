@@ -2315,9 +2315,9 @@ ui <- fluidPage(
                  
                  
                  hr(), tags$div(id = "section_analysis", h4(tr("guided_analysis"))),
-                 # ---------- Estadística para Boxplot/Barras ---------------------------
+                 # ---------- Estadística para Boxplot/Barras/Apiladas ---------------------------
                  conditionalPanel(
-                   condition = "['Boxplot','Barras','Violin'].indexOf(input.tipo) >= 0",
+                   condition = "['Boxplot','Barras','Violin','Apiladas'].indexOf(input.tipo) >= 0",
                    accordion(
                      id       = "statsPanel",
                      open     = FALSE,

@@ -234,8 +234,10 @@ specific measurement type.
 
 - Parameter selector + parameter ordering controls.
 - Configurable deviation bars and color behavior.
-- Annotation labels/brackets available.
-- Horizontal orientation available.
+- Statistics and auto-generated significance are available per included parameter. Comparisons are made within each parameter, so `Parameter A - Group 1` is compared with `Parameter A - Group 2`, not with another stacked segment.
+- Significance labels can be added over the selected target group for the selected parameter; the results table includes a `Parameter` column.
+- Annotation labels are recommended for stacked plots.
+- Horizontal orientation available; legends, text styles, error bars, and significance labels are preserved when the plot is flipped.
 
 ### Correlation
 
@@ -275,6 +277,7 @@ specific measurement type.
 - Axis-title styling is applied to both X and Y axis titles when those titles are visible. Axis tick-label styling applies to the labels shown along the axes, whether they are numeric ticks or category labels.
 - Legend controls include whether the legend is shown on the right when applicable, plus legend text size and bold/italic/underline styling.
 - Each text part can use its own combination of styles; selecting underline for significance text, for example, does not force underline on the title or legend.
+- `Flip orientation (horizontal)`, when available, is a visual orientation change only. It preserves the same plotted values, legends, font family, bold/italic/underline settings, error bars, and significance annotations.
 - These choices are applied to the plot preview and included in exported `PNG` and `PDF` files.
 
 ![Text styling controls](manual_images/11_text_styling_controls.png)
@@ -345,6 +348,8 @@ P-value correction options:
 - Bonferroni
 - None
 
+For **Stacked** plots, normality and significance are calculated separately for each included parameter. The output table includes `Parameter`, and each parameter-level comparison should match the same comparison run from the corresponding single-parameter plot.
+
 > **CAUTION:**
 > In Summary mode, normality may be `NA` and some non-parametric paths that require raw observations are disabled.
 
@@ -363,6 +368,8 @@ Automatic workflow:
 3. Choose inclusion (`significant only` or `all`).
 4. Choose label mode (`stars` or `p-value`).
 5. Replace or append annotations.
+
+For **Stacked** plots, choose the parameter before adding a label. Automatic labels keep the parameter identity and place the annotation over the selected target group for that parameter.
 
 ## 10. QC and Replicate Management
 

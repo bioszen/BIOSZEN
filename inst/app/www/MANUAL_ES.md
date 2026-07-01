@@ -235,8 +235,10 @@ tipo específico de medición.
 
 - Selector y orden de parámetros.
 - Configuración de barras de desviación y colores.
-- Anotación por etiquetas/barras.
-- Orientación horizontal disponible.
+- La estadística y la significancia automática están disponibles por cada parámetro incluido. Las comparaciones se hacen dentro de cada parámetro, por ejemplo `Parámetro A - Grupo 1` contra `Parámetro A - Grupo 2`, no contra otro segmento apilado.
+- Las etiquetas de significancia se pueden agregar sobre el grupo objetivo seleccionado para el parámetro seleccionado; la tabla de resultados incluye una columna `Parameter`.
+- Para gráficos apilados se recomiendan las anotaciones como etiquetas.
+- Orientación horizontal disponible; al voltear el gráfico se conservan leyendas, estilos de texto, barras de error y etiquetas de significancia.
 
 ### Correlación
 
@@ -276,6 +278,7 @@ tipo específico de medición.
 - El estilo de títulos de eje se aplica tanto al título del eje X como al del eje Y cuando esos títulos están visibles. El estilo de etiquetas de ticks se aplica a las etiquetas mostradas en los ejes, sean números o categorías.
 - Los controles de leyenda incluyen si se muestra a la derecha cuando corresponde, además del tamaño y estilo del texto de la leyenda (normal, negrita, cursiva y/o subrayado).
 - Cada tipo de texto puede tener su propia combinación de estilos; subrayar significancia, por ejemplo, no obliga a subrayar el título ni la leyenda.
+- `Voltear orientación (horizontal)`, cuando está disponible, solo cambia la orientación visual. Conserva los mismos valores graficados, leyendas, familia tipográfica, ajustes de negrita/cursiva/subrayado, barras de error y anotaciones de significancia.
 - Estos ajustes se aplican a la previsualización y se incluyen al exportar `PNG` y `PDF`.
 
 ![Controles de estilo de texto](manual_images/11_text_styling_controls.png)
@@ -346,6 +349,8 @@ Opciones de corrección p-value:
 - Bonferroni
 - Ninguna
 
+Para gráficos **Apilados**, la normalidad y la significancia se calculan por separado para cada parámetro incluido. La tabla de salida incluye `Parameter`, y cada comparación por parámetro debe coincidir con la misma comparación ejecutada desde el gráfico de ese parámetro individual.
+
 > **CAUTION:**
 > En modo Resumen, la normalidad puede ser `NA` y algunas rutas no paramétricas que requieren datos crudos se desactivan.
 
@@ -364,6 +369,8 @@ Flujo automático:
 3. Define inclusión (`solo significativos` o `todos`).
 4. Elige formato (`estrellas` o `p-value`).
 5. Reemplaza o agrega anotaciones.
+
+Para gráficos **Apilados**, elige el parámetro antes de agregar una etiqueta. Las etiquetas automáticas conservan la identidad del parámetro y se ubican sobre el grupo objetivo seleccionado para ese parámetro.
 
 ## 10. Control de Calidad y Réplicas
 

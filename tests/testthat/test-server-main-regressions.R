@@ -128,7 +128,7 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     server_txt,
-    "begin_deferred_reactive_flag\\(\\s*dataset_loading,[\\s\\S]*?flush_cycles = 5L[\\s\\S]*?timeout_ms = 1500L",
+    "begin_deferred_reactive_flag\\(\\s*dataset_loading,[\\s\\S]*?flush_cycles = 8L[\\s\\S]*?timeout_ms = 2500L",
     perl = TRUE,
     info = "Dataset uploads should hold the plot gate long enough for upload-driven UI updates to settle."
   )
@@ -139,8 +139,20 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     server_txt,
+    "begin_deferred_reactive_flag\\(\\s*filter_selection_sync_inflight,[\\s\\S]*?flush_cycles = 3L[\\s\\S]*?timeout_ms = 750L",
+    perl = TRUE,
+    info = "Filter changes should wait for selected groups/conditions to settle before redraw."
+  )
+  expect_match(
+    server_txt,
     "begin_plot_input_sync\\s*<-\\s*function",
     info = "Programmatic selector refreshes need a short sync guard before plotting."
+  )
+  expect_match(
+    server_txt,
+    "begin_deferred_reactive_flag\\(\\s*plot_input_sync_inflight,[\\s\\S]*?flush_cycles = 5L[\\s\\S]*?timeout_ms = 1400L",
+    perl = TRUE,
+    info = "Programmatic selector refreshes should hide intermediate plot states."
   )
   expect_match(
     server_txt,
@@ -168,6 +180,12 @@ test_that("upload and filter updates are batched before plot redraws", {
     "output\\$plotInteractivo <- renderPlotly\\(\\{\\s*input\\$mobile_plot_refresh\\s*plot_settle_tick\\(\\)",
     perl = TRUE,
     info = "The interactive plot must depend on the settle tick."
+  )
+  expect_match(
+    server_txt,
+    "plot_base_interactive\\s*<-\\s*debounce\\([\\s\\S]*?millis = 650",
+    perl = TRUE,
+    info = "The plot output should debounce long enough to avoid visible intermediate plot states."
   )
   plot_output <- sub(
     "^[\\s\\S]*?output\\$plotInteractivo <- renderPlotly\\(\\{",
@@ -320,6 +338,50 @@ test_that("stacked parameter selector exposes available parameters without typin
     "update_selectize_adaptive\\(\\s*\"stackParams\"[\\s\\S]*?server = FALSE[\\s\\S]*?openOnFocus = TRUE[\\s\\S]*?maxOptions = min\\(1000L, length\\(params\\)\\)",
     perl = TRUE,
     info = "Stacked parameter updates should keep browseable client-side choices."
+  )
+})
+
+test_that("stacked plots expose per-parameter statistics and labels", {
+  server_file <- app_test_path("server", "server_main.R")
+  ui_file <- app_test_path("ui", "ui_main.R")
+  server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  ui_txt <- paste(readLines(ui_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(
+    ui_txt,
+    "condition = \"\\['Boxplot','Barras','Violin','Apiladas'\\]\\.indexOf\\(input\\.tipo\\) >= 0\"[\\s\\S]*?DTOutput\\('normTable'\\)[\\s\\S]*?DTOutput\\('sigTable'\\)",
+    perl = TRUE,
+    info = "Stacked plots should have the same normality/significance panel as the other distribution plots."
+  )
+  expect_match(
+    server_txt,
+    "stacked_grouping_col\\s*<-\\s*function[\\s\\S]*?input\\$labelMode[\\s\\S]*?\"Strain\"[\\s\\S]*?\"Label\"",
+    perl = TRUE,
+    info = "Stacked statistics should compare the same visible groups used by stacked plots."
+  )
+  expect_match(
+    server_txt,
+    "make_stacked_test_dfs\\s*<-\\s*function",
+    perl = TRUE,
+    info = "Stacked statistics need a per-parameter data builder."
+  )
+  expect_match(
+    server_txt,
+    "identical\\(input\\$tipo, \"Apiladas\"\\)[\\s\\S]*?make_stacked_test_dfs\\([\\s\\S]*?dplyr::mutate\\(res_pm, Parameter = pm, \\.before = 1\\)",
+    perl = TRUE,
+    info = "Stacked significance should run once per parameter and retain the parameter name."
+  )
+  expect_match(
+    server_txt,
+    "sig_table_processed <- reactive\\([\\s\\S]*?\"Parameter\" %in% names\\(raw_tbl\\)[\\s\\S]*?prepare_sig_results_tbl\\(sub",
+    perl = TRUE,
+    info = "Stacked significance table processing should preserve single-parameter p-value behavior."
+  )
+  expect_match(
+    server_txt,
+    "sig_pair_key(auto_tbl$group1[i], auto_tbl$group2[i], row_params[i])",
+    fixed = TRUE,
+    info = "Auto-generated stacked labels should not collapse identical group pairs across different parameters."
   )
 })
 
