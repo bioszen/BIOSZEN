@@ -439,7 +439,7 @@ override_sig_linewidth,Grosor barras signif.
 override_sig_textsize,Tamaño texto signif.
 override_apply_all,Aplicar override ahora
 no_data_plot,No hay datos para graficar
-loading_plot_data,Cargando datos del archivo...
+loading_plot_data,Actualizando gráfico...
 norm_failed_generic,No fue posible normalizar para la selección actual.
 norm_fallback_ctrl,"No se pudo usar el control ""%s""."
 norm_unavailable_ctrl,"No se pudo usar el control ""%s"" para la selección actual; solo se muestran parámetros con valores normalizados válidos."

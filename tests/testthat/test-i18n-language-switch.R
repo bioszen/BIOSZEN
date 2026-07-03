@@ -38,7 +38,8 @@ test_that("language-refresh title updates keep a real parameter in default title
 
   expect_match(server_txt, "preferred_param <- normalize_param_selection\\(isolate\\(last_param_selection\\(\\) %\\|\\|% \"\"\\), params\\)", perl = TRUE)
   expect_match(server_txt, "if \\(!nzchar\\(param_sel\\) && length\\(params\\)\\)", perl = TRUE)
-  expect_match(server_txt, "if \\(!nzchar\\(param_sel\\) && input\\$tipo %in% c\\(\"Boxplot\", \"Barras\", \"Violin\", \"Apiladas\"\\)\\) return\\(\\)", perl = TRUE)
+  expect_match(server_txt, "parameter_title_types <- c\\(\"Boxplot\", \"Barras\", \"Violin\", \"Curvas\", \"Apiladas\"\\)", perl = TRUE)
+  expect_match(server_txt, "if \\(!nzchar\\(param_sel\\) && input\\$tipo %in% parameter_title_types\\) return\\(\\)", perl = TRUE)
   expect_match(server_txt, "sprintf\\(tr_text\\(\"default_title_strain\", lang\\), type_label, param_sel", perl = TRUE)
   expect_match(server_txt, "update_text_input_if_changed\\(\"plotTitle\", defaultTitle\\)", perl = TRUE)
 })

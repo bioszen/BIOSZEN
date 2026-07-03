@@ -7,6 +7,7 @@ ui <- fluidPage(
 
   tags$head(
     tags$title("BIOSZEN"),
+    tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
     tags$link(rel = "icon", type = "image/x-icon", href = "bioszen.ico")
   ),
 
@@ -17,8 +18,24 @@ ui <- fluidPage(
         --bz-gap: 14px;
       }
 
+      html {
+        font-size: 16px;
+      }
+
       html, body {
         min-height: 100%;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
+
+      body,
+      .form-control,
+      .selectize-input,
+      .selectize-dropdown,
+      .btn,
+      .checkbox label,
+      .radio label {
+        font-size: 1rem;
       }
 
       .bioszen-topbar {
@@ -236,6 +253,34 @@ ui <- fluidPage(
 
       .bioszen-main-content .dataTables_wrapper .dataTables_filter input {
         margin-left: 6px;
+      }
+
+      /*
+       * Shiny adds the `recalculating` class while an output is updating and
+       * its default CSS fades that output. For BIOSZEN plots and filter panels
+       * this looked like a reload loop during rapid checkbox changes, even
+       * when the final plot was correct. Keep the previous UI fully visible
+       * while the debounced final render is prepared.
+       */
+      .shiny-bound-output.recalculating,
+      .shiny-bound-output.recalculating *,
+      #plotInteractivo.recalculating,
+      #plotInteractivo.recalculating *,
+      #plotInteractivoUI.recalculating,
+      #plotInteractivoUI.recalculating *,
+      #showMediosUI.recalculating,
+      #showMediosUI.recalculating *,
+      #groupSel.recalculating,
+      #groupSel.recalculating *,
+      #rmRepsGlobalUI.recalculating,
+      #rmRepsGlobalUI.recalculating *,
+      #repsStrainUI.recalculating,
+      #repsStrainUI.recalculating *,
+      #repsGrpUI.recalculating,
+      #repsGrpUI.recalculating *,
+      #repSelCurvas.recalculating,
+      #repSelCurvas.recalculating * {
+        opacity: 1 !important;
       }
 
       #statsPanel .accordion-header .accordion-button,
@@ -1226,7 +1271,6 @@ ui <- fluidPage(
             var shouldCheck = selected.indexOf(String(box.value)) !== -1;
             if (box.checked !== shouldCheck) {
               box.checked = shouldCheck;
-              box.dispatchEvent(new Event('change', {bubbles: true}));
             }
           });
           if (window.Shiny && typeof Shiny.setInputValue === 'function') {
@@ -1246,6 +1290,443 @@ ui <- fluidPage(
         }, 250);
       }
       window.BIOSZEN_registerCheckboxGroupSync = registerBioszenCheckboxGroupSync;
+    })();
+  ")),
+  tags$script(HTML("
+    (function(){
+      if (window.BIOSZEN_debouncedCheckboxGroups &&
+          window.BIOSZEN_debouncedCheckboxGroups.version >= 4) {
+        return;
+      }
+      var pendingTimers = {};
+      var pendingSelections = {};
+      var pendingKinds = {};
+      var pendingStartedAt = {};
+      var releasedSelections = {};
+      var releasedKinds = {};
+      var releasedExpiresAt = {};
+      var mutationFrame = null;
+      var reapplyInterval = null;
+      var protectedChangeCount = 0;
+      var protectedLastChange = null;
+      var debounceMs = 280;
+      var minHoldMs = 900;
+      var holdMs = 3000;
+      var maxHoldMs = 120000;
+      document.documentElement.setAttribute('data-bioszen-selector-guard', '4');
+
+      function isDebouncedGroup(name) {
+        if (!name) return false;
+        return name === 'showMedios' ||
+          name === 'showGroups' ||
+          name === 'rm_reps_all' ||
+          name.indexOf('reps_') === 0 ||
+          name.indexOf('reps_grp_') === 0 ||
+          name.indexOf('reps_cur_') === 0 ||
+          name.indexOf('qc_tech_rep_') === 0;
+      }
+
+      var protectedSelectorKeys = {
+        scope: true,
+        strain: true,
+        tipo: true,
+        param: true,
+        ctrlMedium: true,
+        corr_norm_target: true,
+        corr_param_x: true,
+        corr_param_y: true,
+        corr_method: true,
+        corrm_params: true,
+        corrm_method: true,
+        corrm_adjust: true,
+        heat_params: true,
+        heat_scale_mode: true,
+        heat_orientation: true,
+        heat_hclust_method: true,
+        stackParams: true,
+        errbar_stat: true,
+        colorMode: true,
+        adv_pal_type: true,
+        adv_pal_filters: true,
+        normTests: true,
+        sigTest: true,
+        postHoc: true,
+        compMode: true,
+        multitest_method: true,
+        sig_mode: true,
+        sig_auto_include: true,
+        sig_auto_label_mode: true,
+        sig_param: true,
+        controlGroup: true,
+        group1: true,
+        group2: true,
+        sig_group1: true,
+        sig_group2: true
+      };
+
+      function isProtectedKey(key) {
+        key = String(key || '');
+        if (!key) return false;
+        return !!protectedSelectorKeys[key] || isDebouncedGroup(key);
+      }
+
+      function isSelectControl(target) {
+        if (!target || String(target.tagName || '').toLowerCase() !== 'select') return false;
+        var key = String(target.id || target.name || '');
+        if (!key) return false;
+        if (target.type === 'file') return false;
+        if (!isProtectedKey(key)) return false;
+        return true;
+      }
+
+      function isRadioGroup(target) {
+        return target && target.type === 'radio' && !!target.name && isProtectedKey(target.name);
+      }
+
+      function isCheckboxGroupControl(target) {
+        if (!target || target.type !== 'checkbox' || !target.name) return false;
+        if (!isProtectedKey(target.name)) return false;
+        return isDebouncedGroup(String(target.name || '')) || checkboxesFor(target.name).length > 1;
+      }
+
+      function controlKey(target) {
+        if (!target) return '';
+        if (target.type === 'checkbox' || target.type === 'radio') {
+          return String(target.name || '');
+        }
+        return String(target.id || target.name || '');
+      }
+
+      function controlKind(target) {
+        if (isCheckboxGroupControl(target)) return 'checkbox-group';
+        if (isRadioGroup(target)) return 'radio';
+        if (isSelectControl(target)) return 'select';
+        return '';
+      }
+
+      function controlKindFromKey(key, value) {
+        key = String(key || '');
+        if (!key) return '';
+        var directEl = document.getElementById(key);
+        if (directEl && directEl.type === 'file') return '';
+        if (!isProtectedKey(key)) return '';
+        if (isDebouncedGroup(key) || checkboxesFor(key).length > 1) return 'checkbox-group';
+        if (radiosFor(key).length > 0) return 'radio';
+        if (selectFor(key)) return 'select';
+        if (Array.isArray(value)) return 'checkbox-group';
+        return '';
+      }
+
+      function checkboxesFor(name) {
+        return Array.prototype.slice.call(document.querySelectorAll('input[type=\"checkbox\"]'))
+          .filter(function(box){ return String(box.name || '') === name; });
+      }
+
+      function radiosFor(name) {
+        return Array.prototype.slice.call(document.querySelectorAll('input[type=\"radio\"]'))
+          .filter(function(box){ return String(box.name || '') === name; });
+      }
+
+      function selectFor(key) {
+        return document.getElementById(key) ||
+          document.querySelector('select[name=\"' + String(key).replace(/\"/g, '\\\\\"') + '\"]');
+      }
+
+      function currentValueFor(key, kind) {
+        if (kind === 'checkbox-group') return selectedValues(key);
+        if (kind === 'radio') {
+          var checked = radiosFor(key).filter(function(box){ return box.checked; })[0];
+          return checked ? String(checked.value || '') : null;
+        }
+        if (kind === 'select') {
+          var sel = selectFor(key);
+          if (!sel) return null;
+          var values = Array.prototype.slice.call(sel.options)
+            .filter(function(opt){ return opt.selected; })
+            .map(function(opt){ return String(opt.value || ''); });
+          return sel.multiple ? values : (values[0] || '');
+        }
+        return null;
+      }
+
+      function selectedValues(name) {
+        return checkboxesFor(name)
+          .filter(function(box){ return box.checked; })
+          .map(function(box){ return String(box.value || ''); });
+      }
+
+      function normalizeProtectedValue(value, kind) {
+        if (kind === 'checkbox-group') {
+          if (Array.isArray(value)) return value.map(String);
+          if (value === null || typeof value === 'undefined' || value === false) return [];
+          return [String(value)];
+        }
+        if (kind === 'select') {
+          if (Array.isArray(value)) return value.map(String);
+          return value === null || typeof value === 'undefined' ? '' : String(value);
+        }
+        return value === null || typeof value === 'undefined' ? '' : String(value);
+      }
+
+      function applySelection(key, value, kind) {
+        if (kind === 'checkbox-group') {
+          value = Array.isArray(value) ? value.map(String) : [];
+          var lookup = {};
+          value.forEach(function(item){ lookup[String(item)] = true; });
+          checkboxesFor(key).forEach(function(box){
+            var shouldCheck = !!lookup[String(box.value || '')];
+            if (box.checked !== shouldCheck) {
+              box.checked = shouldCheck;
+            }
+          });
+          return;
+        }
+        if (kind === 'radio') {
+          radiosFor(key).forEach(function(box){
+            var shouldCheck = String(box.value || '') === String(value || '');
+            if (box.checked !== shouldCheck) {
+              box.checked = shouldCheck;
+            }
+          });
+          return;
+        }
+        if (kind === 'select') {
+          var sel = selectFor(key);
+          if (!sel) return;
+          var values = Array.isArray(value) ? value.map(String) : [String(value || '')];
+          var selectLookup = {};
+          values.forEach(function(item){ selectLookup[String(item)] = true; });
+          Array.prototype.slice.call(sel.options).forEach(function(opt){
+            var shouldSelect = !!selectLookup[String(opt.value || '')];
+            if (opt.selected !== shouldSelect) {
+              opt.selected = shouldSelect;
+            }
+          });
+        }
+      }
+
+      function valuesEqual(a, b) {
+        if (Array.isArray(a) || Array.isArray(b)) {
+          a = Array.isArray(a) ? a.map(String).sort() : [String(a || '')];
+          b = Array.isArray(b) ? b.map(String).sort() : [String(b || '')];
+          return a.length === b.length && a.every(function(value, index){ return value === b[index]; });
+        }
+        return String(a || '') === String(b || '');
+      }
+
+      function shinyInputMatches(key, value) {
+        if (!window.Shiny || !Shiny.shinyapp || !Shiny.shinyapp.$inputValues) return false;
+        var commit = Shiny.shinyapp.$inputValues.bioszen_selector_commit;
+        if (commit && String(commit.key || '') === String(key || '') &&
+            valuesEqual(commit.value, value)) {
+          return true;
+        }
+        if (!Object.prototype.hasOwnProperty.call(Shiny.shinyapp.$inputValues, key)) return false;
+        return valuesEqual(Shiny.shinyapp.$inputValues[key], value);
+      }
+
+      function elementIsVisible(el) {
+        if (!el || !el.isConnected) return false;
+        var style = window.getComputedStyle(el);
+        if (!style || style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+          return false;
+        }
+        var rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      }
+
+      function pageIsBusy() {
+        return document.documentElement.classList.contains('shiny-busy') ||
+          document.body.classList.contains('shiny-busy') ||
+          Array.prototype.slice.call(document.querySelectorAll(
+            '.shiny-output-error, ' +
+            '#plotInteractivo.recalculating, ' +
+            '#plotInteractivoUI.recalculating, ' +
+            '#showMediosUI.recalculating, ' +
+            '#groupSel.recalculating, ' +
+            '#repsStrainUI.recalculating, ' +
+            '#repsGrpUI.recalculating, ' +
+            '#qcTechSelectorsUI.recalculating'
+          )).some(elementIsVisible);
+      }
+
+      function startReapplyLoop() {
+        if (reapplyInterval !== null) return;
+        reapplyInterval = window.setInterval(reapplyPendingSelections, 120);
+      }
+
+      function activeReleasedKeys() {
+        var now = Date.now();
+        Object.keys(releasedSelections).forEach(function(key){
+          if ((releasedExpiresAt[key] || 0) <= now) {
+            delete releasedSelections[key];
+            delete releasedKinds[key];
+            delete releasedExpiresAt[key];
+          }
+        });
+        return Object.keys(releasedSelections);
+      }
+
+      function stopReapplyLoopIfIdle() {
+        if ((Object.keys(pendingSelections).length || activeReleasedKeys().length) ||
+            reapplyInterval === null) return;
+        window.clearInterval(reapplyInterval);
+        reapplyInterval = null;
+      }
+
+      function maybeRelease(key) {
+        var kind = pendingKinds[key];
+        if (!kind) return;
+        var ageMs = Date.now() - (pendingStartedAt[key] || Date.now());
+        var current = currentValueFor(key, kind);
+        var settled = valuesEqual(current, pendingSelections[key]);
+        if ((ageMs >= minHoldMs && settled && shinyInputMatches(key, pendingSelections[key])) ||
+            (ageMs >= holdMs && !pageIsBusy() && settled) ||
+            ageMs >= maxHoldMs) {
+          var released = Array.isArray(pendingSelections[key]) ? pendingSelections[key].slice() : pendingSelections[key];
+          applySelection(key, released, kind);
+          releasedSelections[key] = Array.isArray(released) ? released.slice() : released;
+          releasedKinds[key] = kind;
+          releasedExpiresAt[key] = Date.now() + holdMs;
+          if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+            Shiny.setInputValue('bioszen_selector_release', {
+              key: key,
+              kind: kind,
+              value: released,
+              nonce: Date.now() + Math.random()
+            }, {priority: 'event'});
+          }
+          delete pendingSelections[key];
+          delete pendingKinds[key];
+          delete pendingStartedAt[key];
+          stopReapplyLoopIfIdle();
+          return;
+        }
+        window.setTimeout(function(){ maybeRelease(key); }, 150);
+      }
+
+      function flushControl(key) {
+        delete pendingTimers[key];
+        var kind = pendingKinds[key];
+        if (!kind) return;
+        var selected = Object.prototype.hasOwnProperty.call(pendingSelections, key) ?
+          pendingSelections[key] :
+          currentValueFor(key, kind);
+        if (Array.isArray(selected)) selected = selected.slice();
+        applySelection(key, selected, kind);
+        if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+          Shiny.setInputValue('bioszen_selector_commit', {
+            key: key,
+            kind: kind,
+            value: selected,
+            nonce: Date.now() + Math.random()
+          }, {priority: 'event'});
+          Shiny.setInputValue(key, selected, {priority: 'event'});
+        }
+        var ageMs = Date.now() - (pendingStartedAt[key] || Date.now());
+        var firstReleaseCheckMs = Math.max(50, minHoldMs - ageMs);
+        window.setTimeout(function(){ maybeRelease(key); }, firstReleaseCheckMs);
+      }
+
+      function reapplyPendingSelections() {
+        mutationFrame = null;
+        Object.keys(pendingSelections).forEach(function(key){
+          applySelection(key, pendingSelections[key], pendingKinds[key]);
+        });
+        activeReleasedKeys().forEach(function(key){
+          if (!Object.prototype.hasOwnProperty.call(pendingSelections, key)) {
+            applySelection(key, releasedSelections[key], releasedKinds[key]);
+          }
+        });
+        stopReapplyLoopIfIdle();
+      }
+
+      function scheduleReapply() {
+        if (mutationFrame !== null) return;
+        mutationFrame = window.requestAnimationFrame(reapplyPendingSelections);
+      }
+
+      function queueProtectedSelection(key, value, kind) {
+        if (!key) return;
+        protectedChangeCount += 1;
+        delete releasedSelections[key];
+        delete releasedKinds[key];
+        delete releasedExpiresAt[key];
+        pendingKinds[key] = kind;
+        pendingSelections[key] = normalizeProtectedValue(value, kind);
+        pendingStartedAt[key] = Date.now();
+        document.documentElement.setAttribute('data-bioszen-selector-change-count', String(protectedChangeCount));
+        document.documentElement.setAttribute('data-bioszen-selector-last-key', key);
+        protectedLastChange = {
+          key: key,
+          kind: kind,
+          value: Array.isArray(pendingSelections[key]) ? pendingSelections[key].slice() : pendingSelections[key]
+        };
+        applySelection(key, pendingSelections[key], kind);
+        if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+          Shiny.setInputValue('bioszen_selector_pending', {
+            key: key,
+            kind: kind,
+            value: Array.isArray(pendingSelections[key]) ? pendingSelections[key].slice() : pendingSelections[key],
+            nonce: Date.now() + Math.random()
+          }, {priority: 'event'});
+        }
+        if (pendingTimers[key]) window.clearTimeout(pendingTimers[key]);
+        pendingTimers[key] = window.setTimeout(function(){ flushControl(key); }, debounceMs);
+        startReapplyLoop();
+        scheduleReapply();
+      }
+
+      function handleProtectedControlChange(ev) {
+        var target = ev.target;
+        if (!target || target.type === 'file') return;
+        var kind = controlKind(target);
+        if (!kind) return;
+        var key = controlKey(target);
+        if (!key) return;
+        ev.stopImmediatePropagation();
+        queueProtectedSelection(key, currentValueFor(key, kind), kind);
+      }
+
+      window.addEventListener('change', handleProtectedControlChange, true);
+      document.addEventListener('change', handleProtectedControlChange, true);
+      if (window.MutationObserver) {
+        new MutationObserver(function(){
+          if (Object.keys(pendingSelections).length || activeReleasedKeys().length) scheduleReapply();
+        }).observe(document.documentElement, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['checked', 'class', 'disabled']
+        });
+      }
+
+      window.BIOSZEN_debouncedCheckboxGroups = {
+        version: 4,
+        flush: function(name) {
+          name = String(name || '');
+          if (!pendingKinds[name] && !isDebouncedGroup(name)) return false;
+          if (pendingTimers[name]) window.clearTimeout(pendingTimers[name]);
+          flushControl(name);
+          return true;
+        },
+        pending: function(name) {
+          name = String(name || '');
+          return Object.prototype.hasOwnProperty.call(pendingSelections, name) ?
+            pendingSelections[name].slice() :
+            null;
+        },
+        debug: function() {
+          return {
+            changeCount: protectedChangeCount,
+            lastChange: protectedLastChange,
+            pendingKeys: Object.keys(pendingSelections),
+            pendingKinds: Object.assign({}, pendingKinds),
+            releasedKeys: activeReleasedKeys()
+          };
+        },
+        selectedValues: selectedValues
+      };
     })();
   ")),
   tags$script(HTML("
@@ -1437,7 +1918,7 @@ ui <- fluidPage(
         plotLoadingTimer = setTimeout(function () {
           plotLoadingTimer = null;
           setPlotLoading(true);
-        }, 180);
+        }, 3000);
       }
       function clearPlotLoading() {
         if (plotLoadingTimer) {

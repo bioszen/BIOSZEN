@@ -30,6 +30,11 @@
       return(invisible(FALSE))
     }
   }
+  schedule_stop <- get0("schedule_stop_if_last_session", mode = "function", inherits = TRUE, ifnotfound = NULL)
+  if (is.function(schedule_stop)) {
+    schedule_stop()
+    return(invisible(TRUE))
+  }
   try(shiny::stopApp(), silent = TRUE)
   invisible(TRUE)
 }

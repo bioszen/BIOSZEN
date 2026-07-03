@@ -197,6 +197,127 @@ loop_probe_counts <- function(app) {
   as.list(out)
 }
 
+reset_loop_probe <- function(app) {
+  app$get_js(
+    "(function(){
+       if (!window.__bioszenLoopProbe) return false;
+       window.__bioszenLoopProbe.invalidated = 0;
+       window.__bioszenLoopProbe.value = 0;
+       window.__bioszenLoopProbe.errors = 0;
+       window.__bioszenLoopProbe.busy = 0;
+       window.__bioszenLoopProbe.idle = 0;
+       return true;
+     })()"
+  )
+}
+
+install_plotly_redraw_probe <- function(app, timeout_sec = 30) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  while (Sys.time() < deadline) {
+    installed <- tryCatch(
+      app$get_js(
+        "(function(){
+           if (!window.Plotly) return false;
+           if (window.__bioszenPlotlyProbeInstalled) return true;
+           window.__bioszenPlotlyProbeInstalled = true;
+           window.__bioszenPlotlyProbe = {newPlot: 0, react: 0, redraw: 0};
+           ['newPlot', 'react', 'redraw'].forEach(function(name){
+             if (typeof window.Plotly[name] !== 'function') return;
+             var original = window.Plotly[name];
+             window.Plotly[name] = function(){
+               if (window.__bioszenPlotlyProbe) {
+                 window.__bioszenPlotlyProbe[name] += 1;
+               }
+               return original.apply(this, arguments);
+             };
+           });
+           return true;
+         })()"
+      ),
+      error = function(e) FALSE
+    )
+    if (isTRUE(normalize_js_bool(installed))) return(TRUE)
+    Sys.sleep(0.25)
+  }
+  FALSE
+}
+
+reset_plotly_redraw_probe <- function(app) {
+  app$get_js(
+    "(function(){
+       if (!window.__bioszenPlotlyProbe) return false;
+       window.__bioszenPlotlyProbe.newPlot = 0;
+       window.__bioszenPlotlyProbe.react = 0;
+       window.__bioszenPlotlyProbe.redraw = 0;
+       return true;
+     })()"
+  )
+}
+
+plotly_redraw_probe_counts <- function(app) {
+  skip_if_not_installed("jsonlite")
+  raw <- app$get_js(
+    "(function(){
+       return JSON.stringify(window.__bioszenPlotlyProbe || {newPlot: 0, react: 0, redraw: 0});
+     })()"
+  )
+  as.list(jsonlite::fromJSON(normalize_js_scalar(raw)))
+}
+
+install_plot_loading_probe <- function(app, timeout_sec = 30) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  while (Sys.time() < deadline) {
+    installed <- tryCatch(
+      app$get_js(
+        "(function(){
+           var wrap = document.getElementById('plot-loading-wrap');
+           if (!wrap) return false;
+           if (window.__bioszenPlotLoadingProbeInstalled) return true;
+           window.__bioszenPlotLoadingProbeInstalled = true;
+           window.__bioszenPlotLoadingProbe = {loadingOn: 0, loadingOff: 0};
+           window.__bioszenPlotLoadingLast = wrap.classList.contains('is-loading');
+           var obs = new MutationObserver(function(){
+             var on = wrap.classList.contains('is-loading');
+             if (on === window.__bioszenPlotLoadingLast) return;
+             window.__bioszenPlotLoadingLast = on;
+             if (on) window.__bioszenPlotLoadingProbe.loadingOn += 1;
+             else window.__bioszenPlotLoadingProbe.loadingOff += 1;
+           });
+           obs.observe(wrap, {attributes: true, attributeFilter: ['class']});
+           return true;
+         })()"
+      ),
+      error = function(e) FALSE
+    )
+    if (isTRUE(normalize_js_bool(installed))) return(TRUE)
+    Sys.sleep(0.25)
+  }
+  FALSE
+}
+
+reset_plot_loading_probe <- function(app) {
+  app$get_js(
+    "(function(){
+       var wrap = document.getElementById('plot-loading-wrap');
+       if (!window.__bioszenPlotLoadingProbe || !wrap) return false;
+       window.__bioszenPlotLoadingProbe.loadingOn = 0;
+       window.__bioszenPlotLoadingProbe.loadingOff = 0;
+       window.__bioszenPlotLoadingLast = wrap.classList.contains('is-loading');
+       return true;
+     })()"
+  )
+}
+
+plot_loading_probe_counts <- function(app) {
+  skip_if_not_installed("jsonlite")
+  raw <- app$get_js(
+    "(function(){
+       return JSON.stringify(window.__bioszenPlotLoadingProbe || {loadingOn: 0, loadingOff: 0});
+     })()"
+  )
+  as.list(jsonlite::fromJSON(normalize_js_scalar(raw)))
+}
+
 wait_for_no_plot_churn <- function(app, quiet_sec = 2.5, timeout_sec = 25, max_plot_events = 1) {
   deadline <- Sys.time() + as.numeric(timeout_sec)
   while (Sys.time() < deadline) {
@@ -262,6 +383,169 @@ wait_for_selected_values <- function(app, input_id, expected, timeout_sec = 30) 
     Sys.sleep(0.5)
   }
   FALSE
+}
+
+checkbox_dom_selected_values <- function(app, input_id) {
+  skip_if_not_installed("jsonlite")
+  input_json <- jsonlite::toJSON(as.character(input_id), auto_unbox = TRUE)
+  raw <- app$get_js(sprintf(
+    "(function(){
+       var inputId = %s;
+       var selected = Array.from(document.querySelectorAll('input[type=\"checkbox\"]'))
+         .filter(function(box){ return String(box.name || '') === inputId && box.checked; })
+         .map(function(box){ return String(box.value || ''); });
+       return JSON.stringify(selected);
+     })()",
+    input_json
+  ))
+  vals <- jsonlite::fromJSON(normalize_js_scalar(raw))
+  vals <- as.character(vals %||% character(0))
+  sort(unique(vals[!is.na(vals) & nzchar(vals)]))
+}
+
+wait_for_dom_selected_values <- function(app, input_id, expected, timeout_sec = 30) {
+  expected <- sort(unique(as.character(expected)))
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  while (Sys.time() < deadline) {
+    observed <- tryCatch(
+      checkbox_dom_selected_values(app, input_id),
+      error = function(e) character(0)
+    )
+    if (identical(observed, expected)) return(TRUE)
+    Sys.sleep(0.5)
+  }
+  FALSE
+}
+
+expect_dom_selection_stays_put <- function(app, input_id, expected, label, quiet_sec = 3) {
+  expected <- sort(unique(as.character(expected)))
+  expect_true(
+    wait_for_dom_selected_values(app, input_id, expected, timeout_sec = 30),
+    info = sprintf("DOM checkbox selection did not reach the expected final state after %s.", label)
+  )
+  Sys.sleep(quiet_sec)
+  expect_identical(
+    checkbox_dom_selected_values(app, input_id),
+    expected,
+    info = sprintf("DOM checkbox selection replayed a stale state after %s.", label)
+  )
+}
+
+rapid_click_checkbox <- function(app, selector, times = 7L) {
+  skip_if_not_installed("jsonlite")
+  selector_json <- jsonlite::toJSON(selector, auto_unbox = TRUE)
+  times <- max(1L, as.integer(times[[1]]))
+  js <- sprintf(
+    "(function(){
+       var selector = %s;
+       var box = document.querySelector(selector);
+       if (!box) return JSON.stringify({ok:false, reason:'missing'});
+       for (var i = 0; i < %d; i += 1) {
+         box.click();
+       }
+       return JSON.stringify({
+         ok: true,
+         name: String(box.name || box.id || ''),
+         value: String(box.value || ''),
+         checked: !!box.checked
+       });
+     })()",
+    selector_json,
+    times
+  )
+  out <- jsonlite::fromJSON(normalize_js_scalar(app$get_js(js)))
+  if (!isTRUE(out$ok)) {
+    stop(sprintf("Checkbox selector was not found: %s", selector), call. = FALSE)
+  }
+  out
+}
+
+rapid_click_checked_checkboxes <- function(app, name, limit = 3L) {
+  skip_if_not_installed("jsonlite")
+  name_json <- jsonlite::toJSON(as.character(name), auto_unbox = TRUE)
+  limit <- max(1L, as.integer(limit[[1]]))
+  js <- sprintf(
+    "(function(){
+       var name = %s;
+       var boxes = Array.from(document.querySelectorAll('input[type=\"checkbox\"]'))
+         .filter(function(box){ return String(box.name || '') === name && box.checked; })
+         .slice(0, %d);
+       boxes.forEach(function(box){ box.click(); });
+       return JSON.stringify({
+         n: boxes.length,
+         values: boxes.map(function(box){ return String(box.value || ''); })
+       });
+     })()",
+    name_json,
+    limit
+  )
+  jsonlite::fromJSON(normalize_js_scalar(app$get_js(js)))
+}
+
+checkbox_group_state <- function(app, name_prefix = NULL, exact_name = NULL) {
+  skip_if_not_installed("jsonlite")
+  state_arg <- jsonlite::toJSON(
+    list(name_prefix = name_prefix, exact_name = exact_name),
+    auto_unbox = TRUE,
+    null = "null"
+  )
+  raw <- app$get_js(sprintf(
+    "(function(arg){
+       var boxes = Array.from(document.querySelectorAll('input[type=\"checkbox\"]'));
+       if (arg.exact_name) {
+         boxes = boxes.filter(function(box){ return String(box.name || '') === String(arg.exact_name); });
+       }
+       if (arg.name_prefix) {
+         boxes = boxes.filter(function(box){ return String(box.name || '').indexOf(String(arg.name_prefix)) === 0; });
+       }
+       return JSON.stringify(boxes.map(function(box){
+         return {
+           id: String(box.id || ''),
+           name: String(box.name || ''),
+           value: String(box.value || ''),
+           checked: !!box.checked
+         };
+       }));
+     })(%s)",
+    state_arg
+  ))
+  jsonlite::fromJSON(normalize_js_scalar(raw), simplifyDataFrame = TRUE)
+}
+
+css_checkbox_selector <- function(name, value) {
+  sprintf(
+    "input[type=\"checkbox\"][name=\"%s\"][value=\"%s\"]",
+    gsub('(["\\\\])', '\\\\\\1', as.character(name), perl = TRUE),
+    gsub('(["\\\\])', '\\\\\\1', as.character(value), perl = TRUE)
+  )
+}
+
+open_qc_tech_controls <- function(app, timeout_sec = 45) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  while (Sys.time() < deadline) {
+    boxes <- checkbox_group_state(app, name_prefix = "qc_tech_rep_")
+    if (is.data.frame(boxes) && nrow(boxes)) return(boxes)
+    try(app$set_inputs(qcTabs = "qc_tech", wait_ = FALSE), silent = TRUE)
+    try(
+      app$get_js(
+        "(function(){
+           var qcButton = Array.from(document.querySelectorAll('button[aria-controls]')).find(function(x){
+             return /data quality control|control de calidad/i.test(x.textContent || '');
+           });
+           if (qcButton && qcButton.getAttribute('aria-expanded') !== 'true') {
+             try { qcButton.click(); } catch(e) {}
+           }
+           var techTab = document.querySelector('a[data-value=\"qc_tech\"], button[data-value=\"qc_tech\"]');
+           if (techTab) {
+             try { techTab.click(); } catch(e) {}
+           }
+         })()"
+      ),
+      silent = TRUE
+    )
+    Sys.sleep(1)
+  }
+  checkbox_group_state(app, name_prefix = "qc_tech_rep_")
 }
 
 click_stats_button_with_blank_param <- function(app, button_id) {
@@ -739,10 +1023,11 @@ test_that("core user processes settle without reload loops", {
   for (plot_type in plot_types) {
     app$set_inputs(
       tipo = plot_type,
-      wait_ = TRUE,
+      wait_ = !identical(plot_type, "Curvas"),
       timeout_ = 120000,
       allow_no_input_binding_ = TRUE
     )
+    if (identical(plot_type, "Curvas")) Sys.sleep(1)
     if (identical(plot_type, "Heatmap")) {
       try(app$wait_for_value(input = "heat_params", timeout = 60000), silent = TRUE)
     }
@@ -1201,6 +1486,357 @@ test_that("language switch updates dynamic heatmap UI labels", {
   if (wait_for_label("side dendrogram", side_dend_selector, timeout_sec = 6)) {
     expect_true(wait_for_label("dendrograma lateral", side_dend_selector, timeout_sec = 12))
   }
+})
+
+test_that("rapid checkbox clicks do not replay stale group or replicate selections", {
+  skip_if_shiny_e2e_unavailable()
+
+  fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx")
+  expect_true(file.exists(fixture))
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(dataFile = normalizePath(fixture), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "strain", timeout = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  app$set_inputs(tipo = "Boxplot", wait_ = TRUE, timeout_ = 60000)
+  install_loop_probe(app)
+
+  app$set_inputs(scope = "Por Cepa", wait_ = TRUE, timeout_ = 90000)
+  app$wait_for_value(input = "showMedios", timeout = 90000)
+  medias <- sort(unique(as.character(app$get_value(input = "showMedios"))))
+  medias <- medias[!is.na(medias) & nzchar(medias)]
+  if (length(medias) < 2) skip("Not enough media choices to test rapid media toggles.")
+  app$set_inputs(showMedios = medias, wait_ = TRUE, timeout_ = 90000)
+  target_media <- medias[[1]]
+  rapid_click_checkbox(app, css_checkbox_selector("showMedios", target_media), times = 7L)
+  expect_true(
+    wait_for_selected_values(app, "showMedios", setdiff(medias, target_media), timeout_sec = 30),
+    info = "Rapid media clicks should leave only the clicked condition deselected."
+  )
+  expect_dom_selection_stays_put(
+    app,
+    "showMedios",
+    setdiff(medias, target_media),
+    "rapid media checkbox clicks"
+  )
+  expect_app_idle_without_loop(app, "rapid media checkbox clicks", idle_timeout = 45)
+
+  strain_rep_boxes <- checkbox_group_state(app, name_prefix = "reps_")
+  if (is.data.frame(strain_rep_boxes) && nrow(strain_rep_boxes)) {
+    strain_rep_boxes <- strain_rep_boxes[
+      !grepl("^reps_grp_", strain_rep_boxes$name) &
+        strain_rep_boxes$name != "rm_reps_all" &
+        as.logical(strain_rep_boxes$checked),
+      ,
+      drop = FALSE
+    ]
+  }
+  if (is.data.frame(strain_rep_boxes) && nrow(strain_rep_boxes)) {
+    rep_name <- strain_rep_boxes$name[[1]]
+    rep_value <- strain_rep_boxes$value[[1]]
+    rep_values <- sort(unique(as.character(app$get_value(input = rep_name))))
+    rep_values <- rep_values[!is.na(rep_values) & nzchar(rep_values)]
+    rapid_click_checkbox(app, css_checkbox_selector(rep_name, rep_value), times = 7L)
+    expect_true(
+      wait_for_selected_values(app, rep_name, setdiff(rep_values, rep_value), timeout_sec = 30),
+      info = "Rapid biological replicate clicks in Por Cepa should persist."
+    )
+    expect_dom_selection_stays_put(
+      app,
+      rep_name,
+      setdiff(rep_values, rep_value),
+      "rapid Por Cepa biological replicate clicks"
+    )
+    expect_app_idle_without_loop(app, "rapid Por Cepa biological replicate clicks", idle_timeout = 45)
+  }
+
+  app$set_inputs(scope = "Combinado", wait_ = TRUE, timeout_ = 90000)
+  app$wait_for_value(input = "showGroups", timeout = 90000)
+  groups <- sort(unique(as.character(app$get_value(input = "showGroups"))))
+  groups <- groups[!is.na(groups) & nzchar(groups)]
+  if (length(groups) < 2) skip("Not enough combined groups to test rapid group toggles.")
+  app$set_inputs(showGroups = groups, wait_ = TRUE, timeout_ = 90000)
+  target_group <- groups[[1]]
+  rapid_click_checkbox(app, css_checkbox_selector("showGroups", target_group), times = 7L)
+  expect_true(
+    wait_for_selected_values(app, "showGroups", setdiff(groups, target_group), timeout_sec = 30),
+    info = "Rapid combined-group clicks should leave only the clicked group deselected."
+  )
+  expect_dom_selection_stays_put(
+    app,
+    "showGroups",
+    setdiff(groups, target_group),
+    "rapid combined group checkbox clicks"
+  )
+  expect_app_idle_without_loop(app, "rapid combined group checkbox clicks", idle_timeout = 45)
+
+  group_rep_boxes <- checkbox_group_state(app, name_prefix = "reps_grp_")
+  if (is.data.frame(group_rep_boxes) && nrow(group_rep_boxes)) {
+    group_rep_boxes <- group_rep_boxes[as.logical(group_rep_boxes$checked), , drop = FALSE]
+  }
+  if (is.data.frame(group_rep_boxes) && nrow(group_rep_boxes)) {
+    rep_name <- group_rep_boxes$name[[1]]
+    rep_value <- group_rep_boxes$value[[1]]
+    rep_values <- sort(unique(as.character(app$get_value(input = rep_name))))
+    rep_values <- rep_values[!is.na(rep_values) & nzchar(rep_values)]
+    rapid_click_checkbox(app, css_checkbox_selector(rep_name, rep_value), times = 7L)
+    expect_true(
+      wait_for_selected_values(app, rep_name, setdiff(rep_values, rep_value), timeout_sec = 30),
+      info = "Rapid biological replicate clicks in Combinado should persist."
+    )
+    expect_dom_selection_stays_put(
+      app,
+      rep_name,
+      setdiff(rep_values, rep_value),
+      "rapid Combinado biological replicate clicks"
+    )
+    expect_app_idle_without_loop(app, "rapid Combinado biological replicate clicks", idle_timeout = 45)
+  }
+
+  tech_available <- tryCatch(
+    identical(normalize_js_scalar(app$get_value(output = "qcTechTabAvailable")), "TRUE"),
+    error = function(e) FALSE
+  )
+  tech_rep_boxes <- if (isTRUE(tech_available)) {
+    open_qc_tech_controls(app, timeout_sec = 60)
+  } else {
+    checkbox_group_state(app, name_prefix = "qc_tech_rep_")
+  }
+  if (isTRUE(tech_available)) {
+    expect_true(
+      is.data.frame(tech_rep_boxes) && nrow(tech_rep_boxes) > 0,
+      info = "Technical replicate QC is available, so rapid technical replicate tests must render selectors."
+    )
+  }
+  if (is.data.frame(tech_rep_boxes) && nrow(tech_rep_boxes)) {
+    tech_rep_boxes <- tech_rep_boxes[as.logical(tech_rep_boxes$checked), , drop = FALSE]
+  }
+  if (is.data.frame(tech_rep_boxes) && nrow(tech_rep_boxes)) {
+    rep_name <- tech_rep_boxes$name[[1]]
+    rep_value <- tech_rep_boxes$value[[1]]
+    rep_values <- sort(unique(as.character(app$get_value(input = rep_name))))
+    rep_values <- rep_values[!is.na(rep_values) & nzchar(rep_values)]
+    rapid_click_checkbox(app, css_checkbox_selector(rep_name, rep_value), times = 7L)
+    expect_true(
+      wait_for_selected_values(app, rep_name, setdiff(rep_values, rep_value), timeout_sec = 30),
+      info = "Rapid technical replicate clicks should persist when technical selectors are available."
+    )
+    expect_dom_selection_stays_put(
+      app,
+      rep_name,
+      setdiff(rep_values, rep_value),
+      "rapid technical replicate clicks"
+    )
+    expect_app_idle_without_loop(app, "rapid technical replicate clicks", idle_timeout = 45)
+  }
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("rapid combined group bursts render once across plot types", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("jsonlite")
+
+  data_fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx")
+  curve_fixture <- app_test_path("www", "reference_files", "Ejemplo_curvas.xlsx")
+  expect_true(file.exists(data_fixture))
+  expect_true(file.exists(curve_fixture))
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(dataFile = normalizePath(data_fixture), wait_ = TRUE, timeout_ = 120000)
+  app$upload_file(curveFile = normalizePath(curve_fixture), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "strain", timeout = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  install_loop_probe(app)
+  expect_true(
+    install_plotly_redraw_probe(app, timeout_sec = 45),
+    info = "Plotly redraw probe could not be installed."
+  )
+  expect_true(
+    install_plot_loading_probe(app, timeout_sec = 45),
+    info = "Plot loading probe could not be installed."
+  )
+
+  app$set_inputs(scope = "Combinado", wait_ = TRUE, timeout_ = 90000)
+  app$wait_for_value(input = "showGroups", timeout = 90000)
+  groups <- sort(unique(as.character(app$get_value(input = "showGroups"))))
+  groups <- groups[!is.na(groups) & nzchar(groups)]
+  if (length(groups) < 4) skip("Not enough combined groups to test rapid multi-group bursts.")
+
+  plot_types <- c(
+    "Boxplot", "Barras", "Violin", "Apiladas",
+    "Correlacion", "Heatmap", "MatrizCorrelacion"
+  )
+
+  wait_for_single_settled_plot <- function(label, timeout_sec = 70) {
+    deadline <- Sys.time() + as.numeric(timeout_sec)
+    last_counts <- NULL
+    last_error_count <- NA_real_
+    while (Sys.time() < deadline) {
+      expect_true(
+        wait_for_shiny_connected(app, timeout_sec = 10),
+        info = sprintf("Shiny disconnected while waiting for %s.", label)
+      )
+      if (isTRUE(wait_for_plot_idle(app, timeout_sec = 10))) {
+        counts <- plotly_redraw_probe_counts(app)
+        loading_counts <- plot_loading_probe_counts(app)
+        last_counts <- counts
+        redraw_count <- sum(as.numeric(unlist(counts, use.names = FALSE)), na.rm = TRUE)
+        loading_on_count <- as.numeric(loading_counts$loadingOn %||% 0)
+        error_count <- as.numeric(loop_probe_counts(app)$errors %||% 0)
+        last_error_count <- error_count
+        if (redraw_count >= 1 && loading_on_count <= 1 && identical(error_count, 0)) {
+          expect_true(
+            wait_for_no_plot_churn(app, quiet_sec = 1.5, timeout_sec = 15, max_plot_events = 1),
+            info = sprintf("Plot kept changing after %s.", label)
+          )
+          return(invisible(counts))
+        }
+      }
+      Sys.sleep(0.5)
+    }
+    redraw_count <- if (is.null(last_counts)) NA_real_ else sum(as.numeric(unlist(last_counts, use.names = FALSE)), na.rm = TRUE)
+    loading_counts <- tryCatch(plot_loading_probe_counts(app), error = function(e) list(loadingOn = NA_real_))
+    loading_on_count <- as.numeric(loading_counts$loadingOn %||% NA_real_)
+    stop(sprintf(
+      "Expected one settled plot for %s; observed redraws=%s loadingOn=%s errors=%s.",
+      label,
+      redraw_count,
+      loading_on_count,
+      last_error_count
+    ), call. = FALSE)
+  }
+
+  for (plot_type in plot_types) {
+    app$set_inputs(showGroups = groups, wait_ = TRUE, timeout_ = 90000)
+    expect_true(wait_for_selected_values(app, "showGroups", groups, timeout_sec = 45))
+
+    app$set_inputs(
+      tipo = plot_type,
+      wait_ = !identical(plot_type, "Curvas"),
+      timeout_ = 120000,
+      allow_no_input_binding_ = TRUE
+    )
+    if (identical(plot_type, "Curvas")) Sys.sleep(1)
+    if (identical(plot_type, "Heatmap")) {
+      try(app$wait_for_value(input = "heat_params", timeout = 60000), silent = TRUE)
+    }
+    if (identical(plot_type, "MatrizCorrelacion")) {
+      try(app$wait_for_value(input = "corrm_params", timeout = 60000), silent = TRUE)
+    }
+    if (identical(plot_type, "Correlacion")) {
+      try(app$wait_for_value(input = "corr_param_x", timeout = 60000), silent = TRUE)
+      try(app$wait_for_value(input = "corr_param_y", timeout = 60000), silent = TRUE)
+    }
+    expect_app_idle_without_loop(app, sprintf("%s before rapid burst", plot_type), idle_timeout = 45)
+
+    reset_loop_probe(app)
+    reset_plotly_redraw_probe(app)
+    reset_plot_loading_probe(app)
+    clicked <- rapid_click_checked_checkboxes(app, "showGroups", limit = 3L)
+    clicked_values <- unique(as.character(clicked$values %||% character(0)))
+    clicked_values <- clicked_values[!is.na(clicked_values) & nzchar(clicked_values)]
+    expect_true(
+      length(clicked_values) >= 1,
+      info = sprintf("No checked groups were clicked for %s.", plot_type)
+    )
+
+    expected_groups <- setdiff(groups, clicked_values)
+    expect_true(
+      wait_for_selected_values(app, "showGroups", expected_groups, timeout_sec = 45),
+      info = sprintf("Rapid combined-group burst did not settle on the expected groups for %s.", plot_type)
+    )
+    counts <- wait_for_single_settled_plot(sprintf("%s rapid group burst", plot_type))
+    loading_counts <- plot_loading_probe_counts(app)
+    loading_on_count <- as.numeric(loading_counts$loadingOn %||% 0)
+    expect_true(
+      loading_on_count <= 1,
+      info = sprintf("%s showed repeated visible plot loading during rapid group selection.", plot_type)
+    )
+  }
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("rapid combined group bursts keep Curvas connected", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("jsonlite")
+
+  data_fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx")
+  curve_fixture <- app_test_path("www", "reference_files", "Ejemplo_curvas.xlsx")
+  expect_true(file.exists(data_fixture))
+  expect_true(file.exists(curve_fixture))
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(dataFile = normalizePath(data_fixture), wait_ = TRUE, timeout_ = 120000)
+  app$upload_file(curveFile = normalizePath(curve_fixture), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "strain", timeout = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  install_loop_probe(app)
+  expect_true(install_plot_loading_probe(app, timeout_sec = 45))
+
+  app$set_inputs(scope = "Combinado", wait_ = TRUE, timeout_ = 90000)
+  app$wait_for_value(input = "showGroups", timeout = 90000)
+  groups <- sort(unique(as.character(app$get_value(input = "showGroups"))))
+  groups <- groups[!is.na(groups) & nzchar(groups)]
+  if (length(groups) < 4) skip("Not enough combined groups to test rapid Curvas group bursts.")
+
+  app$set_inputs(tipo = "Curvas", wait_ = FALSE, allow_no_input_binding_ = TRUE)
+  expect_true(wait_for_shiny_connected(app, timeout_sec = 20))
+  Sys.sleep(12)
+  expect_true(wait_for_shiny_connected(app, timeout_sec = 20))
+  expect_true(wait_for_plot_idle(app, timeout_sec = 45))
+  Sys.sleep(1)
+
+  reset_loop_probe(app)
+  reset_plot_loading_probe(app)
+  clicked <- rapid_click_checked_checkboxes(app, "showGroups", limit = 3L)
+  clicked_values <- unique(as.character(clicked$values %||% character(0)))
+  clicked_values <- clicked_values[!is.na(clicked_values) & nzchar(clicked_values)]
+  expect_true(length(clicked_values) >= 1)
+
+  expected_groups <- setdiff(groups, clicked_values)
+  expect_true(
+    wait_for_selected_values(app, "showGroups", expected_groups, timeout_sec = 45),
+    info = "Rapid combined-group burst did not settle on the expected groups for Curvas."
+  )
+  expect_true(wait_for_shiny_connected(app, timeout_sec = 20))
+  expect_true(wait_for_plot_idle(app, timeout_sec = 60))
+  expect_true(
+    wait_for_no_plot_churn(app, quiet_sec = 1.5, timeout_sec = 30, max_plot_events = 1),
+    info = "Curvas kept changing after rapid group selection."
+  )
+  loading_counts <- plot_loading_probe_counts(app)
+  expect_true(
+    as.numeric(loading_counts$loadingOn %||% 0) <= 1,
+    info = "Curvas showed repeated visible plot loading during rapid group selection."
+  )
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
 })
 
 test_that("reactive stress: repeated parameter and replicate actions keep app responsive", {

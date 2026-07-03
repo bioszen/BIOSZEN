@@ -439,7 +439,7 @@ override_sig_linewidth,Significance bar thickness
 override_sig_textsize,Significance text size
 override_apply_all,Apply override now
 no_data_plot,No data to plot
-loading_plot_data,Loading data from file...
+loading_plot_data,Updating plot...
 norm_failed_generic,Normalization could not be applied for the current selection.
 norm_fallback_ctrl,"Normalization could not use control ""%s""."
 norm_unavailable_ctrl,"Normalization could not use control ""%s"" for the current selection; only parameters with valid normalized values are available."

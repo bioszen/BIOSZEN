@@ -128,7 +128,7 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     server_txt,
-    "begin_deferred_reactive_flag\\(\\s*dataset_loading,[\\s\\S]*?flush_cycles = 8L[\\s\\S]*?timeout_ms = 2500L",
+    "begin_reactive_stabilizer\\(\\s*flag_key = \"dataset_loading\",[\\s\\S]*?flush_cycles = 8L[\\s\\S]*?timeout_ms = 2500L",
     perl = TRUE,
     info = "Dataset uploads should hold the plot gate long enough for upload-driven UI updates to settle."
   )
@@ -139,7 +139,7 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     server_txt,
-    "begin_deferred_reactive_flag\\(\\s*filter_selection_sync_inflight,[\\s\\S]*?flush_cycles = 3L[\\s\\S]*?timeout_ms = 750L",
+    "begin_filter_selection_sync <- function\\(\\) \\{[\\s\\S]*?begin_quiet_reactive_flag\\([\\s\\S]*?flag_key = \"filter_selection_sync_inflight\"[\\s\\S]*?quiet_ms = 1400L",
     perl = TRUE,
     info = "Filter changes should wait for selected groups/conditions to settle before redraw."
   )
@@ -150,14 +150,14 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     server_txt,
-    "begin_deferred_reactive_flag\\(\\s*plot_input_sync_inflight,[\\s\\S]*?flush_cycles = 5L[\\s\\S]*?timeout_ms = 1400L",
+    "begin_reactive_stabilizer\\(\\s*flag_key = \"plot_input_sync_inflight\",[\\s\\S]*?flush_cycles = 5L[\\s\\S]*?timeout_ms = 1400L",
     perl = TRUE,
     info = "Programmatic selector refreshes should hide intermediate plot states."
   )
   expect_match(
     server_txt,
     "filter_selection_sync_inflight <- reactiveVal\\(FALSE\\)",
-    info = "The plot output must be able to observe filter sync state."
+    info = "Dependent selector synchronization should be able to observe filter sync state."
   )
   expect_match(
     server_txt,
@@ -166,26 +166,93 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     server_txt,
+    "replicate_selection_settling <- reactiveVal\\(FALSE\\)",
+    info = "Biological/technical replicate maps should coalesce rapid selection bursts."
+  )
+  expect_match(
+    server_txt,
+    "last_plotly_render <- new\\.env\\(parent = emptyenv\\(\\)\\)",
+    perl = TRUE,
+    info = "The app should cache the last good plotly render for burst-loop fallback."
+  )
+  expect_match(
+    server_txt,
+    "begin_reactive_stabilizer\\s*<-\\s*function",
+    info = "Loop-prone UI phases should use one stabilizer helper instead of scattered guards."
+  )
+  expect_match(
+    server_txt,
+    "begin_quiet_reactive_flag\\s*<-\\s*function",
+    info = "Rapid filter/replicate selection bursts should use a quiet-period stabilizer."
+  )
+  expect_match(
+    server_txt,
+    "begin_filter_selection_sync <- function\\(\\) \\{[\\s\\S]*?begin_quiet_reactive_flag\\([\\s\\S]*?quiet_ms = 1400L",
+    perl = TRUE,
+    info = "Filter selection changes should stay held until the user stops rapidly toggling."
+  )
+  expect_match(
+    server_txt,
+    "begin_replicate_selection_settle <- function\\(\\) \\{[\\s\\S]*?begin_quiet_reactive_flag\\([\\s\\S]*?quiet_ms = 1200L",
+    perl = TRUE,
+    info = "Biological/technical replicate selection maps should settle through a quiet-period hold."
+  )
+  expect_match(
+    server_txt,
+    "output\\$repSelCurvas <- renderUI\\(\\{\\s*guard_stable_output\\(c\\([\\s\\S]*?\"replicate_bulk_updating\"[\\s\\S]*?\\)\\)",
+    perl = TRUE,
+    info = "Curve replicate selectors should stay usable during passive rapid group/filter bursts."
+  )
+  expect_match(
+    server_txt,
+    "left_join\\([\\s\\S]*?meta_df %>% mutate\\(Well = as.character\\(Well\\)\\)[\\s\\S]*?by = \"Well\"[\\s\\S]*?relationship = \"many-to-many\"",
+    perl = TRUE,
+    info = "Curve long data should declare the expected many-to-many Well join to avoid warning-as-error crashes."
+  )
+  expect_match(
+    server_txt,
+    "guard_stable_output\\s*<-\\s*function",
+    info = "Outputs should share the same stable-output guard."
+  )
+  expect_match(
+    server_txt,
+    "guard_reactive_loop\\s*<-\\s*function",
+    info = "Repeated redraw loops should be detected by a threshold watchdog."
+  )
+  expect_match(
+    server_txt,
     "plot_settle_tick <- reactiveVal\\(0L\\)",
-    info = "Clearing upload/filter gates should force one final plot render."
+    info = "The mobile plot refresh trigger should remain available."
   )
   expect_match(
     server_txt,
-    "plot_settle_tick\\(isolate\\(plot_settle_tick\\(\\)\\) \\+ 1L\\)",
+    "if \\(flag_key %in% plot_stability_keys\\) \\{\\s*plot_settle_tick\\(isolate\\(plot_settle_tick\\(\\)\\) \\+ 1L\\)",
     perl = TRUE,
-    info = "The plot should be invalidated when a deferred loading gate clears."
+    info = "Deferred plot gates should trigger one final render after the stabilized state is ready."
   )
   expect_match(
     server_txt,
-    "output\\$plotInteractivo <- renderPlotly\\(\\{\\s*input\\$mobile_plot_refresh\\s*plot_settle_tick\\(\\)",
+    "output\\$plotInteractivo <- renderPlotly\\(\\{\\s*input\\$mobile_plot_refresh",
     perl = TRUE,
-    info = "The interactive plot must depend on the settle tick."
+    info = "The interactive plot should keep the explicit mobile refresh dependency without subscribing to raw filter bursts."
   )
   expect_match(
     server_txt,
-    "plot_base_interactive\\s*<-\\s*debounce\\([\\s\\S]*?millis = 650",
+    "plot_base_interactive\\s*<-\\s*debounce\\([\\s\\S]*?millis = 900",
     perl = TRUE,
     info = "The plot output should debounce long enough to avoid visible intermediate plot states."
+  )
+  expect_match(
+    server_txt,
+    "plot_selection_settled_signal <- debounce\\([\\s\\S]*?show_groups = selected_show_groups\\(\\)[\\s\\S]*?reps_group = reactive_loop_signature_value\\(reps_group_selected\\(\\)\\)[\\s\\S]*?millis = 900",
+    perl = TRUE,
+    info = "Rapid group and replicate changes should coalesce into one explicit final plot refresh."
+  )
+  expect_match(
+    server_txt,
+    "observeEvent\\(plot_selection_settled_signal\\(\\), \\{[\\s\\S]*?plot_settle_tick\\(isolate\\(plot_settle_tick\\(\\)\\) \\+ 1L\\)",
+    perl = TRUE,
+    info = "The settled selection signal should remain available for non-plot outputs and future explicit refreshes."
   )
   plot_output <- sub(
     "^[\\s\\S]*?output\\$plotInteractivo <- renderPlotly\\(\\{",
@@ -213,9 +280,9 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     plot_output,
-    "req\\(FALSE, cancelOutput = TRUE\\)",
+    "plot_settle_tick\\(\\)",
     perl = TRUE,
-    info = "Deferred plot gates should cancel intermediate renders."
+    info = "If the first render is cancelled by a setup gate, the released settle tick must force the final plot render."
   )
   expect_false(grepl(
     "validate\\(need\\(FALSE, tr_text\\(\"loading_plot_data\"",
@@ -224,15 +291,101 @@ test_that("upload and filter updates are batched before plot redraws", {
   ))
   expect_match(
     plot_output,
-    "if \\(isTRUE\\(isolate\\(filter_selection_sync_inflight\\(\\)\\)\\)\\) req\\(FALSE, cancelOutput = TRUE\\)",
+    "guard_stable_output\\(plot_cancel_keys\\)",
     perl = TRUE,
-    info = "Plot rendering should wait while selected groups/conditions settle."
+    info = "Plot rendering should only subscribe to hard cancel gates, not rapid filter/replicate settling pulses."
+  )
+  expect_false(
+    grepl("input\\$showGroups|input\\$showMedios|reps_group_selected\\(\\)|reps_strain_selected\\(\\)|qc_tech_selected\\(\\)", plot_output, perl = TRUE),
+    info = "renderPlotly must not subscribe directly to raw filter or replicate inputs; the debounced plot object owns those dependencies."
+  )
+  expect_match(
+    server_txt,
+    "reactive_loop_signature_value <- function",
+    fixed = TRUE,
+    info = "The loop watchdog should compare stable signatures before accumulating hits."
+  )
+  expect_match(
+    server_txt,
+    "state\\$hits > max_hits \\|\\| as.integer\\(state\\$signature_hits %\\|\\|% 0L\\) > max_hits",
+    perl = TRUE,
+    info = "The loop watchdog should catch repeated plot churn even when intermediate selection signatures differ."
+  )
+  expect_match(
+    server_txt,
+    "schedule_settle_refresh <- function\\(\\)[\\s\\S]*?plot_settle_tick\\(isolate\\(plot_settle_tick\\(\\)\\) \\+ 1L\\)",
+    perl = TRUE,
+    info = "Suppressed plot churn should schedule one final refresh after inputs quiet down."
+  )
+  expect_match(
+    server_txt,
+    "reactive_loop_watchdog_tokens <- new.env\\(parent = emptyenv\\(\\)\\)",
+    perl = TRUE,
+    info = "The final refresh scheduler should cancel stale settle timers."
+  )
+  expect_false(
+    grepl("output\\$plotInteractivoUI <- renderUI\\(\\{\\s*guard_stable_output\\(plot_hold_keys\\)", server_txt, perl = TRUE),
+    info = "The plot container itself should not be rebuilt or greyed out during passive filter settling."
   )
   expect_match(
     plot_output,
-    "if \\(isTRUE\\(isolate\\(plot_input_sync_inflight\\(\\)\\)\\)\\) req\\(FALSE, cancelOutput = TRUE\\)",
+    "last_plotly_render\\$value <- plt",
     perl = TRUE,
-    info = "Plot rendering should wait while plot-related selectors settle."
+    info = "Successful ggplotly renders should refresh the stable plot cache."
+  )
+  expect_match(
+    server_txt,
+    "plot_stability_keys <- c\\([\\s\\S]*?\"dataset_loading\"[\\s\\S]*?\"axis_sync_inflight\"[\\s\\S]*?\"plot_input_sync_inflight\"[\\s\\S]*?\"replicate_bulk_updating\"[\\s\\S]*?\\)",
+    perl = TRUE,
+    info = "The plot should wait for real loading/input/bulk phases, not passive filter-settle pulses."
+  )
+  plot_key_section <- sub(
+    "^[\\s\\S]*?plot_stability_keys <- c\\(",
+    "",
+    server_txt,
+    perl = TRUE
+  )
+  plot_key_section <- sub("\\)[\\s\\S]*$", "", plot_key_section, perl = TRUE)
+  expect_false(
+    grepl("\"filter_selection_sync_inflight\"", plot_key_section, perl = TRUE),
+    info = "Passive filter settling must not grey out or directly gate the plot output."
+  )
+  expect_false(
+    grepl("\"replicate_selection_settling\"", plot_key_section, perl = TRUE),
+    info = "Passive replicate-map settling must not grey out or directly gate the plot output."
+  )
+  expect_match(
+    server_txt,
+    "plot_cancel_keys <- c\\([\\s\\S]*?\"dataset_loading\"[\\s\\S]*?\"axis_sync_inflight\"[\\s\\S]*?\"plot_input_sync_inflight\"[\\s\\S]*?\\)",
+    perl = TRUE,
+    info = "Only hard plot gates should directly invalidate the plot output."
+  )
+  expect_match(
+    server_txt,
+    "plot_hold_keys <- setdiff\\(plot_stability_keys, plot_cancel_keys\\)",
+    perl = TRUE,
+    info = "Filter and replicate settling should be hold-only gates for the cached plot."
+  )
+  expect_match(
+    server_txt,
+    "table_stability_keys <- c\\([\\s\\S]*?\"replicate_bulk_updating\"[\\s\\S]*?\"qc_tech_bulk_updating\"",
+    perl = TRUE,
+    info = "Tables under the plot should hold during real biological/technical bulk updates."
+  )
+  table_key_section <- sub(
+    "^[\\s\\S]*?table_stability_keys <- c\\(",
+    "",
+    server_txt,
+    perl = TRUE
+  )
+  table_key_section <- sub("\\)[\\s\\S]*$", "", table_key_section, perl = TRUE)
+  expect_false(
+    grepl(
+      "\"replicate_selection_settling\"",
+      table_key_section,
+      perl = TRUE
+    ),
+    info = "Passive replicate-map synchronization should not cancel table redraws."
   )
   expect_match(
     server_txt,
@@ -242,7 +395,7 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     server_txt,
-    "observeEvent\\(\\s*list\\(input\\$scope, input\\$strain, input\\$showMedios, input\\$showGroups\\)",
+    "observeEvent\\(\\s*list\\(input\\$scope, input\\$strain, selected_show_medios\\(\\), selected_show_groups\\(\\)\\)",
     perl = TRUE,
     info = "Filter selector changes should enter the short sync guard."
   )
@@ -320,6 +473,234 @@ test_that("upload and filter updates are batched before plot redraws", {
     "dplyr::pick\\(dplyr::everything\\(\\)\\)",
     perl = TRUE,
     info = "Technical replicate summaries should use dplyr::pick() instead of deprecated cur_data_all()."
+  )
+})
+
+test_that("condition and group checkbox renderers do not replay stale selections", {
+  server_file <- app_test_path("server", "server_main.R")
+  server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  count_matches <- function(pattern, txt) {
+    matches <- gregexpr(pattern, txt, perl = TRUE)[[1]]
+    sum(matches > 0L)
+  }
+  extract_section <- function(txt, start_pattern, end_pattern) {
+    start <- regexpr(start_pattern, txt, perl = TRUE)
+    expect_true(start[[1]] > 0L, info = start_pattern)
+    tail <- substring(txt, start[[1]])
+    end <- regexpr(end_pattern, substring(tail, 2), perl = TRUE)
+    if (end[[1]] > 0L) substring(tail, 1L, end[[1]]) else tail
+  }
+
+  expect_match(server_txt, "filter_medios_selected <- reactiveVal\\(NULL\\)", perl = TRUE)
+  expect_match(server_txt, "filter_groups_selected <- reactiveVal\\(NULL\\)", perl = TRUE)
+  expect_match(
+    server_txt,
+    "resolve_filter_selection\\s*<-\\s*function",
+    perl = TRUE,
+    info = "Filter checkbox groups should resolve selected values from the current browser input plus the cached last user state."
+  )
+  expect_match(
+    server_txt,
+    "has_current <- !is\\.null\\(current\\)",
+    perl = TRUE,
+    info = "An explicit empty checkbox selection must remain empty instead of falling back to cached/default choices."
+  )
+  expect_match(
+    server_txt,
+    "if \\(isTRUE\\(has_current\\)\\)",
+    perl = TRUE,
+    info = "Current checkbox input should be authoritative even when it is character(0)."
+  )
+  expect_equal(
+    count_matches("output\\$showMediosUI\\s*<-\\s*renderUI", server_txt),
+    1L,
+    info = "The condition selector renderer should be defined once, outside upload observers."
+  )
+  expect_equal(
+    count_matches("output\\$groupSel\\s*<-\\s*renderUI", server_txt),
+    1L,
+    info = "The combined-group selector renderer should be defined once, outside upload observers."
+  )
+
+  media_observer <- extract_section(
+    server_txt,
+    "observeEvent\\(list\\(datos_agrupados\\(\\), input\\$app_lang, strain_label_ui\\(\\), media_label_ui\\(\\)",
+    "output\\$replicatesUI\\s*<-\\s*renderUI"
+  )
+  group_observer <- extract_section(
+    server_txt,
+    "observeEvent\\(datos_agrupados\\(\\)",
+    "output\\$replicatesGroupUI\\s*<-\\s*renderUI"
+  )
+
+  expect_false(
+    grepl("output\\$showMediosUI\\s*<-\\s*renderUI", media_observer, perl = TRUE),
+    info = "The condition selector observer must not rebuild its own stale renderUI closure."
+  )
+  expect_false(
+    grepl("output\\$groupSel\\s*<-\\s*renderUI", group_observer, perl = TRUE),
+    info = "The combined group selector observer must not rebuild its own stale renderUI closure."
+  )
+  expect_match(media_observer, "resolve_filter_selection", fixed = TRUE)
+  expect_match(group_observer, "resolve_filter_selection", fixed = TRUE)
+})
+
+test_that("browser refresh and replicate bursts are stabilized without stopping the app", {
+  server_file <- app_test_path("server", "server_main.R")
+  growth_file <- app_test_path("server", "growth_module.R")
+  ui_file <- app_test_path("ui", "ui_main.R")
+  server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  growth_txt <- paste(readLines(growth_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  ui_txt <- paste(readLines(ui_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(server_txt, "last_session_stop_token <- 0", fixed = TRUE)
+  expect_match(server_txt, "schedule_stop_if_last_session <- function", fixed = TRUE)
+  expect_match(server_txt, "cancel_last_session_stop <- function", fixed = TRUE)
+  expect_match(server_txt, "cancel_last_session_stop\\(\\)", perl = TRUE)
+  expect_match(server_txt, "later_fn\\(maybe_stop, delay = delay\\)", perl = TRUE)
+  session_end_match <- regexpr(
+    "session\\$onSessionEnded\\(function\\(\\) \\{[\\s\\S]*?\\n  \\}\\)",
+    server_txt,
+    perl = TRUE
+  )
+  expect_true(session_end_match[[1]] > 0L)
+  session_end_section <- regmatches(server_txt, session_end_match)
+  expect_match(
+    session_end_section,
+    "schedule_stop_if_last_session\\(\\)",
+    perl = TRUE,
+    info = "Browser refresh must get a reconnect grace window instead of immediate stopApp()."
+  )
+  expect_false(grepl("shiny::stopApp\\(\\)", session_end_section, perl = TRUE))
+  expect_match(growth_txt, "schedule_stop_if_last_session", fixed = TRUE)
+
+  expect_match(server_txt, "begin_replicate_selection_settle <- function", fixed = TRUE)
+  expect_match(
+    server_txt,
+    "begin_replicate_selection_settle <- function\\(\\) \\{[\\s\\S]*?begin_quiet_reactive_flag\\([\\s\\S]*?flag_key = \"replicate_selection_settling\"[\\s\\S]*?quiet_ms = 1200L",
+    perl = TRUE
+  )
+  settle_calls <- gregexpr("begin_replicate_selection_settle\\(\\)", server_txt, perl = TRUE)[[1]]
+  expect_true(sum(settle_calls > 0) >= 3L)
+  expect_match(
+    server_txt,
+    "output\\$statsTable <- renderDT\\(\\{\\s*guard_stable_output\\(table_stability_keys\\)",
+    perl = TRUE
+  )
+  expect_match(
+    server_txt,
+    "output\\$qcSampleTable <- renderDT\\(\\{\\s*guard_stable_output\\(table_stability_keys\\)",
+    perl = TRUE
+  )
+
+  expect_match(ui_txt, 'tags\\$meta\\(name = "viewport", content = "width=device-width, initial-scale=1"\\)', perl = TRUE)
+  expect_match(ui_txt, "html \\{\\s*font-size: 16px;", perl = TRUE)
+  expect_match(ui_txt, "text-size-adjust: 100%;", fixed = TRUE)
+  expect_match(
+    ui_txt,
+    "#plotInteractivo\\.recalculating[\\s\\S]*?#showMediosUI\\.recalculating[\\s\\S]*?#groupSel\\.recalculating[\\s\\S]*?#repsStrainUI\\.recalculating[\\s\\S]*?opacity: 1 !important;",
+    perl = TRUE,
+    info = "Rapid filter changes should not visually fade the current plot or selector panels while Shiny recalculates."
+  )
+  expect_false(grepl("dispatchEvent\\(new Event\\('change'", ui_txt, perl = TRUE))
+})
+
+test_that("stacked and correlation value tables keep mean rows in the value column", {
+  server_file <- app_test_path("server", "server_main.R")
+  server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  extract_section <- function(txt, start_pattern, end_pattern) {
+    start <- regexpr(start_pattern, txt, perl = TRUE)
+    expect_true(start[[1]] > 0L, info = start_pattern)
+    tail <- substring(txt, start[[1]])
+    end <- regexpr(end_pattern, substring(tail, 2), perl = TRUE)
+    expect_true(end[[1]] > 0L, info = end_pattern)
+    substring(tail, 1L, end[[1]])
+  }
+
+  stats_section <- extract_section(
+    server_txt,
+    "output\\$statsTable <- renderDT\\(\\{",
+    "\\}, server = FALSE\\)"
+  )
+  stacked_section <- extract_section(
+    stats_section,
+    "if \\(tipo == \"Apiladas\"\\)",
+    "if \\(tipo == \"Correlacion\"\\)"
+  )
+  corr_section <- extract_section(
+    stats_section,
+    "if \\(tipo == \"Correlacion\"\\)",
+    "datatable\\("
+  )
+
+  expect_false(
+    grepl("summarise\\(\\s*Promedio\\s*=", stats_section, perl = TRUE),
+    info = "Mean summary rows in the table must not create a separate Promedio column."
+  )
+  expect_match(
+    stacked_section,
+    "summarise\\(\\s*Valor\\s*=\\s*mean\\(Valor, na.rm = TRUE\\)",
+    perl = TRUE
+  )
+  expect_match(
+    corr_section,
+    "summarise\\(\\s*Valor\\s*=\\s*mean\\(Valor, na.rm = TRUE\\)",
+    perl = TRUE
+  )
+})
+
+test_that("initial default plot titles wait for complete selector context", {
+  server_file <- app_test_path("server", "server_main.R")
+  server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  start <- regexpr(
+    "observeEvent\\(\\s*list\\(input\\$scope, input\\$tipo, input\\$param",
+    server_txt,
+    perl = TRUE
+  )
+  expect_true(start[[1]] > 0L)
+  tail <- substring(server_txt, start[[1]])
+  end <- regexpr("# ---- Helpers para filtrar", tail, fixed = TRUE)
+  expect_true(end[[1]] > 0L)
+  title_section <- substring(tail, 1L, end[[1]])
+
+  expect_match(
+    title_section,
+    "parameter_title_types <- c\\(\"Boxplot\", \"Barras\", \"Violin\", \"Curvas\", \"Apiladas\"\\)",
+    perl = TRUE,
+    info = "Curves need the same non-empty parameter guard as other parameter-based plot titles."
+  )
+  expect_match(
+    title_section,
+    "if \\(!nzchar\\(param_sel\\) && input\\$tipo %in% parameter_title_types\\) return\\(\\)",
+    perl = TRUE
+  )
+  expect_match(
+    title_section,
+    "strain_sel <- trimws\\(as.character\\(input\\$strain %\\|\\|% \"\"\\)\\)",
+    perl = TRUE
+  )
+  expect_match(
+    title_section,
+    "if \\(!identical\\(scope_sel, \"Combinado\"\\) && !nzchar\\(strain_sel\\) && !identical\\(input\\$tipo, \"Correlacion\"\\)\\)",
+    perl = TRUE,
+    info = "Per-strain default titles must not be written while the strain selector is still blank."
+  )
+  expect_match(
+    title_section,
+    "sprintf\\(tr_text\\(\"default_title_strain\", lang\\), type_label, param_sel, strain_sel\\)",
+    perl = TRUE,
+    info = "The default title must use the validated strain value after the blank-strain guard."
+  )
+  expect_false(
+    grepl(
+      "sprintf\\(tr_text\\(\"default_title_strain\", lang\\), type_label, param_sel, input\\$strain %\\|\\|% \"\"\\)",
+      title_section,
+      perl = TRUE
+    ),
+    info = "Default title text should not use an empty string fallback for strain."
   )
 })
 
@@ -413,6 +794,9 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   expect_match(helper_section, "previous_signature <-", fixed = TRUE)
   expect_match(helper_section, "identical\\(update_signature, previous_signature\\)", perl = TRUE)
   expect_match(helper_section, "return\\(invisible\\(FALSE\\)\\)", perl = TRUE)
+  expect_match(helper_section, "choices_arg <- choices", fixed = TRUE)
+  expect_match(helper_section, "if \\(identical\\(normalized_choices, previous_signature\\$choices\\)\\)", perl = TRUE)
+  expect_match(helper_section, "if \\(!is.null\\(choices_arg\\)\\) args\\$choices <- choices_arg", perl = TRUE)
 
   expect_match(
     server_txt,
@@ -429,6 +813,69 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   expect_match(ui_txt, "target.id + '_user_change'", fixed = TRUE)
   expect_match(ui_txt, "target.id !== 'toggleMedios' && target.id !== 'toggleGroups'", fixed = TRUE)
   expect_match(ui_txt, "ev.isTrusted", fixed = TRUE)
+  expect_match(ui_txt, "BIOSZEN_debouncedCheckboxGroups", fixed = TRUE)
+  expect_match(ui_txt, "version: 4", fixed = TRUE)
+  expect_match(ui_txt, "pendingSelections", fixed = TRUE)
+  expect_match(ui_txt, "releasedSelections", fixed = TRUE)
+  expect_match(ui_txt, "releasedKeys: activeReleasedKeys()", fixed = TRUE)
+  expect_match(ui_txt, "var minHoldMs = 900", fixed = TRUE)
+  expect_match(ui_txt, "firstReleaseCheckMs = Math.max(50, minHoldMs - ageMs)", fixed = TRUE)
+  expect_match(ui_txt, "window.setTimeout(function(){ maybeRelease(key); }, 150)", fixed = TRUE)
+  expect_match(ui_txt, "var maxHoldMs = 120000", fixed = TRUE)
+  expect_match(ui_txt, "data-bioszen-selector-guard", fixed = TRUE)
+  expect_match(ui_txt, "data-bioszen-selector-change-count", fixed = TRUE)
+  expect_match(ui_txt, "normalizeProtectedValue", fixed = TRUE)
+  expect_match(ui_txt, "directEl && directEl.type === 'file'", fixed = TRUE)
+  expect_match(ui_txt, "protectedSelectorKeys", fixed = TRUE)
+  expect_match(ui_txt, "isProtectedKey", fixed = TRUE)
+  expect_match(ui_txt, "stackParams: true", fixed = TRUE)
+  expect_match(ui_txt, "heat_params: true", fixed = TRUE)
+  expect_match(ui_txt, "corrm_params: true", fixed = TRUE)
+  expect_match(ui_txt, "normTests: true", fixed = TRUE)
+  expect_match(ui_txt, "sigTest: true", fixed = TRUE)
+  expect_match(ui_txt, "postHoc: true", fixed = TRUE)
+  expect_match(ui_txt, "multitest_method: true", fixed = TRUE)
+  expect_match(ui_txt, "errbar_stat: true", fixed = TRUE)
+  expect_match(ui_txt, "adv_pal_filters: true", fixed = TRUE)
+  expect_match(ui_txt, "elementIsVisible", fixed = TRUE)
+  expect_match(ui_txt, "#plotInteractivo.recalculating", fixed = TRUE)
+  expect_match(ui_txt, "pageIsBusy", fixed = TRUE)
+  expect_match(ui_txt, "new MutationObserver", fixed = TRUE)
+  expect_match(ui_txt, "window.addEventListener\\('change', handleProtectedControlChange, true\\)", perl = TRUE)
+  expect_match(ui_txt, "ev.stopImmediatePropagation\\(\\)", perl = TRUE)
+  expect_match(ui_txt, "bioszen_selector_pending", fixed = TRUE)
+  expect_match(ui_txt, "bioszen_selector_commit", fixed = TRUE)
+  expect_match(ui_txt, "bioszen_selector_release", fixed = TRUE)
+  expect_match(ui_txt, "shinyInputMatches", fixed = TRUE)
+  expect_match(ui_txt, "Shiny.setInputValue\\(key, selected, \\{priority: 'event'\\}\\)", perl = TRUE)
+  expect_match(ui_txt, "controlKind(target)", fixed = TRUE)
+  expect_match(ui_txt, "target.type === 'radio'", fixed = TRUE)
+  expect_match(ui_txt, "String\\(target.tagName \\|\\| ''\\)\\.toLowerCase\\(\\) !== 'select'", perl = TRUE)
+  expect_match(ui_txt, "name === 'showMedios'", fixed = TRUE)
+  expect_match(ui_txt, "name === 'showGroups'", fixed = TRUE)
+  expect_match(ui_txt, "name.indexOf\\('reps_'\\) === 0", perl = TRUE)
+  expect_match(ui_txt, "name.indexOf\\('qc_tech_rep_'\\) === 0", perl = TRUE)
+  expect_false(grepl("selectedCheckboxValues", ui_txt, fixed = TRUE))
+  expect_false(grepl("showMedios_user_change", server_txt, fixed = TRUE))
+  expect_false(grepl("showGroups_user_change", server_txt, fixed = TRUE))
+  expect_match(server_txt, "selector_commit_store <- new.env", fixed = TRUE)
+  expect_match(server_txt, "record_selector_commit <- function", fixed = TRUE)
+  expect_match(server_txt, "selector_commit_active <- function(info, active_window_sec = 8, release_grace_sec = 4)", fixed = TRUE)
+  expect_match(server_txt, "selector_commit_should_win <- function(info, selected, cached = NULL)", fixed = TRUE)
+  expect_match(server_txt, "selector_values_equal(cached, info$selected)", fixed = TRUE)
+  expect_match(server_txt, "release_selector_commit <- function", fixed = TRUE)
+  expect_match(server_txt, "selector_input_is_stale <- function(key, selected, cached = NULL)", fixed = TRUE)
+  expect_match(server_txt, "selector_committed_or_input <- function(key, selected, cached = NULL)", fixed = TRUE)
+  expect_match(server_txt, "observeEvent(input$bioszen_selector_pending", fixed = TRUE)
+  expect_match(server_txt, "observeEvent(input$bioszen_selector_release", fixed = TRUE)
+  expect_match(server_txt, "observeEvent(input$bioszen_selector_commit", fixed = TRUE)
+  expect_match(server_txt, "selector_input_is_stale(\"showMedios\", selected, isolate(filter_medios_selected()))", fixed = TRUE)
+  expect_match(server_txt, "selector_input_is_stale(\"showGroups\", selected, isolate(filter_groups_selected()))", fixed = TRUE)
+  expect_match(server_txt, "input_map[[m]] <- selector_committed_or_input", fixed = TRUE)
+  expect_match(server_txt, "input_map[[g]] <- selector_committed_or_input", fixed = TRUE)
+  expect_match(server_txt, "cached = current_strain_map[[m]]", fixed = TRUE)
+  expect_match(server_txt, "cached = current_group_map[[g]]", fixed = TRUE)
+  expect_match(server_txt, "cached = current_map[[key]]", fixed = TRUE)
   expect_false(
     grepl("observeEvent\\(input\\$toggleMedios,", server_txt, perl = TRUE),
     info = "Raw select-all checkbox changes must not drive bulk filter updates; programmatic syncs can change those inputs."
@@ -469,7 +916,7 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   toggle_groups <- extract_section(
     server_txt,
     "observeEvent\\(input\\$toggleGroups_user_change",
-    "observeEvent\\(\\s*list\\(input\\$scope"
+    "observeEvent\\(\\s*list\\(selected_show_medios\\(\\), selected_show_groups\\(\\), datos_agrupados\\(\\)\\)"
   )
   expect_match(toggle_groups, "identical\\(current_sel, target_sel\\)", perl = TRUE)
   expect_match(toggle_groups, "update_checkbox_group_input_if_changed", fixed = TRUE)
@@ -480,17 +927,33 @@ test_that("core reactive controls keep loop guards around programmatic updates",
 
   filter_toggle_sync <- extract_section(
     server_txt,
-    "observeEvent\\(\\s*list\\(input\\$showMedios, input\\$showGroups, datos_agrupados\\(\\)\\)",
+    "observeEvent\\(\\s*list\\(selected_show_medios\\(\\), selected_show_groups\\(\\), datos_agrupados\\(\\)\\)",
     "observeEvent\\(\\s*list\\(input\\$scope"
   )
   expect_match(filter_toggle_sync, "sync_filter_toggle_input", fixed = TRUE)
   expect_match(filter_toggle_sync, "toggleMedios", fixed = TRUE)
   expect_match(filter_toggle_sync, "toggleGroups", fixed = TRUE)
+  expect_match(filter_toggle_sync, "identical\\(scope_sel, \"Por Cepa\"\\)", perl = TRUE)
+  expect_match(filter_toggle_sync, "identical\\(scope_sel, \"Combinado\"\\)", perl = TRUE)
   expect_match(filter_toggle_sync, "ignoreInit = TRUE", fixed = TRUE)
+
+  sync_toggle_helper <- extract_section(
+    server_txt,
+    "sync_filter_toggle_input <- function",
+    "update_checkbox_group_input_if_changed <- function"
+  )
+  expect_match(
+    sync_toggle_helper,
+    "current <- isTRUE\\(isolate\\(input\\[\\[input_id\\]\\]\\)\\)",
+    perl = TRUE,
+    info = "Master toggle synchronization must be idempotent and skip already-correct toggles."
+  )
+  expect_match(sync_toggle_helper, "if \\(identical\\(current, target\\)\\) return\\(FALSE\\)", perl = TRUE)
+  expect_match(sync_toggle_helper, "if \\(!begin_bulk_update\\(", perl = TRUE)
 
   filter_guard <- extract_section(
     server_txt,
-    "observeEvent\\(\\s*list\\(input\\$scope, input\\$strain, input\\$showMedios, input\\$showGroups\\)",
+    "observeEvent\\(\\s*list\\(input\\$scope, input\\$strain, selected_show_medios\\(\\), selected_show_groups\\(\\)\\)",
     "output\\$repsStrainUI <- renderUI"
   )
   expect_match(filter_guard, "begin_filter_selection_sync\\(\\)", perl = TRUE)
@@ -511,6 +974,22 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   expect_match(strain_select_all, "begin_bulk_update\\(replicate_bulk_updating, \"replicate_bulk_updating\"\\)", perl = TRUE)
   expect_match(group_select_all, "update_checkbox_group_input_if_changed", fixed = TRUE)
   expect_match(strain_select_all, "update_checkbox_group_input_if_changed", fixed = TRUE)
+
+  expect_match(server_txt, "stable_input_suffix <- function", fixed = TRUE)
+  expect_match(server_txt, "strain_rep_input_id <- function", fixed = TRUE)
+  expect_match(server_txt, "group_rep_input_id <- function", fixed = TRUE)
+  expect_match(server_txt, "qc_tech_input_id <- function", fixed = TRUE)
+  expect_match(server_txt, "prefix = \"reps_\"", fixed = TRUE)
+  expect_match(server_txt, "prefix = \"reps_grp_\"", fixed = TRUE)
+  expect_match(server_txt, "prefix = \"qc_tech_rep_\"", fixed = TRUE)
+  expect_false(
+    grepl("paste0\\(\"reps_(grp_)?\", make.names", server_txt, perl = TRUE),
+    info = "Dynamic biological replicate inputs must use stable ASCII-safe IDs instead of label-derived make.names()."
+  )
+  expect_false(
+    grepl("paste0\\(\"qc_tech_rep_\", make.names", server_txt, perl = TRUE),
+    info = "Dynamic technical replicate inputs must use stable ASCII-safe IDs instead of label-derived make.names()."
+  )
 })
 
 test_that("statistics builders resolve scoped data and tolerate transient blank selectors", {
