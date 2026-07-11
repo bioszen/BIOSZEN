@@ -88,6 +88,62 @@ test_that("standalone launcher emits the approved citation block", {
   ))
 })
 
+test_that("embedded app schedules the citation after Shiny starts listening", {
+  embedded_file <- app_test_path("app.R")
+  embedded_exprs <- parse(embedded_file)
+  citation_assignment <- Filter(function(expr) {
+    is.call(expr) &&
+      identical(expr[[1]], as.name("<-")) &&
+      identical(expr[[2]], as.name(".bioszen_emit_app_startup_citation"))
+  }, as.list(embedded_exprs))
+
+  expect_length(citation_assignment, 1)
+  embedded_env <- new.env(parent = globalenv())
+  eval(citation_assignment[[1]], envir = embedded_env)
+
+  old_show <- getOption("BIOSZEN.show_startup_citation", NULL)
+  old_shown <- getOption("BIOSZEN.startup_citation_shown", NULL)
+  old_launcher_flag <- Sys.getenv("BIOSZEN_LAUNCHER_CITATION_SHOWN", unset = NA_character_)
+  on.exit({
+    options(BIOSZEN.show_startup_citation = old_show)
+    options(BIOSZEN.startup_citation_shown = old_shown)
+    if (is.na(old_launcher_flag)) {
+      Sys.unsetenv("BIOSZEN_LAUNCHER_CITATION_SHOWN")
+    } else {
+      Sys.setenv(BIOSZEN_LAUNCHER_CITATION_SHOWN = old_launcher_flag)
+    }
+  }, add = TRUE)
+
+  Sys.unsetenv("BIOSZEN_LAUNCHER_CITATION_SHOWN")
+  options(BIOSZEN.show_startup_citation = TRUE)
+  options(BIOSZEN.startup_citation_shown = FALSE)
+  scheduled <- list()
+  schedule_fun <- function(callback, delay) {
+    scheduled$callback <<- callback
+    scheduled$delay <<- delay
+    invisible(NULL)
+  }
+
+  emitted_immediately <- capture.output(
+    get(".bioszen_emit_app_startup_citation", envir = embedded_env)(schedule_fun),
+    type = "message"
+  )
+  expect_length(emitted_immediately, 0)
+  expect_identical(scheduled$delay, 0)
+  expect_true(is.function(scheduled$callback))
+  expect_true(isTRUE(getOption("BIOSZEN.startup_citation_shown")))
+
+  emitted_after_start <- capture.output(scheduled$callback(), type = "message")
+  expect_equal(emitted_after_start, c(
+    "##",
+    "## BIOSZEN",
+    "## See https://github.com/bioszen/BIOSZEN for additional documentation and source code.",
+    "## Please cite software as:",
+    "##   Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210",
+    "##"
+  ))
+})
+
 test_that("direct source launchers emit the BIOSZEN startup citation", {
   startup_file <- file.path(app_test_root(), "R", "app_startup.R")
   if (!file.exists(startup_file)) {
@@ -138,6 +194,7 @@ test_that("direct source launchers emit the BIOSZEN startup citation", {
   )
   expect_match(embedded_launcher, "\\.bioszen_emit_app_startup_citation\\s*<-\\s*function", perl = TRUE)
   expect_match(embedded_launcher, "BIOSZEN_LAUNCHER_CITATION_SHOWN", fixed = TRUE)
+  expect_match(embedded_launcher, "schedule_fun\\(function\\(\\) packageStartupMessage\\(citation_message\\), delay = 0\\)", perl = TRUE)
   expect_match(embedded_launcher, "\\.bioszen_emit_app_startup_citation\\(\\)", perl = TRUE)
   expect_match(
     embedded_launcher,
