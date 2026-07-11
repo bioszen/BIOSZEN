@@ -165,6 +165,7 @@ test_that("standalone launcher resolves fresh Rscript paths on Windows and macOS
 test_that("standalone launcher starts a one-time vanilla child process", {
   env <- load_launcher_functions("launch_fresh_launcher_process")
   env$launcher_fresh_process_env <- "BIOSZEN_LAUNCHER_FRESH_PROCESS"
+  env$launcher_citation_shown_env <- "BIOSZEN_LAUNCHER_CITATION_SHOWN"
   script <- tempfile("BIOSZEN App ", fileext = ".R")
   rscript <- tempfile("Rscript ")
   writeLines("invisible(TRUE)", script)
@@ -177,7 +178,8 @@ test_that("standalone launcher starts a one-time vanilla child process", {
     captured$stdout <- stdout
     captured$stderr <- stderr
     captured$wait <- wait
-    captured$env <- Sys.getenv("BIOSZEN_LAUNCHER_FRESH_PROCESS")
+    captured$fresh_env <- Sys.getenv("BIOSZEN_LAUNCHER_FRESH_PROCESS")
+    captured$citation_env <- Sys.getenv("BIOSZEN_LAUNCHER_CITATION_SHOWN")
     0L
   }
 
@@ -190,7 +192,10 @@ test_that("standalone launcher starts a one-time vanilla child process", {
   expect_identical(captured$args[[1]], "--vanilla")
   expect_match(captured$args[[2]], "BIOSZEN App", fixed = TRUE)
   expect_true(captured$wait)
-  expect_identical(captured$env, "1")
+  expect_identical(captured$fresh_env, "1")
+  expect_identical(captured$citation_env, "1")
+  expect_identical(Sys.getenv("BIOSZEN_LAUNCHER_FRESH_PROCESS", unset = "<unset>"), "<unset>")
+  expect_identical(Sys.getenv("BIOSZEN_LAUNCHER_CITATION_SHOWN", unset = "<unset>"), "<unset>")
 })
 
 test_that("standalone launcher detects namespaces loaded outside its local library", {

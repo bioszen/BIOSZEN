@@ -132,6 +132,7 @@ print(.libPaths())
 
 pkg <- "BIOSZEN"
 launcher_fresh_process_env <- "BIOSZEN_LAUNCHER_FRESH_PROCESS"
+launcher_citation_shown_env <- "BIOSZEN_LAUNCHER_CITATION_SHOWN"
 launcher_is_fresh_process <- identical(Sys.getenv(launcher_fresh_process_env, unset = ""), "1")
 launcher_library_changed <- FALSE
 
@@ -185,15 +186,22 @@ launch_fresh_launcher_process <- function(script,
     stop("Cannot restart BIOSZEN because Rscript could not be found.")
   }
 
-  previous_flag <- Sys.getenv(launcher_fresh_process_env, unset = NA_character_)
+  child_env <- setNames(
+    c("1", "1"),
+    c(launcher_fresh_process_env, launcher_citation_shown_env)
+  )
+  previous_env <- Sys.getenv(names(child_env), unset = NA_character_)
   on.exit({
-    if (is.na(previous_flag)) {
-      Sys.unsetenv(launcher_fresh_process_env)
-    } else {
-      do.call(Sys.setenv, setNames(list(previous_flag), launcher_fresh_process_env))
+    for (name in names(child_env)) {
+      previous <- previous_env[[name]]
+      if (is.na(previous)) {
+        Sys.unsetenv(name)
+      } else {
+        do.call(Sys.setenv, setNames(list(previous), name))
+      }
     }
   }, add = TRUE)
-  do.call(Sys.setenv, setNames(list("1"), launcher_fresh_process_env))
+  do.call(Sys.setenv, as.list(child_env))
   quote_type <- if (.Platform$OS.type == "windows") "cmd" else "sh"
 
   status <- tryCatch(
@@ -1185,6 +1193,9 @@ if (restart_in_clean_process) {
   }
   cat("\n[launcher] Starting BIOSZEN in a clean R process because ", paste(reasons, collapse = "; "), ".\n", sep = "")
   cat("[launcher] This prevents package namespace conflicts in RStudio on Windows and macOS.\n")
+  cat("\nBIOSZEN version: ", as.character(packageVersion(pkg, lib.loc = local_lib)), "\n", sep = "")
+  options(BIOSZEN.startup_citation_shown = FALSE)
+  bioszen_startup_citation()
   close_launcher_log_sink()
   launch_fresh_launcher_process(script_path)
 } else {

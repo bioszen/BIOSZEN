@@ -119,6 +119,10 @@ source_dir(file.path(app_dir, "ui"), envir = app_env)            # interfaz
 shiny::addResourcePath("www", file.path(app_dir, "www"))
 
 .bioszen_emit_app_startup_citation <- function() {
+  if (identical(Sys.getenv("BIOSZEN_LAUNCHER_CITATION_SHOWN", unset = ""), "1")) {
+    options(BIOSZEN.startup_citation_shown = TRUE)
+    return(invisible(FALSE))
+  }
   if (!isTRUE(getOption("BIOSZEN.show_startup_citation", TRUE))) {
     return(invisible(FALSE))
   }

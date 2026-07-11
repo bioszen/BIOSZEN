@@ -7,6 +7,7 @@ Release candidate updated: 2026-07-11
 - Hardened generated downloads across workbooks, metadata, statistics, graphics, and bundle exports.
 - Improved standalone startup so `App.R` can launch BIOSZEN from versioned source archives and extracted source folders.
 - Hardened first-run bundle startup so dependency or package updates continue in a clean R process instead of trying to replace loaded RStudio namespaces on Windows or macOS.
+- Preserved the BIOSZEN version and citation block in the original terminal when the bundle uses a clean-process handoff, while suppressing duplicate child-process output.
 - Added stronger metadata reproducibility for typography, per-axis text styling, data-label styling, composition settings, error-bar choices, and legend placement/style.
 - Fixed axis interval inputs so typed values are accepted directly and no longer get overwritten while editing.
 - Fixed Plotly text styling so style changes apply to both X/Y axis titles, axis tick labels, and data labels where those texts are visible.

@@ -8,6 +8,7 @@ Semantic Versioning.
 
 ## [2.0.4] - 2026-07-11
 - Fixed standalone bundle startup after dependency installation by continuing in a clean R process, preventing loaded-namespace conflicts in RStudio on Windows and macOS.
+- Preserved the BIOSZEN version, GitHub link, and approved citation block in the parent terminal when startup uses the clean-process handoff.
 - Changed the shared raster export default from 96 to 300 DPI while keeping the 72-600 DPI control user-editable.
 - Centralized export DPI validation and separated the 300 DPI export default from the browser's 96 CSS pixels-per-inch geometry.
 - Added safe 300 DPI fallback behavior for missing, malformed, zero, negative, and out-of-range input or metadata values.
