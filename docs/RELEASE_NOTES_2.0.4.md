@@ -6,6 +6,7 @@ Release candidate updated: 2026-07-11
 
 - Hardened generated downloads across workbooks, metadata, statistics, graphics, and bundle exports.
 - Improved standalone startup so `App.R` can launch BIOSZEN from versioned source archives and extracted source folders.
+- Hardened first-run bundle startup so dependency or package updates continue in a clean R process instead of trying to replace loaded RStudio namespaces on Windows or macOS.
 - Added stronger metadata reproducibility for typography, per-axis text styling, data-label styling, composition settings, error-bar choices, and legend placement/style.
 - Fixed axis interval inputs so typed values are accepted directly and no longer get overwritten while editing.
 - Fixed Plotly text styling so style changes apply to both X/Y axis titles, axis tick labels, and data labels where those texts are visible.
@@ -36,6 +37,7 @@ Release candidate updated: 2026-07-11
 - Preview/download fidelity passed for Boxplot, Bar, Violin, Stacked, Correlation, Correlation Matrix, and Heatmap outputs at the 300 DPI default while preserving vector-page dimensions.
 - The optional large-heatmap and cluster-workbook performance smoke tests passed with `NOT_CRAN=true`.
 - A clean 2.0.4 installation served the Shiny application successfully and stopped without leaving a listener.
+- The rebuilt standalone bundle was extracted and sourced with Shiny dependencies already loaded from another library; it handed off to a clean R process, served HTTP 200, and emitted no namespace-unload error.
 - The GitHub Actions push gate runs the full suite, including Shiny e2e, on `windows-latest` and the core suite on `macos-latest`.
 
 ## Notes

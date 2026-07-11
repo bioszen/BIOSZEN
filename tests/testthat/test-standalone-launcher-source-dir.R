@@ -140,7 +140,81 @@ test_that("standalone launcher closes the startup log sink on source exit", {
 
   expect_match(txt, "log_sink_depth <- sink.number\\(\\)", perl = TRUE)
   expect_match(txt, "sink\\(log_file, append = TRUE, split = TRUE\\)", perl = TRUE)
-  expect_match(txt, "on.exit\\(\\{\\s*while \\(sink.number\\(\\) > log_sink_depth\\)", perl = TRUE)
+  expect_match(txt, "close_launcher_log_sink <- function\\(\\)", perl = TRUE)
+  expect_match(txt, "on.exit\\(close_launcher_log_sink\\(\\), add = TRUE\\)", perl = TRUE)
+})
+
+test_that("standalone launcher resolves fresh Rscript paths on Windows and macOS", {
+  env <- load_launcher_functions("launcher_rscript_path")
+  fake_home <- tempfile("bioszen-r-home-")
+  dir.create(file.path(fake_home, "bin"), recursive = TRUE)
+  windows_rscript <- file.path(fake_home, "bin", "Rscript.exe")
+  macos_rscript <- file.path(fake_home, "bin", "Rscript")
+  file.create(windows_rscript, macos_rscript)
+
+  expect_equal(
+    env$launcher_rscript_path(fake_home, "windows"),
+    normalizePath(windows_rscript, winslash = "/", mustWork = TRUE)
+  )
+  expect_equal(
+    env$launcher_rscript_path(fake_home, "unix"),
+    normalizePath(macos_rscript, winslash = "/", mustWork = TRUE)
+  )
+})
+
+test_that("standalone launcher starts a one-time vanilla child process", {
+  env <- load_launcher_functions("launch_fresh_launcher_process")
+  env$launcher_fresh_process_env <- "BIOSZEN_LAUNCHER_FRESH_PROCESS"
+  script <- tempfile("BIOSZEN App ", fileext = ".R")
+  rscript <- tempfile("Rscript ")
+  writeLines("invisible(TRUE)", script)
+  file.create(rscript)
+
+  captured <- new.env(parent = emptyenv())
+  fake_system2 <- function(command, args, stdout, stderr, wait) {
+    captured$command <- command
+    captured$args <- args
+    captured$stdout <- stdout
+    captured$stderr <- stderr
+    captured$wait <- wait
+    captured$env <- Sys.getenv("BIOSZEN_LAUNCHER_FRESH_PROCESS")
+    0L
+  }
+
+  expect_true(env$launch_fresh_launcher_process(
+    script,
+    system2_fun = fake_system2,
+    rscript = rscript
+  ))
+  expect_equal(captured$command, rscript)
+  expect_identical(captured$args[[1]], "--vanilla")
+  expect_match(captured$args[[2]], "BIOSZEN App", fixed = TRUE)
+  expect_true(captured$wait)
+  expect_identical(captured$env, "1")
+})
+
+test_that("standalone launcher detects namespaces loaded outside its local library", {
+  env <- load_launcher_functions(c("same_launcher_path", "loaded_namespace_conflicts"))
+  local_lib <- tempfile("bioszen-local-lib-")
+  dir.create(file.path(local_lib, "stats"), recursive = TRUE)
+
+  expect_identical(env$loaded_namespace_conflicts("stats", local_lib), "stats")
+  expect_true(env$same_launcher_path("C:/Temp/BIOSZEN", "c:/temp/bioszen", "windows"))
+})
+
+test_that("standalone launcher defers app loading after local library changes", {
+  launcher <- launcher_source_path()
+  txt <- paste(readLines(launcher, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(txt, "launcher_library_changed <<- TRUE", fixed = TRUE)
+  expect_match(txt, "launcher_library_changed <- TRUE", fixed = TRUE)
+  expect_match(txt, "loaded_namespace_conflicts(unique(c(deps, pkg)), local_lib)", fixed = TRUE)
+  expect_match(txt, "restart_in_clean_process <- !isTRUE(launcher_is_fresh_process)", fixed = TRUE)
+  expect_true(grepl(
+    "if \\(restart_in_clean_process\\)[\\s\\S]*?launch_fresh_launcher_process\\(script_path\\)[\\s\\S]*?else \\{[\\s\\S]*?do.call\\(run_fun, args\\)",
+    txt,
+    perl = TRUE
+  ))
 })
 
 test_that("root App.R launchers resolve paths from the script location", {

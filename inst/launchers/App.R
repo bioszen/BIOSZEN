@@ -79,15 +79,17 @@ root_dir <- normalizePath(root_dir, winslash = "/", mustWork = FALSE)
 # -------- log --------
 log_file <- file.path(script_dir, "bioszen_r.log")
 log_sink_depth <- sink.number()
+close_launcher_log_sink <- function() {
+  while (sink.number() > log_sink_depth) {
+    before <- sink.number()
+    try(sink(), silent = TRUE)
+    if (sink.number() >= before) break
+  }
+  invisible(TRUE)
+}
 try({
   sink(log_file, append = TRUE, split = TRUE)
-  on.exit({
-    while (sink.number() > log_sink_depth) {
-      before <- sink.number()
-      try(sink(), silent = TRUE)
-      if (sink.number() >= before) break
-    }
-  }, add = TRUE)
+  on.exit(close_launcher_log_sink(), add = TRUE)
   cat("\n=== BIOSZEN App.R start ===\n")
   cat("Time: ", as.character(Sys.time()), "\n", sep = "")
   cat("R: ", R.version.string, "\n", sep = "")
@@ -129,6 +131,90 @@ cat(".libPaths():\n")
 print(.libPaths())
 
 pkg <- "BIOSZEN"
+launcher_fresh_process_env <- "BIOSZEN_LAUNCHER_FRESH_PROCESS"
+launcher_is_fresh_process <- identical(Sys.getenv(launcher_fresh_process_env, unset = ""), "1")
+launcher_library_changed <- FALSE
+
+same_launcher_path <- function(left, right, os_type = .Platform$OS.type) {
+  left <- normalizePath(left, winslash = "/", mustWork = FALSE)
+  right <- normalizePath(right, winslash = "/", mustWork = FALSE)
+  if (identical(os_type, "windows")) {
+    left <- tolower(left)
+    right <- tolower(right)
+  }
+  identical(left, right)
+}
+
+loaded_namespace_conflicts <- function(packages, lib_dir) {
+  packages <- intersect(unique(packages[nzchar(packages)]), loadedNamespaces())
+  if (!length(packages)) return(character(0))
+
+  conflicts <- vapply(packages, function(package) {
+    local_path <- file.path(lib_dir, package)
+    if (!dir.exists(local_path)) return(FALSE)
+
+    loaded_path <- tryCatch(
+      getNamespaceInfo(getNamespace(package), "path"),
+      error = function(e) ""
+    )
+    nzchar(loaded_path) && !same_launcher_path(loaded_path, local_path)
+  }, logical(1))
+
+  packages[conflicts]
+}
+
+launcher_rscript_path <- function(r_home = R.home(), os_type = .Platform$OS.type) {
+  executable <- if (identical(os_type, "windows")) "Rscript.exe" else "Rscript"
+  candidate <- file.path(r_home, "bin", executable)
+  if (file.exists(candidate)) {
+    return(normalizePath(candidate, winslash = "/", mustWork = TRUE))
+  }
+
+  resolved <- Sys.which(executable)
+  if (!nzchar(resolved)) return("")
+  normalizePath(resolved, winslash = "/", mustWork = TRUE)
+}
+
+launch_fresh_launcher_process <- function(script,
+                                          system2_fun = base::system2,
+                                          rscript = launcher_rscript_path()) {
+  if (!nzchar(script) || !file.exists(script)) {
+    stop("Cannot restart BIOSZEN because App.R could not be resolved.")
+  }
+  if (!nzchar(rscript) || !file.exists(rscript)) {
+    stop("Cannot restart BIOSZEN because Rscript could not be found.")
+  }
+
+  previous_flag <- Sys.getenv(launcher_fresh_process_env, unset = NA_character_)
+  on.exit({
+    if (is.na(previous_flag)) {
+      Sys.unsetenv(launcher_fresh_process_env)
+    } else {
+      do.call(Sys.setenv, setNames(list(previous_flag), launcher_fresh_process_env))
+    }
+  }, add = TRUE)
+  do.call(Sys.setenv, setNames(list("1"), launcher_fresh_process_env))
+  quote_type <- if (.Platform$OS.type == "windows") "cmd" else "sh"
+
+  status <- tryCatch(
+    system2_fun(
+      command = rscript,
+      args = c(
+        "--vanilla",
+        shQuote(normalizePath(script, winslash = "/", mustWork = TRUE), type = quote_type)
+      ),
+      stdout = FALSE,
+      stderr = FALSE,
+      wait = TRUE
+    ),
+    error = function(e) e
+  )
+  if (inherits(status, "error") || (!is.null(status) && !identical(as.integer(status), 0L))) {
+    detail <- if (inherits(status, "error")) conditionMessage(status) else paste0("status ", status)
+    stop("Could not start a clean BIOSZEN R process: ", detail)
+  }
+  invisible(TRUE)
+}
 
 bioszen_startup_citation <- function() {
   if (!isTRUE(getOption("BIOSZEN.show_startup_citation", TRUE))) {
@@ -598,6 +684,7 @@ install_dependency_packages <- function(packages, lib_dir) {
     FALSE
   })
   if (!ok) stop("Failed installing dependencies. Check bioszen_r.log.")
+  launcher_library_changed <<- TRUE
   invisible(TRUE)
 }
 
@@ -663,6 +750,22 @@ ensure_dependencies <- function(deps, lib_dir) {
   missing_after <- packages_missing_from_local_library(all_deps, lib_dir)
   if (length(missing_after)) {
     stop("Missing packages after install: ", paste(missing_after, collapse = ", "))
+  }
+
+  namespace_conflicts <- loaded_namespace_conflicts(all_deps, lib_dir)
+  if (
+    !isTRUE(launcher_is_fresh_process) &&
+    (isTRUE(launcher_library_changed) || length(namespace_conflicts))
+  ) {
+    if (length(namespace_conflicts)) {
+      cat(
+        "[deps] Loaded namespaces require a clean R process: ",
+        paste(namespace_conflicts, collapse = ", "), "\n",
+        sep = ""
+      )
+    }
+    cat("[deps] Deferring namespace load checks to the clean R process.\n")
+    return(invisible(TRUE))
   }
 
   not_loadable <- all_deps[!vapply(all_deps, loadable_with_local_library, logical(1), lib_dir = lib_dir)]
@@ -1061,6 +1164,7 @@ if (install_needed) {
   } else {
     install_from_tarball(archive_path, local_lib, pkg)
   }
+  launcher_library_changed <- TRUE
   remove_incomplete_install(local_lib, pkg)
   if (identical(package_kind, "archive")) {
     write_archive_marker(archive_path, local_lib, pkg)
@@ -1069,22 +1173,38 @@ if (install_needed) {
   cat("[install] Local BIOSZEN is up to date; skipping install.\n")
 }
 
-if (!loadable_with_local_library(pkg, local_lib)) {
-  stop("BIOSZEN is still not loadable. Check bioszen_r.log.")
+namespace_conflicts <- loaded_namespace_conflicts(unique(c(deps, pkg)), local_lib)
+restart_in_clean_process <- !isTRUE(launcher_is_fresh_process) &&
+  (isTRUE(launcher_library_changed) || length(namespace_conflicts))
+
+if (restart_in_clean_process) {
+  reasons <- character(0)
+  if (isTRUE(launcher_library_changed)) reasons <- c(reasons, "the local library was updated")
+  if (length(namespace_conflicts)) {
+    reasons <- c(reasons, paste0("loaded namespaces came from another library: ", paste(namespace_conflicts, collapse = ", ")))
+  }
+  cat("\n[launcher] Starting BIOSZEN in a clean R process because ", paste(reasons, collapse = "; "), ".\n", sep = "")
+  cat("[launcher] This prevents package namespace conflicts in RStudio on Windows and macOS.\n")
+  close_launcher_log_sink()
+  launch_fresh_launcher_process(script_path)
+} else {
+  if (!loadable_with_local_library(pkg, local_lib)) {
+    stop("BIOSZEN is still not loadable. Check bioszen_r.log.")
+  }
+
+  cat("\nBIOSZEN version: ", as.character(packageVersion(pkg, lib.loc = local_lib)), "\n", sep = "")
+  options(BIOSZEN.startup_citation_shown = FALSE)
+
+  # -------- run app --------
+  run_fun <- tryCatch(getExportedValue(pkg, "run_app"), error = function(e) NULL)
+  if (is.null(run_fun)) stop("Package does not export run_app().")
+
+  fm <- names(formals(run_fun))
+  args <- list()
+  if ("host" %in% fm) args$host <- getOption("shiny.host", "127.0.0.1")
+  if ("port" %in% fm) args$port <- getOption("shiny.port", 4321)
+  if ("launch.browser" %in% fm) args$launch.browser <- open_app_browser
+
+  cat("\nLaunching BIOSZEN::run_app() ...\n")
+  do.call(run_fun, args)
 }
-
-cat("\nBIOSZEN version: ", as.character(packageVersion(pkg, lib.loc = local_lib)), "\n", sep = "")
-options(BIOSZEN.startup_citation_shown = FALSE)
-
-# -------- run app --------
-run_fun <- tryCatch(getExportedValue(pkg, "run_app"), error = function(e) NULL)
-if (is.null(run_fun)) stop("Package does not export run_app().")
-
-fm <- names(formals(run_fun))
-args <- list()
-if ("host" %in% fm) args$host <- getOption("shiny.host", "127.0.0.1")
-if ("port" %in% fm) args$port <- getOption("shiny.port", 4321)
-if ("launch.browser" %in% fm) args$launch.browser <- open_app_browser
-
-cat("\nLaunching BIOSZEN::run_app() ...\n")
-do.call(run_fun, args)
