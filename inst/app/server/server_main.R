@@ -353,6 +353,22 @@ server <- function(input, output, session) {
     plot_text_style_inputs_ready(TRUE)
   }, once = TRUE)
 
+  dpi_input_resetting <- reactiveVal(FALSE)
+  observeEvent(input$export_dpi, {
+    if (isTRUE(dpi_input_resetting())) return()
+    status <- bioszen_validate_dpi(input$export_dpi)
+    if (isTRUE(status$valid)) return()
+
+    dpi_input_resetting(TRUE)
+    on.exit(dpi_input_resetting(FALSE), add = TRUE)
+    updateNumericInput(session, "export_dpi", value = status$value)
+    showNotification(
+      tr_text("dpi_invalid_fallback", input$app_lang %||% i18n_lang),
+      type = "warning",
+      duration = 6
+    )
+  }, ignoreInit = TRUE, ignoreNULL = FALSE)
+
   is_session_closing <- function() {
     if (isTRUE(session_closing())) return(TRUE)
     by_closed <- tryCatch(isTRUE(session$closed), error = function(e) FALSE)
@@ -1131,18 +1147,32 @@ server <- function(input, output, session) {
     identical(sort(normalize_update_values(a)), sort(normalize_update_values(b)))
   }
 
+  sync_checkbox_update_cache_from_client <- function(input_id, selected) {
+    input_id <- as.character(input_id %||% "")
+    if (!length(input_id) || is.na(input_id[[1]]) || !nzchar(input_id[[1]])) return(invisible(FALSE))
+    cache_key <- paste0("checkbox::", input_id[[1]])
+    if (!exists(cache_key, envir = input_update_cache, inherits = FALSE)) return(invisible(FALSE))
+    previous_signature <- get(cache_key, envir = input_update_cache, inherits = FALSE)
+    if (!is.list(previous_signature)) return(invisible(FALSE))
+    previous_signature$selected <- normalize_update_values(selected)
+    assign(cache_key, previous_signature, envir = input_update_cache)
+    invisible(TRUE)
+  }
+
   record_selector_commit <- function(key, selected) {
     key <- as.character(key %||% "")
     if (!length(key) || is.na(key[[1]]) || !nzchar(key[[1]])) return(invisible(FALSE))
+    selected <- normalize_update_values(selected)
     assign(
       key[[1]],
       list(
-        selected = normalize_update_values(selected),
+        selected = selected,
         at = Sys.time(),
         released = FALSE
       ),
       envir = selector_commit_store
     )
+    sync_checkbox_update_cache_from_client(key[[1]], selected)
     invisible(TRUE)
   }
 
@@ -1849,6 +1879,7 @@ server <- function(input, output, session) {
       },
       plot_w         = input$plot_w,
       plot_h         = input$plot_h,
+      export_dpi     = bioszen_effective_dpi(input$export_dpi),
       base_size      = input$base_size,
       fs_title       = input$fs_title,
       fs_axis        = input$fs_axis,
@@ -1872,6 +1903,8 @@ server <- function(input, output, session) {
         )
       ),
       axis_line_size = input$axis_line_size,
+      axis_title_spacing_x = input$axis_title_spacing_x,
+      axis_title_spacing_y = input$axis_title_spacing_y,
       yLab           = as.character(input$yLab %||% ""),
       plotTitle      = as.character(input$plotTitle %||% ""),
       labelMode      = as.character(input$labelMode %||% FALSE),
@@ -2001,9 +2034,10 @@ server <- function(input, output, session) {
     if (input$tipo == "Violin") {
       meta <- add_row(
         meta,
-        Campo = c("violin_width", "violin_linewidth"),
+        Campo = c("violin_width", "violin_linewidth", "violin_inner"),
         Valor = c(as.character(input$violin_width),
-                  as.character(input$violin_linewidth))
+                  as.character(input$violin_linewidth),
+                  as.character(input$violin_inner %||% "box"))
       )
     } else if (input$tipo == "Heatmap") {
       meta <- add_row(
@@ -2257,6 +2291,8 @@ server <- function(input, output, session) {
     eff_height <- effective_plot_height(height)
     scope_sel  <- if (input$scope == "Combinado") "Combinado" else "Por Cepa"
     strain_sel <- if (scope_sel == "Por Cepa") input$strain else NULL
+    export_dpi <- bioszen_effective_dpi(input$export_dpi)
+    export_scale <- export_dpi / BIOSZEN_CSS_DPI
 
     if (identical(input$tipo %||% "", "Curvas")) {
       p_static <- build_plot(scope_sel, strain_sel, input$tipo, for_interactive = TRUE)
@@ -2264,10 +2300,10 @@ server <- function(input, output, session) {
         ggplot2::ggsave(
           filename = file,
           plot = p_static,
-          width = eff_width / 96,
-          height = eff_height / 96,
+          width = eff_width / BIOSZEN_CSS_DPI,
+          height = eff_height / BIOSZEN_CSS_DPI,
           units = "in",
-          dpi = 96,
+          dpi = export_dpi,
           limitsize = FALSE,
           bg = "white"
         )
@@ -2283,7 +2319,7 @@ server <- function(input, output, session) {
         file = file,
         width = eff_width,
         height = eff_height,
-        zoom = 1,
+        zoom = export_scale,
         background = "white"
       )
       TRUE
@@ -2296,10 +2332,10 @@ server <- function(input, output, session) {
       ggplot2::ggsave(
         filename = file,
         plot = p_fallback,
-        width = eff_width / 96,
-        height = eff_height / 96,
+        width = eff_width / BIOSZEN_CSS_DPI,
+        height = eff_height / BIOSZEN_CSS_DPI,
         units = "in",
-        dpi = 96,
+        dpi = export_dpi,
         limitsize = FALSE,
         bg = "white"
       )
@@ -2322,8 +2358,8 @@ server <- function(input, output, session) {
         ggplot2::ggsave(
           filename = file,
           plot = p_static,
-          width = eff_width / 96,
-          height = eff_height / 96,
+          width = eff_width / BIOSZEN_CSS_DPI,
+          height = eff_height / BIOSZEN_CSS_DPI,
           units = "in",
           limitsize = FALSE,
           device = grDevices::cairo_pdf,
@@ -2354,8 +2390,8 @@ server <- function(input, output, session) {
       ggplot2::ggsave(
         filename = file,
         plot = p_fallback,
-        width = eff_width / 96,
-        height = eff_height / 96,
+        width = eff_width / BIOSZEN_CSS_DPI,
+        height = eff_height / BIOSZEN_CSS_DPI,
         units = "in",
         limitsize = FALSE,
         device = grDevices::cairo_pdf,
@@ -2990,6 +3026,71 @@ server <- function(input, output, session) {
     )
   }
 
+  publication_style_types <- c(
+    "Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion"
+  )
+
+  publication_style_enabled <- function(tipo = input$tipo %||% "") {
+    as.character(tipo %||% "") %in% publication_style_types
+  }
+
+  plot_dimension_scale <- function() {
+    if (!isTRUE(publication_style_enabled())) return(1)
+    bioszen_plot_dimension_scale(input$plot_w %||% 1000, input$plot_h %||% 700)
+  }
+
+  plot_scaled_value <- function(value, default, minimum = 0) {
+    raw <- bioszen_clamp_number(value, default, minimum = minimum)
+    raw * plot_dimension_scale()
+  }
+
+  plot_title_font_size <- function() {
+    plot_scaled_value(input$fs_title, bioszen_visual_defaults$title_size, minimum = 1)
+  }
+
+  plot_axis_title_font_size <- function() {
+    plot_scaled_value(input$fs_axis, bioszen_visual_defaults$axis_size, minimum = 1)
+  }
+
+  plot_axis_tick_font_size <- function() {
+    ratio <- if (isTRUE(publication_style_enabled())) bioszen_visual_defaults$axis_tick_ratio else 1
+    plot_scaled_value(input$fs_axis, bioszen_visual_defaults$axis_size, minimum = 1) * ratio
+  }
+
+  plot_axis_line_width <- function() {
+    plot_scaled_value(input$axis_line_size, bioszen_visual_defaults$axis_line_size, minimum = 0.1)
+  }
+
+  plot_axis_title_spacing <- function(axis = c("x", "y")) {
+    axis <- match.arg(axis)
+    if (!isTRUE(publication_style_enabled())) return(0)
+    input_id <- if (identical(axis, "x")) "axis_title_spacing_x" else "axis_title_spacing_y"
+    fallback <- if (identical(axis, "x")) {
+      bioszen_visual_defaults$axis_title_spacing_x
+    } else {
+      bioszen_visual_defaults$axis_title_spacing_y
+    }
+    plot_scaled_value(input[[input_id]], fallback, minimum = 0)
+  }
+
+  add_text_element_margin <- function(el, top = 0, right = 0, bottom = 0, left = 0) {
+    if (is.null(el) || inherits(el, "element_blank")) return(el)
+    current <- el$margin %||% margin(0, 0, 0, 0, unit = "pt")
+    values <- tryCatch(
+      grid::convertUnit(current, "pt", valueOnly = TRUE),
+      error = function(e) c(0, 0, 0, 0)
+    )
+    if (length(values) != 4 || any(!is.finite(values))) values <- c(0, 0, 0, 0)
+    el$margin <- margin(
+      t = values[[1]] + top,
+      r = values[[2]] + right,
+      b = values[[3]] + bottom,
+      l = values[[4]] + left,
+      unit = "pt"
+    )
+    el
+  }
+
   plot_font_family <- function() {
     choices <- if (exists("bioszen_plot_font_choices", mode = "function")) {
       bioszen_plot_font_choices()
@@ -3219,49 +3320,57 @@ server <- function(input, output, session) {
   style_plot_text <- function(p) {
     if (!inherits(p, "ggplot")) return(p)
     p <- style_plot_text_layers(p)
-    p + theme(
+    title_size <- plot_title_font_size()
+    axis_title_size <- plot_axis_title_font_size()
+    axis_tick_size <- plot_axis_tick_font_size()
+    axis_title_x <- update_text_element(
+      plot_theme_element(p, "axis.title.x", "axis.title"),
+      "axis_title_x",
+      default_face = "bold",
+      size = axis_title_size
+    )
+    axis_title_y <- update_text_element(
+      plot_theme_element(p, "axis.title.y", "axis.title"),
+      "axis_title_y",
+      default_face = "bold",
+      size = axis_title_size
+    )
+    axis_title_x <- add_text_element_margin(axis_title_x, top = plot_axis_title_spacing("x"))
+    axis_title_y <- add_text_element_margin(axis_title_y, right = plot_axis_title_spacing("y"))
+
+    styled <- p + theme(
       text = element_text(family = plot_font_family()),
       plot.title = update_text_element(
         plot_theme_element(p, "plot.title"),
         "title",
         default_face = "bold",
-        size = input$fs_title
+        size = title_size
       ),
       axis.title = update_text_element(
         plot_theme_element(p, "axis.title"),
         "axis_titles",
         default_face = "bold",
-        size = input$fs_axis
+        size = axis_title_size
       ),
-      axis.title.x = update_text_element(
-        plot_theme_element(p, "axis.title.x", "axis.title"),
-        "axis_title_x",
-        default_face = "bold",
-        size = input$fs_axis
-      ),
-      axis.title.y = update_text_element(
-        plot_theme_element(p, "axis.title.y", "axis.title"),
-        "axis_title_y",
-        default_face = "bold",
-        size = input$fs_axis
-      ),
+      axis.title.x = axis_title_x,
+      axis.title.y = axis_title_y,
       axis.text = update_text_element(
         plot_theme_element(p, "axis.text"),
         "axis_text",
         default_face = "plain",
-        size = input$fs_axis
+        size = axis_tick_size
       ),
       axis.text.x = update_text_element(
         plot_theme_element(p, "axis.text.x", "axis.text"),
         "axis_text_x",
         default_face = "plain",
-        size = input$fs_axis
+        size = axis_tick_size
       ),
       axis.text.y = update_text_element(
         plot_theme_element(p, "axis.text.y", "axis.text"),
         "axis_text_y",
         default_face = "plain",
-        size = input$fs_axis
+        size = axis_tick_size
       ),
       legend.text = update_text_element(
         plot_theme_element(p, "legend.text"),
@@ -3276,6 +3385,14 @@ server <- function(input, output, session) {
         size = input$fs_legend
       )
     )
+    if (isTRUE(publication_style_enabled())) {
+      styled <- styled + theme(
+        axis.line = element_line(linewidth = plot_axis_line_width(), colour = "black"),
+        axis.ticks = element_line(linewidth = plot_axis_line_width(), colour = "black"),
+        axis.ticks.length = unit(max(4, 4 * plot_dimension_scale()), "pt")
+      )
+    }
+    styled
   }
 
   plotly_style_text_value <- function(text, target) {
@@ -3426,16 +3543,31 @@ server <- function(input, output, session) {
     axis_name <- tolower(as.character(axis_name %||% ""))
     title_target <- if (startsWith(axis_name, "yaxis")) "axis_title_y" else "axis_title_x"
     text_target <- if (startsWith(axis_name, "yaxis")) "axis_text_y" else "axis_text_x"
+    title_spacing <- if (startsWith(axis_name, "yaxis")) {
+      plot_axis_title_spacing("y")
+    } else {
+      plot_axis_title_spacing("x")
+    }
     if (is.list(axis_obj$title)) {
       axis_obj$title$text <- plotly_style_text_value(axis_obj$title$text %||% "", title_target)
-      axis_obj$title$font <- plotly_font_list(title_target, size = input$fs_axis, current = axis_obj$title$font)
+      axis_obj$title$font <- plotly_font_list(title_target, size = plot_axis_title_font_size(), current = axis_obj$title$font)
+      axis_obj$title$standoff <- title_spacing
     } else if (!is.null(axis_obj$title)) {
-      axis_obj$title <- plotly_style_text_value(axis_obj$title, title_target)
+      axis_obj$title <- list(
+        text = plotly_style_text_value(axis_obj$title, title_target),
+        font = plotly_font_list(title_target, size = plot_axis_title_font_size()),
+        standoff = title_spacing
+      )
     }
-    axis_obj$titlefont <- plotly_font_list(title_target, size = input$fs_axis, current = axis_obj$titlefont)
-    axis_obj$tickfont <- plotly_font_list(text_target, size = input$fs_axis, current = axis_obj$tickfont)
+    axis_obj$titlefont <- plotly_font_list(title_target, size = plot_axis_title_font_size(), current = axis_obj$titlefont)
+    axis_obj$tickfont <- plotly_font_list(text_target, size = plot_axis_tick_font_size(), current = axis_obj$tickfont)
     if (!is.null(axis_obj$ticktext)) {
       axis_obj$ticktext <- plotly_style_text_value(axis_obj$ticktext, text_target)
+    }
+    if (isTRUE(publication_style_enabled())) {
+      axis_obj$linewidth <- plot_axis_line_width()
+      axis_obj$tickwidth <- plot_axis_line_width()
+      axis_obj$ticklen <- max(5, 5 * plot_dimension_scale())
     }
     axis_obj
   }
@@ -3446,11 +3578,11 @@ server <- function(input, output, session) {
     layout_obj$font <- plotly_font_list("axis_text", current = layout_obj$font)
     if (is.list(layout_obj$title)) {
       layout_obj$title$text <- plotly_style_text_value(layout_obj$title$text %||% "", "title")
-      layout_obj$title$font <- plotly_font_list("title", size = input$fs_title, current = layout_obj$title$font)
+      layout_obj$title$font <- plotly_font_list("title", size = plot_title_font_size(), current = layout_obj$title$font)
     } else if (!is.null(layout_obj$title)) {
       layout_obj$title <- list(
         text = plotly_style_text_value(layout_obj$title, "title"),
-        font = plotly_font_list("title", size = input$fs_title)
+        font = plotly_font_list("title", size = plot_title_font_size())
       )
     }
     axis_names <- unique(c("xaxis", "yaxis", grep("^[xy]axis[0-9]+$", names(layout_obj), value = TRUE)))
@@ -3624,10 +3756,12 @@ server <- function(input, output, session) {
   }
 
   # Inicializa mÃƒÂ³dulos con los helpers generados arriba
-  combo_plot <- setup_panel_module(input, output, session,
-                                   plot_bank, panel_inserto, ov_trigger,
-                                   make_snapshot, collect_metadata_tbl,
-                                   curve_settings)
+  combo_module <- setup_panel_module(input, output, session,
+                                     plot_bank, panel_inserto, ov_trigger,
+                                     make_snapshot, collect_metadata_tbl,
+                                     curve_settings)
+  combo_plot <- combo_module$plot
+  combo_plot_builder <- combo_module$build
   growth_mod    <- setup_growth_module(input, output, session)
   growth_out_dir <- growth_mod$growth_dir
   growth_selected_count <- growth_mod$selected_count
@@ -5372,24 +5506,45 @@ server <- function(input, output, session) {
     )
   })
 
+  filter_selector_retry_tick <- reactiveVal(0L)
+  schedule_filter_selector_retry <- function(delay = 0.25) {
+    token <- isolate(filter_selector_retry_tick()) + 1L
+    later::later(
+      function() {
+        filter_selector_retry_tick(token)
+      },
+      delay = delay
+    )
+    invisible(TRUE)
+  }
+
   show_medios_input_committed <- debounce(
     reactive({
-      input$showMedios
+      list(
+        value = input$showMedios,
+        retry = filter_selector_retry_tick()
+      )
     }),
     450
   )
 
   show_groups_input_committed <- debounce(
     reactive({
-      input$showGroups
+      list(
+        value = input$showGroups,
+        retry = filter_selector_retry_tick()
+      )
     }),
     450
   )
 
   observeEvent(show_medios_input_committed(), {
-    selected <- show_medios_input_committed()
+    selected <- show_medios_input_committed()$value
     if (is.null(selected)) return()
-    if (selector_input_is_stale("showMedios", selected, isolate(filter_medios_selected()))) return()
+    if (selector_input_is_stale("showMedios", selected, isolate(filter_medios_selected()))) {
+      schedule_filter_selector_retry()
+      return()
+    }
     set_filter_selection_state(
       filter_medios_selected,
       selected = selected,
@@ -5398,9 +5553,12 @@ server <- function(input, output, session) {
   }, ignoreInit = FALSE, ignoreNULL = FALSE, priority = 120)
 
   observeEvent(show_groups_input_committed(), {
-    selected <- show_groups_input_committed()
+    selected <- show_groups_input_committed()$value
     if (is.null(selected)) return()
-    if (selector_input_is_stale("showGroups", selected, isolate(filter_groups_selected()))) return()
+    if (selector_input_is_stale("showGroups", selected, isolate(filter_groups_selected()))) {
+      schedule_filter_selector_retry()
+      return()
+    }
     set_filter_selection_state(
       filter_groups_selected,
       selected = selected,
@@ -5685,17 +5843,33 @@ server <- function(input, output, session) {
       if (is.null(df) || !is.data.frame(df) || !nrow(df)) return()
       scope_sel <- input$scope %||% "Por Cepa"
       if (identical(scope_sel, "Por Cepa") && "Media" %in% names(df)) {
+        media_choices_sync <- sort(unique(as.character(df$Media)))
+        media_selected_sync <- selected_show_medios()
+        update_checkbox_group_input_if_changed(
+          input_id = "showMedios",
+          choices = media_choices_sync,
+          selected = media_selected_sync,
+          freeze_input = FALSE
+        )
         sync_filter_toggle_input(
           "toggleMedios",
-          choices = sort(unique(as.character(df$Media))),
-          selected = selected_show_medios()
+          choices = media_choices_sync,
+          selected = media_selected_sync
         )
       }
       if (identical(scope_sel, "Combinado") && all(c("Strain", "Media") %in% names(df))) {
+        group_choices_sync <- unique(paste(df$Strain, df$Media, sep = "-"))
+        group_selected_sync <- selected_show_groups()
+        update_checkbox_group_input_if_changed(
+          input_id = "showGroups",
+          choices = group_choices_sync,
+          selected = group_selected_sync,
+          freeze_input = FALSE
+        )
         sync_filter_toggle_input(
           "toggleGroups",
-          choices = unique(paste(df$Strain, df$Media, sep = "-")),
-          selected = selected_show_groups()
+          choices = group_choices_sync,
+          selected = group_selected_sync
         )
       }
     },
@@ -6143,7 +6317,10 @@ server <- function(input, output, session) {
   
   
   # -- actualizar listas de Control / Pareo cuando cambian los grupos visibles --  
-  observeEvent(list(selected_show_groups(), input$labelMode, input$tipo), {
+  control_group_trigger <- debounce(reactive({
+    list(sg = selected_show_groups(), lm = input$labelMode, t = input$tipo)
+  }), 300)
+  observeEvent(control_group_trigger(), {
     grps <- selected_show_groups()
     if (identical(input$tipo %||% "", "Apiladas") && isTRUE(input$labelMode)) {
       grps <- datos_agrupados() |>
@@ -9497,8 +9674,12 @@ server <- function(input, output, session) {
         param_key = active_param_key
       )
       if (!nzchar(input_id) || !length(choices)) next
-      current <- input[[input_id]]
       stored <- stored_map[[canonical_key]]
+      current <- selector_committed_or_input(
+        input_id,
+        input[[input_id]],
+        cached = stored
+      )
       prefer_stored <- isTRUE(qc_tech_render_from_store())
       selected <- if (isTRUE(prefer_stored) && !is.null(stored)) {
         normalize_rep_selection(intersect(as.character(stored), choices))
@@ -11921,8 +12102,8 @@ server <- function(input, output, session) {
     )
 
     if (identical(tolower(tools::file_ext(file)), "pdf")) {
-      width_in <- max(as.numeric(width %||% 1000) / 96, 1)
-      height_in <- max(as.numeric(height %||% 700) / 96, 1)
+      width_in <- max(as.numeric(width %||% 1000) / BIOSZEN_CSS_DPI, 1)
+      height_in <- max(as.numeric(height %||% 700) / BIOSZEN_CSS_DPI, 1)
       page_css <- sprintf(
         paste0(
           "<style>",
@@ -11947,7 +12128,7 @@ server <- function(input, output, session) {
 
     attempts <- list(
       list(delay = delay, zoom = zoom),
-      list(delay = max(delay, 1), zoom = max(1, zoom - 1))
+      list(delay = max(delay, 1), zoom = zoom)
     )
     last_err <- NULL
     for (att in attempts) {
@@ -12392,7 +12573,7 @@ server <- function(input, output, session) {
           overflow_pt <- (overflow / y_span) * ph
           extra_top   <- if (overflow > 0) max(60, overflow_pt * 1.2 + input$sig_textsize * 2) else 0
           if (is.finite(extra_top) && extra_top > 0) {
-            pt_to_px <- 96 / 72
+            pt_to_px <- BIOSZEN_CSS_DPI / 72
             extra_px <- extra_top * pt_to_px
             cur_h <- plt$x$layout$height %||% ph
             if (!is.numeric(cur_h) || !is.finite(cur_h) || cur_h <= 0) cur_h <- ph
@@ -13236,7 +13417,7 @@ server <- function(input, output, session) {
     if (is.null(show_caps)) show_caps <- TRUE
     line_annots <- list()
     annots <- list()
-    mm_to_px <- 96 / 25.4
+    mm_to_px <- BIOSZEN_CSS_DPI / 25.4
     height_px <- plt$x$layout$height %||% 700
     if (!is.numeric(height_px) || !is.finite(height_px) || height_px <= 0) {
       height_px <- 700
@@ -13464,7 +13645,7 @@ server <- function(input, output, session) {
       yaxis     = list(automargin = TRUE)
     )
     if (!is.null(sig_margin_pt) && is.numeric(sig_margin_pt)) {
-      pt_to_px <- 96 / 72
+      pt_to_px <- BIOSZEN_CSS_DPI / 72
       sig_margin_px <- sig_margin_pt * pt_to_px
       cur_margin <- plt$x$layout$margin %||% list(t = 0, r = 0, b = 0, l = 0)
       margin_vals <- list(
@@ -13477,7 +13658,7 @@ server <- function(input, output, session) {
     }
     if (!is.null(sig_extra_top_pt) && is.numeric(sig_extra_top_pt) &&
         is.finite(sig_extra_top_pt) && sig_extra_top_pt > 0) {
-      pt_to_px <- 96 / 72
+      pt_to_px <- BIOSZEN_CSS_DPI / 72
       extra_px <- sig_extra_top_pt * pt_to_px
       cur_h <- plt$x$layout$height %||% input$plot_h %||% 700
       if (!is.numeric(cur_h) || !is.finite(cur_h) || cur_h <= 0) cur_h <- 700
@@ -13659,7 +13840,19 @@ server <- function(input, output, session) {
   outputOptions(output, "repsStrainUI", suspendWhenHidden = TRUE)
   outputOptions(output, "repsGrpUI", suspendWhenHidden = TRUE)
 
-  observe({
+  reps_strain_trigger <- debounce(reactive({
+    medias <- show_medios_for_reps() %||% character(0)
+    list(
+      scope = input$scope,
+      tipo = input$tipo,
+      strain = input$strain,
+      medias = medias,
+      rm_reps_all = input$rm_reps_all,
+      inputs = if (length(medias)) lapply(medias, function(m) input[[strain_rep_input_id(m)]]) else NULL
+    )
+  }), 240)
+
+  observeEvent(reps_strain_trigger(), {
     if (isTRUE(replicate_bulk_updating())) return()
     if (is_reactive_stabilizing(c("filter_selection_sync_inflight"))) return()
     if (!identical(input$scope %||% "Por Cepa", "Por Cepa")) return()
@@ -13730,7 +13923,18 @@ server <- function(input, output, session) {
     }
   })
 
-  observe({
+  reps_group_trigger <- debounce(reactive({
+    grps <- show_groups_for_reps() %||% character(0)
+    list(
+      scope = input$scope,
+      tipo = input$tipo,
+      grps = grps,
+      rm_reps_all = input$rm_reps_all,
+      inputs = if (length(grps)) lapply(grps, function(g) input[[group_rep_input_id(g)]]) else NULL
+    )
+  }), 240)
+
+  observeEvent(reps_group_trigger(), {
     if (isTRUE(replicate_bulk_updating())) return()
     if (is_reactive_stabilizing(c("filter_selection_sync_inflight"))) return()
     if (!identical(input$scope %||% "Por Cepa", "Combinado")) return()
@@ -14075,7 +14279,7 @@ server <- function(input, output, session) {
       list(
         width   = input$plot_w,
         height  = input$plot_h,
-        scale   = 3,
+        scale   = bioszen_effective_dpi(input$export_dpi) / BIOSZEN_CSS_DPI,
         success = "plot_copy_success",
         fail    = "plot_copy_error"
       )
@@ -14112,6 +14316,7 @@ server <- function(input, output, session) {
       filename = fname,
       width    = effective_plot_width(),
       height   = effective_plot_height(),
+      scale    = bioszen_effective_dpi(input$export_dpi) / BIOSZEN_CSS_DPI,
       format   = "png"
     ))
   })
@@ -14370,6 +14575,7 @@ server <- function(input, output, session) {
       as.character(input$tipo %||% ""),
       as.character(width),
       as.character(height),
+      as.character(bioszen_effective_dpi(input$export_dpi)),
       stable_key_value(reps_strain_selected()),
       stable_key_value(reps_group_selected()),
       stable_key_value(as.character(input$rm_reps_all %||% character(0))),
@@ -15233,6 +15439,26 @@ server <- function(input, output, session) {
       if (!is.null(selected)) updateSelectInput(session, input_id, selected = selected)
       invisible(!is.null(selected))
     }
+    update_numeric_metadata <- function(input_id, value, default, minimum = -Inf, maximum = Inf) {
+      if (is.null(value)) return(invisible(FALSE))
+      parsed <- suppressWarnings(as.numeric(value))
+      if (!length(parsed) || !is.finite(parsed[[1]])) return(invisible(FALSE))
+      parsed <- bioszen_clamp_number(parsed[[1]], default, minimum = minimum, maximum = maximum)
+      updateNumericInput(session, input_id, value = parsed)
+      invisible(TRUE)
+    }
+    restore_dpi_metadata <- function(value, input_id = "export_dpi") {
+      status <- bioszen_validate_dpi(value)
+      updateNumericInput(session, input_id, value = status$value)
+      if (!isTRUE(status$valid) && !identical(status$reason, "missing")) {
+        showNotification(
+          tr_text("dpi_metadata_invalid_fallback", input$app_lang %||% i18n_lang),
+          type = "warning",
+          duration = 7
+        )
+      }
+      invisible(status$value)
+    }
     current_ctrl_medium_choices <- function() {
       df <- tryCatch(datos_agrupados(), error = function(e) NULL)
       if (is.null(df) || !is.data.frame(df) || !"Media" %in% names(df)) return(character(0))
@@ -15275,6 +15501,7 @@ server <- function(input, output, session) {
     }
     if (!is.null(v <- get_val("plot_w")))     updateNumericInput(session, "plot_w",     value = as.numeric(v))
     if (!is.null(v <- get_val("plot_h")))     updateNumericInput(session, "plot_h",     value = as.numeric(v))
+    restore_dpi_metadata(get_val_allow_blank("export_dpi"))
     if (!is.null(v <- get_val("base_size")))   updateNumericInput(session, "base_size",   value = as.numeric(v))
     if (!is.null(v <- get_val("fs_title")))   updateNumericInput(session, "fs_title",   value = as.numeric(v))
     if (!is.null(v <- get_val("fs_axis")))    updateNumericInput(session, "fs_axis",    value = as.numeric(v))
@@ -15302,6 +15529,20 @@ server <- function(input, output, session) {
       }
     }
     if (!is.null(v <- get_val("axis_line_size"))) updateNumericInput(session, "axis_line_size", value = as.numeric(v))
+    update_numeric_metadata(
+      "axis_title_spacing_x",
+      get_val("axis_title_spacing_x"),
+      bioszen_visual_defaults$axis_title_spacing_x,
+      minimum = 0,
+      maximum = 100
+    )
+    update_numeric_metadata(
+      "axis_title_spacing_y",
+      get_val("axis_title_spacing_y"),
+      bioszen_visual_defaults$axis_title_spacing_y,
+      minimum = 0,
+      maximum = 100
+    )
     if (!is.null(v <- get_val("yLab")))       updateTextInput(session, "yLab", value = v)
     if (!is.null(v <- get_val("plotTitle")))  updateTextInput(session, "plotTitle", value = v)
     if (!is.null(v <- get_val("labelMode")))  updateCheckboxInput(session, "labelMode", value = parse_bool(v))
@@ -15339,6 +15580,9 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("box_w")))      updateNumericInput(session, "box_w",      value = as.numeric(v))
     if (!is.null(v <- get_val("violin_width")))     updateNumericInput(session, "violin_width",     value = as.numeric(v))
     if (!is.null(v <- get_val("violin_linewidth"))) updateNumericInput(session, "violin_linewidth", value = as.numeric(v))
+    if (!is.null(v <- get_val("violin_inner"))) {
+      update_radio_metadata("violin_inner", v, c("box", "points"))
+    }
     if (!is.null(v <- get_val("curve_lwd")))   updateNumericInput(session, "curve_lwd",   value = as.numeric(v))
     if (!is.null(v <- get_val("curve_geom"))) update_radio_metadata("curve_geom", v, c("line_points", "line_only"))
     if (!is.null(v <- get_val("curve_color_mode"))) update_radio_metadata("curve_color_mode", v, c("by_group", "single"))
@@ -15635,11 +15879,13 @@ server <- function(input, output, session) {
     h_px <- suppressWarnings(as.numeric(input$combo_height))
     if (!is.finite(w_px) || w_px <= 0) w_px <- 1000
     if (!is.finite(h_px) || h_px <= 0) h_px <- 700
-    preview_ppi <- 96
+    preview_ppi <- BIOSZEN_CSS_DPI
+    export_dpi <- bioszen_effective_dpi(input$combo_export_dpi)
     list(
       width_px = w_px,
       height_px = h_px,
       preview_ppi = preview_ppi,
+      export_dpi = export_dpi,
       width_in = w_px / preview_ppi,
       height_in = h_px / preview_ppi
     )
@@ -15656,7 +15902,7 @@ server <- function(input, output, session) {
         width = dims$width_in,
         height = dims$height_in,
         units = "in",
-        dpi = dims$preview_ppi,
+        dpi = dims$export_dpi,
         limitsize = FALSE,
         bg = "white"
       )
@@ -15668,12 +15914,91 @@ server <- function(input, output, session) {
   output$dl_combo_pptx <- downloadHandler(
     filename = function() "combo.pptx",
     content  = function(file){
-      library(officer); library(rvg)
-      doc <- read_pptx()
-      doc <- add_slide(doc, layout = "Title and Content",
-                       master = "Office Theme") |>
-        ph_with(dml(ggobj = combo_plot()),
-                location = ph_location_fullsize())
+      slide_dims <- bioszen_pptx_oriented_size(
+        input$combo_pptx_width %||% 10,
+        input$combo_pptx_height %||% 7.5,
+        input$combo_pptx_orientation %||% "landscape"
+      )
+      fit <- bioszen_fit_aspect_rect(
+        content_width = input$combo_width %||% 1000,
+        content_height = input$combo_height %||% 700,
+        slide_width = slide_dims$width,
+        slide_height = slide_dims$height,
+        margin = input$combo_pptx_margin %||% 0
+      )
+      combo_dims <- combo_export_dims()
+      pptx_plot_scale <- min(
+        fit$width / combo_dims$width_in,
+        fit$height / combo_dims$height_in
+      )
+      if (is.finite(pptx_plot_scale) && pptx_plot_scale < 1) {
+        # Native PowerPoint fonts are slightly wider than the browser device.
+        # Keep a proportional safety margin when the full panel must shrink.
+        pptx_plot_scale <- pptx_plot_scale * 0.85
+      }
+      pptx_plot_scale <- bioszen_clamp_number(
+        pptx_plot_scale,
+        1,
+        minimum = 0.1,
+        maximum = 4
+      )
+      pptx_plot <- combo_plot_builder(pptx_plot_scale)
+      if (isTRUE(fit$small)) {
+        showNotification(
+          tr_text("combo_pptx_small_warning", input$app_lang %||% i18n_lang),
+          type = "warning",
+          duration = 6
+        )
+      }
+
+      doc <- officer::read_pptx()
+      doc <- bioszen_set_pptx_slide_size(doc, slide_dims$width, slide_dims$height)
+      doc <- officer::add_slide(doc, layout = "Blank", master = "Office Theme")
+      plot_location <- officer::ph_location(
+        left = fit$left,
+        top = fit$top,
+        width = fit$width,
+        height = fit$height
+      )
+      vector_doc <- tryCatch(
+        officer::ph_with(
+          doc,
+          rvg::dml(ggobj = pptx_plot),
+          location = plot_location
+        ),
+        error = function(e) NULL
+      )
+      if (is.null(vector_doc)) {
+        raster_file <- tempfile(fileext = ".png")
+        on.exit(unlink(raster_file, force = TRUE), add = TRUE)
+        raster_dpi <- bioszen_effective_dpi(input$combo_export_dpi)
+        ggplot2::ggsave(
+          filename = raster_file,
+          plot = pptx_plot,
+          width = fit$width,
+          height = fit$height,
+          units = "in",
+          dpi = raster_dpi,
+          limitsize = FALSE,
+          bg = "white"
+        )
+        doc <- officer::ph_with(
+          doc,
+          officer::external_img(
+            raster_file,
+            width = fit$width,
+            height = fit$height
+          ),
+          location = plot_location
+        )
+        showNotification(
+          tr_text("combo_pptx_vector_fallback", input$app_lang %||% i18n_lang),
+          type = "warning",
+          duration = 7
+        )
+      } else {
+        doc <- vector_doc
+      }
       print(doc, target = file)
     },
     contentType = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
@@ -15703,6 +16028,7 @@ server <- function(input, output, session) {
       "copyStaticPlotToClipboard",
       list(
         elementId = "comboPreview",
+        downloadId = "dl_combo_png",
         success = "combo_copy_success",
         fail = "combo_copy_error"
       )

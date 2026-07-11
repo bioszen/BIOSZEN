@@ -648,3 +648,40 @@ heatmap_row_clusters_n,Número de clústeres de filas
 heatmap_col_clusters_n,Número de clústeres de columnas
 heatmap_download_clusters,Descargar clústeres de heatmap (.xlsx)
 heatmap_enable_row_clusters,Activa el agrupamiento por filas para exportar los clústeres de parámetros.
+violin_inner,Interior del violín:
+violin_inner_box,Caja interna
+violin_inner_points,Puntos individuales
+axis_title_spacing_x,Separación del título del eje X (pt):
+axis_title_spacing_y,Separación del título del eje Y (pt):
+export_dpi,Resolución de exportación (DPI):
+export_dpi_help,"Predeterminado: 300 DPI. Valores compatibles: 72 a 600. Los DPI solo cambian la resolución de exportaciones raster y del portapapeles; las dimensiones y la distribución se mantienen. PDF y las exportaciones compatibles de PowerPoint siguen siendo vectoriales."
+dpi_invalid_fallback,"El valor de DPI está ausente, no es válido o no es compatible. BIOSZEN usará 300 DPI. Los valores compatibles son de 72 a 600 DPI."
+dpi_metadata_invalid_fallback,"El metadata cargado contiene un valor de DPI no válido o no compatible. BIOSZEN restauró los demás ajustes y usó 300 DPI."
+combo_section_pptx,Diapositiva de PowerPoint
+combo_pptx_preset,Formato de diapositiva:
+combo_pptx_standard_4_3,Estándar (4:3)
+combo_pptx_widescreen_16_9,Panorámica (16:9)
+combo_pptx_custom,Personalizado
+combo_pptx_orientation,Orientación de la diapositiva:
+combo_pptx_landscape,Horizontal
+combo_pptx_portrait,Vertical
+combo_pptx_width,Ancho de diapositiva (pulg):
+combo_pptx_height,Alto de diapositiva (pulg):
+combo_pptx_margin,Margen mínimo de borde (pulg):
+combo_pptx_help,La exportación siempre crea una diapositiva y ajusta proporcionalmente la composición de la vista previa al tamaño seleccionado.
+combo_pptx_small_warning,La diapositiva seleccionada es pequeña; la composición se ajustó proporcionalmente para evitar superposiciones o cortes.
+combo_pptx_vector_fallback,La representación vectorial editable no estuvo disponible; PowerPoint se generó con una composición raster de alta resolución.
+combo_preserve_original_style,Conservar la apariencia original de cada gráfico
+combo_preserve_original_style_help,Activado por defecto. Los textos y ejes solo se ajustan lo necesario para caber en la composición; los tamaños de puntos y la geometría permanecen sin cambios. Desactívalo para aplicar los controles globales de estilo de la composición.
+combo_override_typography,Aplicar la tipografía de la composición a todos los gráficos
+combo_override_typography_help,"Usa los tamaños compartidos, familia tipográfica, estilos, ángulos y alineación indicados abajo en todos los gráficos de esta composición sin modificar su geometría de datos ni sus colores."
+combo_axis_text_x_size,Tamaño de etiquetas de ticks X
+combo_axis_text_y_size,Tamaño de etiquetas de ticks Y
+combo_axis_text_x_angle,Ángulo de etiquetas de ticks X
+combo_axis_text_y_angle,Ángulo de etiquetas de ticks Y
+combo_axis_text_x_align,Alineación de etiquetas de ticks X
+combo_axis_text_y_align,Alineación de etiquetas de ticks Y
+combo_axis_align_auto,Automática
+combo_axis_align_left,Izquierda
+combo_axis_align_center,Centro
+combo_axis_align_right,Derecha

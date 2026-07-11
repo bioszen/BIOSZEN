@@ -262,15 +262,19 @@ test_that("PNG download dimensions match preview dimensions across plot types", 
   ensure_select_has_value(app, "strain")
   ensure_select_has_value(app, "param")
 
-  expected_w <- 1200
-  expected_h <- 800
+  logical_w <- 1200
+  logical_h <- 800
+  default_dpi <- BIOSZEN_DEFAULT_DPI
+  expected_png_w <- round(logical_w * default_dpi / BIOSZEN_CSS_DPI)
+  expected_png_h <- round(logical_h * default_dpi / BIOSZEN_CSS_DPI)
   input_names <- names(app$get_values(input = TRUE)$input %||% list())
   expect_true("tipo" %in% input_names, info = "Input 'tipo' must exist in main plot panel.")
   base_inputs <- list(
     scope = "Combinado",
-    plot_w = expected_w,
-    plot_h = expected_h
+    plot_w = logical_w,
+    plot_h = logical_h
   )
+  if ("export_dpi" %in% input_names) base_inputs$export_dpi <- default_dpi
   if ("margin_right_adj" %in% input_names) base_inputs$margin_right_adj <- 0
   if ("margin_bottom_adj" %in% input_names) base_inputs$margin_bottom_adj <- 0
   do.call(
@@ -306,8 +310,8 @@ test_that("PNG download dimensions match preview dimensions across plot types", 
     ))
   }
   probe_dims <- png_dims(probe)
-  expect_equal(unname(probe_dims[["width"]]), expected_w, info = "width mismatch for type Boxplot")
-  expect_equal(unname(probe_dims[["height"]]), expected_h, info = "height mismatch for type Boxplot")
+  expect_equal(unname(probe_dims[["width"]]), expected_png_w, info = "width mismatch for type Boxplot")
+  expect_equal(unname(probe_dims[["height"]]), expected_png_h, info = "height mismatch for type Boxplot")
 
   pdf_probe <- download_pdf_with_retry(app, output_id = "downloadPlot_pdf")
   expect_true(file.exists(pdf_probe), info = "Missing PDF export for type Boxplot")
@@ -316,8 +320,8 @@ test_that("PNG download dimensions match preview dimensions across plot types", 
   expect_identical(header, "%PDF")
   pdf_dims <- pdf_page_size_pts(pdf_probe)
   if (!is.null(pdf_dims)) {
-    expect_equal(unname(pdf_dims[["width"]]), expected_w / 96 * 72, tolerance = 1)
-    expect_equal(unname(pdf_dims[["height"]]), expected_h / 96 * 72, tolerance = 1)
+    expect_equal(unname(pdf_dims[["width"]]), logical_w / BIOSZEN_CSS_DPI * 72, tolerance = 1)
+    expect_equal(unname(pdf_dims[["height"]]), logical_h / BIOSZEN_CSS_DPI * 72, tolerance = 1)
   }
 
   for (tp in setdiff(plot_types, "Boxplot")) {
@@ -356,12 +360,12 @@ test_that("PNG download dimensions match preview dimensions across plot types", 
     dims <- png_dims(out)
     expect_equal(
       unname(dims[["width"]]),
-      expected_w,
+      expected_png_w,
       info = paste("width mismatch for type", tp)
     )
     expect_equal(
       unname(dims[["height"]]),
-      expected_h,
+      expected_png_h,
       info = paste("height mismatch for type", tp)
     )
   }

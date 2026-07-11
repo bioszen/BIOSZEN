@@ -1,7 +1,7 @@
 Package: BIOSZEN
 Type: Package
 Title: Biological Data Analysis and Visualization with Shiny
-Version: 2.0.3
+Version: 2.0.4
 Author: Benjamín Szenfeld [aut, cre] (<https://orcid.org/0009-0003-4702-4149>)
 Maintainer: Benjamín Szenfeld <bioszenf@gmail.com>
 Authors@R: person("Benjamín", "Szenfeld",
@@ -17,6 +17,7 @@ ByteCompile: true
 Depends: R (>= 4.1.0)
 Imports:
     shiny,
+    later,
     httpuv,
     shiny.i18n,
     ggplot2,
@@ -39,6 +40,7 @@ Imports:
     nortest,
     officer,
     rvg,
+    xml2,
     stringr,
     forcats,
     tibble,
@@ -63,7 +65,6 @@ Suggests:
     testthat (>= 3.0.0),
     shinytest2,
     chromote,
-    later,
     png
 Config/testthat/edition: 3
 RoxygenNote: 7.3.1

@@ -70,6 +70,12 @@ test_that("automatic technical QC selections persist while browser inputs catch 
   )
   expect_match(
     server_txt,
+    "current <- selector_committed_or_input\\(\\s*input_id,\\s*input\\[\\[input_id\\]\\],\\s*cached = stored\\s*\\)",
+    perl = TRUE,
+    info = "Manual rapid technical QC clicks must render from the committed final selector state, not stale raw input."
+  )
+  expect_match(
+    server_txt,
     "if \\(isTRUE\\(qc_tech_render_from_store\\(\\)\\)\\)",
     info = "Stale browser checkbox values must not overwrite a just-applied technical QC map."
   )
@@ -810,6 +816,18 @@ test_that("core reactive controls keep loop guards around programmatic updates",
     fixed = TRUE,
     info = "The select-all checkbox state should be synced from the actual selected filters."
   )
+  expect_match(
+    server_txt,
+    "media_choices_sync <- sort\\(unique\\(as.character\\(df\\$Media\\)\\)\\)[\\s\\S]*?update_checkbox_group_input_if_changed\\(\\s*input_id = \"showMedios\"[\\s\\S]*?selected = media_selected_sync",
+    perl = TRUE,
+    info = "The visible media checkboxes must be resynced from the settled filter state after rapid user changes."
+  )
+  expect_match(
+    server_txt,
+    "group_choices_sync <- unique\\(paste\\(df\\$Strain, df\\$Media, sep = \"-\"\\)\\)[\\s\\S]*?update_checkbox_group_input_if_changed\\(\\s*input_id = \"showGroups\"[\\s\\S]*?selected = group_selected_sync",
+    perl = TRUE,
+    info = "The visible combined-group checkboxes must be resynced from the settled filter state after rapid user changes."
+  )
   expect_match(ui_txt, "target.id + '_user_change'", fixed = TRUE)
   expect_match(ui_txt, "target.id !== 'toggleMedios' && target.id !== 'toggleGroups'", fixed = TRUE)
   expect_match(ui_txt, "ev.isTrusted", fixed = TRUE)
@@ -859,7 +877,9 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   expect_false(grepl("showMedios_user_change", server_txt, fixed = TRUE))
   expect_false(grepl("showGroups_user_change", server_txt, fixed = TRUE))
   expect_match(server_txt, "selector_commit_store <- new.env", fixed = TRUE)
+  expect_match(server_txt, "sync_checkbox_update_cache_from_client <- function", fixed = TRUE)
   expect_match(server_txt, "record_selector_commit <- function", fixed = TRUE)
+  expect_match(server_txt, "sync_checkbox_update_cache_from_client(key[[1]], selected)", fixed = TRUE)
   expect_match(server_txt, "selector_commit_active <- function(info, active_window_sec = 8, release_grace_sec = 4)", fixed = TRUE)
   expect_match(server_txt, "selector_commit_should_win <- function(info, selected, cached = NULL)", fixed = TRUE)
   expect_match(server_txt, "selector_values_equal(cached, info$selected)", fixed = TRUE)
@@ -871,11 +891,50 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   expect_match(server_txt, "observeEvent(input$bioszen_selector_commit", fixed = TRUE)
   expect_match(server_txt, "selector_input_is_stale(\"showMedios\", selected, isolate(filter_medios_selected()))", fixed = TRUE)
   expect_match(server_txt, "selector_input_is_stale(\"showGroups\", selected, isolate(filter_groups_selected()))", fixed = TRUE)
+  expect_match(server_txt, "filter_selector_retry_tick <- reactiveVal\\(0L\\)", perl = TRUE)
+  expect_match(server_txt, "schedule_filter_selector_retry <- function", fixed = TRUE)
+  expect_match(server_txt, "later::later", fixed = TRUE)
+  expect_match(
+    server_txt,
+    "selector_input_is_stale\\(\"showMedios\", selected, isolate\\(filter_medios_selected\\(\\)\\)\\)\\) \\{\\s*schedule_filter_selector_retry\\(\\)",
+    perl = TRUE,
+    info = "A temporarily stale media input must be reconsidered after the selector guard expires."
+  )
+  expect_match(
+    server_txt,
+    "selector_input_is_stale\\(\"showGroups\", selected, isolate\\(filter_groups_selected\\(\\)\\)\\)\\) \\{\\s*schedule_filter_selector_retry\\(\\)",
+    perl = TRUE,
+    info = "A temporarily stale combined-group input must be reconsidered after the selector guard expires."
+  )
   expect_match(server_txt, "input_map[[m]] <- selector_committed_or_input", fixed = TRUE)
   expect_match(server_txt, "input_map[[g]] <- selector_committed_or_input", fixed = TRUE)
   expect_match(server_txt, "cached = current_strain_map[[m]]", fixed = TRUE)
   expect_match(server_txt, "cached = current_group_map[[g]]", fixed = TRUE)
   expect_match(server_txt, "cached = current_map[[key]]", fixed = TRUE)
+  expect_match(
+    server_txt,
+    "reps_strain_trigger <- debounce\\(reactive\\(\\{\\s*medias <- show_medios_for_reps\\(\\) %\\|\\|% character\\(0\\)",
+    perl = TRUE,
+    info = "Replicate selector observers should snapshot the visible media once before reading dynamic input ids."
+  )
+  expect_match(
+    server_txt,
+    "inputs = if \\(length\\(medias\\)\\) lapply\\(medias, function\\(m\\) input\\[\\[strain_rep_input_id\\(m\\)\\]\\]\\)",
+    perl = TRUE
+  )
+  expect_match(
+    server_txt,
+    "reps_group_trigger <- debounce\\(reactive\\(\\{\\s*grps <- show_groups_for_reps\\(\\) %\\|\\|% character\\(0\\)",
+    perl = TRUE,
+    info = "Combined replicate selector observers should snapshot the visible groups once before reading dynamic input ids."
+  )
+  expect_match(
+    server_txt,
+    "inputs = if \\(length\\(grps\\)\\) lapply\\(grps, function\\(g\\) input\\[\\[group_rep_input_id\\(g\\)\\]\\]\\)",
+    perl = TRUE
+  )
+  expect_false(grepl("if\\s*\\(\\s*length\\(show_medios_for_reps\\(\\)\\)", server_txt, perl = TRUE))
+  expect_false(grepl("if\\s*\\(\\s*length\\(show_groups_for_reps\\(\\)\\)", server_txt, perl = TRUE))
   expect_false(
     grepl("observeEvent\\(input\\$toggleMedios,", server_txt, perl = TRUE),
     info = "Raw select-all checkbox changes must not drive bulk filter updates; programmatic syncs can change those inputs."

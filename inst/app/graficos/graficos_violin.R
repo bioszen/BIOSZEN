@@ -61,6 +61,9 @@ build_violin_plot_impl <- function(ctx) {
         ungroup()
       violin_data <- df_split %>% filter(n_unique >= 2)
       jitter_width <- min(input$pt_jit, v_width * 0.6)
+      inner_mode <- as.character(input$violin_inner %||% "box")
+      if (!inner_mode %in% c("box", "points")) inner_mode <- "box"
+      inner_box_width <- max(0.05, min(0.10, v_width * 0.18))
 
       show_legend <- legend_right_enabled(input$colorMode)
 
@@ -82,16 +85,31 @@ build_violin_plot_impl <- function(ctx) {
               )
             }
           } +
-          geom_point(
-            position = position_jitter(width = jitter_width, height = 0),
-            shape = 21,
-            fill = "black",
-            colour = "black",
-            stroke = v_lwd / 2,
-            size = input$pt_size,
-            na.rm = TRUE,
-            show.legend = FALSE
-          )
+          {
+            if (identical(inner_mode, "box")) {
+              geom_boxplot(
+                width = inner_box_width,
+                outlier.shape = NA,
+                fill = "white",
+                colour = "black",
+                linewidth = max(0.3, v_lwd * 0.8),
+                alpha = 1,
+                na.rm = TRUE,
+                show.legend = FALSE
+              )
+            } else {
+              geom_point(
+                position = position_jitter(width = jitter_width, height = 0),
+                shape = 21,
+                fill = "black",
+                colour = "black",
+                stroke = v_lwd / 2,
+                size = input$pt_size,
+                na.rm = TRUE,
+                show.legend = FALSE
+              )
+            }
+          }
       } else {
         p <- ggplot(df_plot, aes(Label, Valor, fill = Label)) +
           {
@@ -110,17 +128,32 @@ build_violin_plot_impl <- function(ctx) {
               )
             }
           } +
-          geom_point(
-            aes(fill = Label),
-            position = position_jitter(width = jitter_width, height = 0),
-            shape = 21,
-            colour = "black",
-            stroke = v_lwd / 2,
-            size = input$pt_size,
-            alpha = 0.95,
-            na.rm = TRUE,
-            show.legend = FALSE
-          ) +
+          {
+            if (identical(inner_mode, "box")) {
+              geom_boxplot(
+                width = inner_box_width,
+                outlier.shape = NA,
+                fill = "white",
+                colour = "black",
+                linewidth = max(0.3, v_lwd * 0.8),
+                alpha = 1,
+                na.rm = TRUE,
+                show.legend = FALSE
+              )
+            } else {
+              geom_point(
+                aes(fill = Label),
+                position = position_jitter(width = jitter_width, height = 0),
+                shape = 21,
+                colour = "black",
+                stroke = v_lwd / 2,
+                size = input$pt_size,
+                alpha = 0.95,
+                na.rm = TRUE,
+                show.legend = FALSE
+              )
+            }
+          } +
           scale_fill_manual(values = pal)
       }
 
@@ -266,6 +299,9 @@ build_violin_plot_impl <- function(ctx) {
       df_raw
     }
     jitter_width <- min(input$pt_jit, v_width * 0.6)
+    inner_mode <- as.character(input$violin_inner %||% "box")
+    if (!inner_mode %in% c("box", "points")) inner_mode <- "box"
+    inner_box_width <- max(0.05, min(0.10, v_width * 0.18))
 
     show_legend <- legend_right_enabled(colourMode)
 
@@ -285,17 +321,32 @@ build_violin_plot_impl <- function(ctx) {
             )
           }
         } +
-        geom_point(
-          data = df_points,
-          position = position_jitter(width = jitter_width, height = 0),
-          shape = 21,
-          fill = "black",
-          colour = "black",
-          stroke = v_lwd / 2,
-          size = input$pt_size,
-          na.rm = TRUE,
-          show.legend = FALSE
-        )
+        {
+          if (identical(inner_mode, "box")) {
+            geom_boxplot(
+              width = inner_box_width,
+              outlier.shape = NA,
+              fill = "white",
+              colour = "black",
+              linewidth = max(0.3, v_lwd * 0.8),
+              alpha = 1,
+              na.rm = TRUE,
+              show.legend = FALSE
+            )
+          } else {
+            geom_point(
+              data = df_points,
+              position = position_jitter(width = jitter_width, height = 0),
+              shape = 21,
+              fill = "black",
+              colour = "black",
+              stroke = v_lwd / 2,
+              size = input$pt_size,
+              na.rm = TRUE,
+              show.legend = FALSE
+            )
+          }
+        }
     } else {
       p <- ggplot(df_raw, aes(Media, .data[[param_sel]], fill = Media)) +
         {
@@ -312,18 +363,33 @@ build_violin_plot_impl <- function(ctx) {
             )
           }
         } +
-        geom_point(
-          aes(fill = Media),
-          data = df_points,
-          position = position_jitter(width = jitter_width, height = 0),
-          shape = 21,
-          colour = "black",
-          stroke = v_lwd / 2,
-          size = input$pt_size,
-          alpha = 0.95,
-          na.rm = TRUE,
-          show.legend = FALSE
-        ) +
+        {
+          if (identical(inner_mode, "box")) {
+            geom_boxplot(
+              width = inner_box_width,
+              outlier.shape = NA,
+              fill = "white",
+              colour = "black",
+              linewidth = max(0.3, v_lwd * 0.8),
+              alpha = 1,
+              na.rm = TRUE,
+              show.legend = FALSE
+            )
+          } else {
+            geom_point(
+              aes(fill = Media),
+              data = df_points,
+              position = position_jitter(width = jitter_width, height = 0),
+              shape = 21,
+              colour = "black",
+              stroke = v_lwd / 2,
+              size = input$pt_size,
+              alpha = 0.95,
+              na.rm = TRUE,
+              show.legend = FALSE
+            )
+          }
+        } +
         scale_fill_manual(values = pal)
     }
 

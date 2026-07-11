@@ -28,7 +28,8 @@ resolve_bioszen_app_dir <- function() {
   candidates <- candidates[nzchar(candidates)]
 
   for (candidate in candidates) {
-    if (file.exists(file.path(candidate, "global.R")) &&
+    if (file.exists(file.path(candidate, "config.R")) &&
+        file.exists(file.path(candidate, "global.R")) &&
         file.exists(file.path(candidate, "helpers.R")) &&
         dir.exists(file.path(candidate, "server")) &&
         dir.exists(file.path(candidate, "ui"))) {
@@ -69,7 +70,13 @@ startup_files <- unique(c(
 startup_file <- startup_files[file.exists(startup_files)][1]
 if (!is.na(startup_file)) {
   sys.source(startup_file, envir = globalenv())
-  bioszen_prepare_direct_run(root = source_root)
+  in_r_cmd_check <- nzchar(Sys.getenv("_R_CHECK_PACKAGE_NAME_", unset = "")) ||
+    grepl("\\.Rcheck(/|$)", normalizePath(getwd(), winslash = "/", mustWork = FALSE))
+  skip_direct_setup <- isTRUE(getOption("BIOSZEN.skip_direct_run_setup", FALSE)) ||
+    isTRUE(in_r_cmd_check)
+  if (!skip_direct_setup) {
+    bioszen_prepare_direct_run(root = source_root)
+  }
 }
 
 source_dir <- function(path, envir) {
@@ -95,6 +102,8 @@ resolve_app_parent_env <- function() {
 app_env <- new.env(parent = resolve_app_parent_env())
 
 configure_shiny_upload_limit()
+
+sys.source(file.path(app_dir, "config.R"), envir = app_env)          # constantes compartidas
 
 sys.source(file.path(app_dir, "global.R"), envir = app_env)          # paquetes y configuraciones generales
 

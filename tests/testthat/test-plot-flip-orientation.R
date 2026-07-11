@@ -163,7 +163,8 @@ test_that("distribution plot builders toggle CoordFlip only when requested", {
         errbar_stat = errbar_stat,
         box_w = 0.7,
         violin_width = 0.5,
-        violin_linewidth = 0.6
+        violin_linewidth = 0.6,
+        violin_inner = "box"
       ),
       msg_no_data_sel = "No data",
       ylab = "Value",
@@ -256,6 +257,26 @@ test_that("distribution plot builders toggle CoordFlip only when requested", {
   p_violin_h <- build_violin_plot_impl(make_dist_ctx(flip = TRUE))
   expect_false(inherits(p_violin_v$coordinates, "CoordFlip"))
   expect_true(inherits(p_violin_h$coordinates, "CoordFlip"))
+  expect_true(any(vapply(p_violin_v$layers, function(layer) {
+    inherits(layer$geom, "GeomBoxplot")
+  }, logical(1))))
+  violin_box_layer <- p_violin_v$layers[[which(vapply(p_violin_v$layers, function(layer) {
+    inherits(layer$geom, "GeomBoxplot")
+  }, logical(1)))[[1]]]]
+  expect_lte(violin_box_layer$stat_params$width, 0.10)
+  expect_false(any(vapply(p_violin_v$layers, function(layer) {
+    inherits(layer$geom, "GeomPoint")
+  }, logical(1))))
+
+  violin_points_ctx <- make_dist_ctx(flip = FALSE)
+  violin_points_ctx$input$violin_inner <- "points"
+  p_violin_points <- build_violin_plot_impl(violin_points_ctx)
+  expect_true(any(vapply(p_violin_points$layers, function(layer) {
+    inherits(layer$geom, "GeomPoint")
+  }, logical(1))))
+  expect_false(any(vapply(p_violin_points$layers, function(layer) {
+    inherits(layer$geom, "GeomBoxplot")
+  }, logical(1))))
 
   sig_layers <- function(p, ...) {
     p + geom_text(

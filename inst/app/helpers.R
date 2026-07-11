@@ -4,6 +4,259 @@
 
 # Helpers from the original app -------------------------------------------------
 
+bioszen_clamp_number <- function(value, default, minimum = -Inf, maximum = Inf) {
+  out <- suppressWarnings(as.numeric(value))
+  if (!length(out) || !is.finite(out[[1]])) out <- as.numeric(default)
+  out <- out[[1]]
+  max(minimum, min(maximum, out))
+}
+
+bioszen_plot_dimension_scale <- function(width, height,
+                                         reference_width = 1000,
+                                         reference_height = 700,
+                                         minimum = 0.7,
+                                         maximum = 1.8) {
+  width <- bioszen_clamp_number(width, reference_width, minimum = 1)
+  height <- bioszen_clamp_number(height, reference_height, minimum = 1)
+  scale <- sqrt((width / reference_width) * (height / reference_height))
+  bioszen_clamp_number(scale, 1, minimum = minimum, maximum = maximum)
+}
+
+bioszen_combo_cell_scales <- function(layout_matrix, canvas_width, canvas_height,
+                                      source_widths, source_heights,
+                                      column_weights = NULL, row_weights = NULL,
+                                      minimum = 0.30, maximum = 1.8) {
+  layout_matrix <- as.matrix(layout_matrix)
+  if (!length(layout_matrix) || !nrow(layout_matrix) || !ncol(layout_matrix)) {
+    return(numeric(0))
+  }
+
+  plot_ids <- sort(unique(suppressWarnings(as.integer(layout_matrix))))
+  plot_ids <- plot_ids[is.finite(plot_ids) & plot_ids > 0]
+  if (!length(plot_ids)) return(numeric(0))
+
+  normalize_weights <- function(values, expected) {
+    values <- suppressWarnings(as.numeric(values))
+    if (length(values) != expected || any(!is.finite(values)) || any(values <= 0)) {
+      values <- rep(1, expected)
+    }
+    values / sum(values)
+  }
+
+  column_weights <- normalize_weights(column_weights, ncol(layout_matrix))
+  row_weights <- normalize_weights(row_weights, nrow(layout_matrix))
+  canvas_width <- bioszen_clamp_number(canvas_width, 1000, minimum = 1)
+  canvas_height <- bioszen_clamp_number(canvas_height, 700, minimum = 1)
+  source_widths <- rep_len(suppressWarnings(as.numeric(source_widths)), max(plot_ids))
+  source_heights <- rep_len(suppressWarnings(as.numeric(source_heights)), max(plot_ids))
+
+  vapply(plot_ids, function(plot_id) {
+    cells <- which(layout_matrix == plot_id, arr.ind = TRUE)
+    occupied_rows <- unique(cells[, "row"])
+    occupied_columns <- unique(cells[, "col"])
+    cell_width <- canvas_width * sum(column_weights[occupied_columns])
+    cell_height <- canvas_height * sum(row_weights[occupied_rows])
+    source_width <- source_widths[[plot_id]]
+    source_height <- source_heights[[plot_id]]
+    if (!is.finite(source_width) || source_width <= 0) source_width <- 1000
+    if (!is.finite(source_height) || source_height <= 0) source_height <- 700
+    width_scale <- cell_width / source_width
+    height_scale <- cell_height / source_height
+    width_guard <- if (width_scale < 1) width_scale * 0.8 else width_scale
+    height_guard <- if (height_scale < 1) height_scale * 0.8 else height_scale
+    scale <- min(
+      sqrt(width_scale * height_scale),
+      width_guard,
+      height_guard
+    )
+    bioszen_clamp_number(scale, 1, minimum = minimum, maximum = maximum)
+  }, numeric(1))
+}
+
+bioszen_expand_combo_grid <- function(n_plots, nrow = 1, ncol = 1,
+                                      canvas_width = 1000, canvas_height = 700,
+                                      source_aspect = 1000 / 700) {
+  n_plots <- max(1L, suppressWarnings(as.integer(n_plots %||% 1L)))
+  nrow <- max(1L, suppressWarnings(as.integer(nrow %||% 1L)))
+  ncol <- max(1L, suppressWarnings(as.integer(ncol %||% 1L)))
+  canvas_width <- bioszen_clamp_number(canvas_width, 1000, minimum = 1)
+  canvas_height <- bioszen_clamp_number(canvas_height, 700, minimum = 1)
+  source_aspect <- bioszen_clamp_number(source_aspect, 1000 / 700, minimum = 0.01)
+
+  grid_score <- function(rows, columns) {
+    cell_aspect <- (canvas_width / columns) / (canvas_height / rows)
+    abs(log(cell_aspect / source_aspect))
+  }
+
+  while (nrow * ncol < n_plots) {
+    score_more_rows <- grid_score(nrow + 1L, ncol)
+    score_more_columns <- grid_score(nrow, ncol + 1L)
+    if (score_more_columns <= score_more_rows + sqrt(.Machine$double.eps)) {
+      ncol <- ncol + 1L
+    } else {
+      nrow <- nrow + 1L
+    }
+  }
+  list(nrow = nrow, ncol = ncol)
+}
+
+bioszen_scale_theme_element <- function(element, scale) {
+  if (is.null(element) || inherits(element, "element_blank")) return(element)
+  scale <- bioszen_clamp_number(scale, 1, minimum = 0.01, maximum = 10)
+  out <- element
+  if (!is.null(out$size) && length(out$size) && is.finite(out$size[[1]])) {
+    out$size <- out$size * scale
+  }
+  if (!is.null(out$linewidth) && length(out$linewidth) && is.finite(out$linewidth[[1]])) {
+    out$linewidth <- out$linewidth * scale
+  }
+  if (!is.null(out$margin)) {
+    out$margin <- tryCatch(out$margin * scale, error = function(e) out$margin)
+  }
+  out
+}
+
+bioszen_scale_saved_plot_theme <- function(plot, scale) {
+  if (!inherits(plot, "ggplot")) return(plot)
+  complete_theme <- ggplot2::theme_get() + plot$theme
+  scaled <- function(name) {
+    bioszen_scale_theme_element(
+      ggplot2::calc_element(name, complete_theme),
+      scale
+    )
+  }
+  tick_length <- ggplot2::calc_element("axis.ticks.length", complete_theme)
+  if (!is.null(tick_length)) {
+    tick_length <- tryCatch(tick_length * scale, error = function(e) tick_length)
+  }
+  plot + ggplot2::theme(
+    plot.title = scaled("plot.title"),
+    plot.subtitle = scaled("plot.subtitle"),
+    plot.caption = scaled("plot.caption"),
+    axis.title.x = scaled("axis.title.x"),
+    axis.title.y = scaled("axis.title.y"),
+    axis.text.x = scaled("axis.text.x"),
+    axis.text.y = scaled("axis.text.y"),
+    axis.line = scaled("axis.line"),
+    axis.ticks = scaled("axis.ticks"),
+    axis.ticks.length = tick_length
+  )
+}
+
+bioszen_clone_plot <- function(plot) {
+  if (!inherits(plot, "ggplot") || !length(plot$layers)) return(plot)
+  out <- plot
+  out$layers <- lapply(plot$layers, function(layer) {
+    cloned <- ggplot2::ggproto(NULL, layer)
+    if (inherits(layer$position, "ggproto")) {
+      cloned$position <- ggplot2::ggproto(NULL, layer$position)
+    }
+    cloned
+  })
+  out
+}
+
+bioszen_scale_plot_layers <- function(plot, scale) {
+  if (!inherits(plot, "ggplot") || !length(plot$layers)) return(plot)
+  scale <- bioszen_clamp_number(scale, 1, minimum = 0.01, maximum = 10)
+  if (isTRUE(all.equal(scale, 1))) return(plot)
+  plot <- bioszen_clone_plot(plot)
+
+  scale_fields <- function(values, fields) {
+    if (is.null(values)) return(values)
+    for (field in fields) {
+      value <- suppressWarnings(as.numeric(values[[field]]))
+      if (length(value) && is.finite(value[[1]])) {
+        values[[field]] <- value[[1]] * scale
+      }
+    }
+    values
+  }
+
+  for (index in seq_along(plot$layers)) {
+    layer <- plot$layers[[index]]
+    layer$aes_params <- scale_fields(layer$aes_params, c("size", "linewidth", "stroke"))
+    layer$geom_params <- scale_fields(layer$geom_params, c("linewidth", "stroke"))
+    plot$layers[[index]] <- layer
+  }
+  plot
+}
+
+bioszen_pptx_preset_size <- function(preset = "standard_4_3") {
+  switch(
+    as.character(preset %||% "standard_4_3"),
+    standard_4_3 = list(width = 10, height = 7.5),
+    widescreen_16_9 = list(width = 13.333, height = 7.5),
+    custom = NULL,
+    list(width = 10, height = 7.5)
+  )
+}
+
+bioszen_pptx_oriented_size <- function(width, height, orientation = "landscape") {
+  width <- bioszen_clamp_number(width, 10, minimum = 2, maximum = 56)
+  height <- bioszen_clamp_number(height, 7.5, minimum = 2, maximum = 56)
+  orientation <- as.character(orientation %||% "landscape")
+  if (!orientation %in% c("landscape", "portrait")) orientation <- "landscape"
+  if (identical(orientation, "landscape") && width < height) {
+    tmp <- width
+    width <- height
+    height <- tmp
+  } else if (identical(orientation, "portrait") && width > height) {
+    tmp <- width
+    width <- height
+    height <- tmp
+  }
+  list(width = width, height = height, orientation = orientation)
+}
+
+bioszen_fit_aspect_rect <- function(content_width, content_height,
+                                    slide_width, slide_height,
+                                    margin = 0) {
+  content_width <- bioszen_clamp_number(content_width, 1000, minimum = 1)
+  content_height <- bioszen_clamp_number(content_height, 700, minimum = 1)
+  slide_width <- bioszen_clamp_number(slide_width, 10, minimum = 2, maximum = 56)
+  slide_height <- bioszen_clamp_number(slide_height, 7.5, minimum = 2, maximum = 56)
+  max_margin <- max(0, min(slide_width, slide_height) / 2 - 0.1)
+  margin <- bioszen_clamp_number(margin, 0, minimum = 0, maximum = max_margin)
+
+  available_width <- max(0.2, slide_width - 2 * margin)
+  available_height <- max(0.2, slide_height - 2 * margin)
+  scale <- min(available_width / content_width, available_height / content_height)
+  fitted_width <- content_width * scale
+  fitted_height <- content_height * scale
+
+  list(
+    left = (slide_width - fitted_width) / 2,
+    top = (slide_height - fitted_height) / 2,
+    width = fitted_width,
+    height = fitted_height,
+    margin = margin,
+    scale = scale,
+    small = fitted_width < 4 || fitted_height < 3
+  )
+}
+
+bioszen_set_pptx_slide_size <- function(doc, width, height) {
+  if (!inherits(doc, "rpptx")) stop("Expected an officer rpptx object.", call. = FALSE)
+  dims <- bioszen_pptx_oriented_size(width, height, orientation = if (width >= height) "landscape" else "portrait")
+  presentation <- tryCatch(doc$presentation$get(), error = function(e) NULL)
+  if (is.null(presentation)) stop("The PowerPoint presentation XML is unavailable.", call. = FALSE)
+
+  slide_node <- xml2::xml_find_first(
+    presentation,
+    ".//p:sldSz",
+    xml2::xml_ns(presentation)
+  )
+  if (inherits(slide_node, "xml_missing")) {
+    stop("The PowerPoint template does not define a slide size.", call. = FALSE)
+  }
+
+  emu_per_inch <- 914400
+  xml2::xml_set_attr(slide_node, "cx", as.character(round(dims$width * emu_per_inch)))
+  xml2::xml_set_attr(slide_node, "cy", as.character(round(dims$height * emu_per_inch)))
+  doc
+}
+
 # Generic helpers to convert matrices to tidy tibbles
 matrix_to_tibble <- function(mat, colname = "p.adj") {
   tibble::as_tibble(mat, rownames = "grupo1") |>

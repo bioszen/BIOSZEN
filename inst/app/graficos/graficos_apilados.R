@@ -314,7 +314,8 @@ build_apiladas_plot_impl <- function(ctx) {
   })
 }
 
-export_plotly_png <- function(p, file, width, height, delay = 0.5, zoom = 3) {
+export_plotly_png <- function(p, file, width, height, delay = 0.5,
+                              zoom = BIOSZEN_DEFAULT_DPI / BIOSZEN_CSS_DPI) {
   p <- p %>% layout(paper_bgcolor = "rgba(0,0,0,0)",
                     plot_bgcolor  = "rgba(0,0,0,0)")
   tmp_html <- tempfile(fileext = ".html")

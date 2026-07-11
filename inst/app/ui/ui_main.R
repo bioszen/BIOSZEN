@@ -1753,7 +1753,7 @@ ui <- fluidPage(
         filename: msg.filename,
         width:    msg.width,
         height:   msg.height,
-        scale:    1
+        scale:    msg.scale || 1
       });
     });
   ")),
@@ -1790,7 +1790,7 @@ ui <- fluidPage(
         format: 'png',
         width:  width,
         height: height,
-        scale:  msg.scale || 3
+        scale:  msg.scale || 1
       }).then(function(dataUrl){
         if (navigator.clipboard && window.ClipboardItem) {
           fetch(dataUrl)
@@ -1844,7 +1844,9 @@ ui <- fluidPage(
         return;
       }
 
-      var src = img.src;
+      var downloadNode = document.getElementById(msg.downloadId || 'dl_combo_png');
+      var downloadHref = downloadNode && downloadNode.href ? downloadNode.href : '';
+      var src = downloadHref || img.src;
       var notifySuccess = function(mode) {
         Shiny.setInputValue(successId, {message: mode || 'copied', ts: Date.now()}, {priority:'event'});
       };
@@ -2556,7 +2558,17 @@ ui <- fluidPage(
                    numericInput("violin_width", tr("violin_width"), value = 0.45,
                                 min = 0.1, max = 1.5, step = 0.05),
                    numericInput("violin_linewidth", tr("violin_linewidth"), value = 0.6,
-                                min = 0.1, max = 2.5, step = 0.1)
+                                min = 0.1, max = 2.5, step = 0.1),
+                   radioButtons(
+                     "violin_inner",
+                     tr("violin_inner"),
+                     choices = named_choices(
+                       c("box", "points"),
+                       list(tr("violin_inner_box"), tr("violin_inner_points"))
+                     ),
+                     selected = bioszen_visual_defaults$violin_inner,
+                     inline = TRUE
+                   )
                  ),
                   
                  ## ─── Boxplot *y* Barras (tamaño de puntos) ────────────────
@@ -2603,10 +2615,10 @@ ui <- fluidPage(
                  
                 
                 hr(), h4(tr("size_section")),
-                numericInput("base_size", tr("base_size"), 18, min = 8),
-                numericInput("fs_title",  tr("title_size"),   20, min = 6),
-                numericInput("fs_axis",   tr("axis_size"),     15, min = 6),
-                numericInput("fs_legend", tr("legend_size"),  17, min = 6),
+                numericInput("base_size", tr("base_size"), bioszen_visual_defaults$base_size, min = 8),
+                numericInput("fs_title",  tr("title_size"), bioszen_visual_defaults$title_size, min = 6),
+                numericInput("fs_axis",   tr("axis_size"), bioszen_visual_defaults$axis_size, min = 6),
+                numericInput("fs_legend", tr("legend_size"), bioszen_visual_defaults$legend_size, min = 6),
                 tags$div(
                   class = "plot-text-style-section",
                   accordion(
@@ -2746,7 +2758,23 @@ ui <- fluidPage(
                   checkboxInput("legend_right", tr("legend_right"), FALSE)
                 ),
                 numericInput("axis_line_size", tr("axis_line_size"),
-                             value = 1.2, min = .1, step = .1),
+                             value = bioszen_visual_defaults$axis_line_size, min = .1, step = .1),
+                numericInput(
+                  "axis_title_spacing_x",
+                  tr("axis_title_spacing_x"),
+                  value = bioszen_visual_defaults$axis_title_spacing_x,
+                  min = 0,
+                  max = 100,
+                  step = 1
+                ),
+                numericInput(
+                  "axis_title_spacing_y",
+                  tr("axis_title_spacing_y"),
+                  value = bioszen_visual_defaults$axis_title_spacing_y,
+                  min = 0,
+                  max = 100,
+                  step = 1
+                ),
                 
                  # ---------- Parámetro a graficar --------------------------------------
                  textInput('yLab', tr("y_label"), ''),
@@ -3101,6 +3129,15 @@ ui <- fluidPage(
                    column(6, numericInput('plot_w', tr("plot_width"), 1000, min = 100)),
                    column(6, numericInput('plot_h', tr("plot_height"),  700, min = 100))
                  ),
+                 numericInput(
+                   "export_dpi",
+                   tr("export_dpi"),
+                   bioszen_visual_defaults$export_dpi,
+                   min = BIOSZEN_MIN_DPI,
+                   max = BIOSZEN_MAX_DPI,
+                   step = 1
+                 ),
+                 helpText(tr("export_dpi_help")),
                  br(), br(),
                  
                  # ── Botones de descarga ──────────────────────────────────────────────

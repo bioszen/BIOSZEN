@@ -6,6 +6,9 @@ test_that("inst/app/app.R loads UI and server modules via source_dir", {
 
   expect_match(txt, "resolve_bioszen_app_dir\\s*<-\\s*function\\s*\\(", perl = TRUE)
   expect_match(txt, "resolve_bioszen_source_root\\s*<-\\s*function\\s*\\(", perl = TRUE)
+  expect_match(txt, "sys\\.source\\(file\\.path\\(app_dir, \"config\\.R\"\\)\\s*,\\s*envir\\s*=\\s*app_env\\)", perl = TRUE)
+  expect_match(txt, "BIOSZEN\\.skip_direct_run_setup", perl = TRUE)
+  expect_match(txt, "_R_CHECK_PACKAGE_NAME_", fixed = TRUE)
   expect_match(txt, "source_dir\\(file\\.path\\(app_dir, \"server\"\\)\\s*,\\s*envir\\s*=\\s*app_env\\)", perl = TRUE)
   expect_match(txt, "source_dir\\(file\\.path\\(app_dir, \"ui\"\\)\\s*,\\s*envir\\s*=\\s*app_env\\)", perl = TRUE)
   expect_match(txt, "file\\.path\\(app_dir, \"\\.\\.\"\\)", perl = TRUE)

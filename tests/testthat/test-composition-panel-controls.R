@@ -53,6 +53,16 @@ test_that("composition panel defaults use 1000x700 and exposes copy button", {
     perl = TRUE
   ))
   expect_true(grepl(
+    "checkboxInput\\(\\s*\"combo_preserve_original_style\"",
+    txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "checkboxInput\\(\\s*\"combo_override_typography\"",
+    txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
     "helpText\\(tr\\(\"combo_override_apply_hint\"\\)\\)",
     txt,
     perl = TRUE
@@ -67,6 +77,41 @@ test_that("composition panel defaults use 1000x700 and exposes copy button", {
     txt,
     perl = TRUE
   ))
+})
+
+test_that("composition typography overrides apply universally to included plots", {
+  global_txt <- read_app_file("inst", "app", "global.R")
+  panel_txt <- read_app_file("inst", "app", "server", "panel_module.R")
+
+  for (input_id in c(
+    "fs_axis_text_all", "fs_axis_text_x_all", "fs_axis_text_y_all",
+    "combo_axis_text_x_angle", "combo_axis_text_y_angle",
+    "combo_axis_text_x_align", "combo_axis_text_y_align",
+    "fs_legend_all", "combo_font_family"
+  )) {
+    expect_match(global_txt, paste0('"', input_id, '"'), fixed = TRUE)
+  }
+
+  expect_match(
+    panel_txt,
+    "apply_combo_typography <- !isTRUE(preserve_original_style)",
+    fixed = TRUE
+  )
+  expect_match(
+    panel_txt,
+    "isTRUE(input$combo_override_typography %||% FALSE)",
+    fixed = TRUE
+  )
+  expect_match(panel_txt, "plots <- lapply(seq_along(selected_ids)", fixed = TRUE)
+  expect_match(panel_txt, "if (isTRUE(apply_combo_typography))", fixed = TRUE)
+  expect_match(panel_txt, "size = global_axis_text_x_size * panel_scale", fixed = TRUE)
+  expect_match(panel_txt, "size = global_axis_text_y_size * panel_scale", fixed = TRUE)
+  expect_match(panel_txt, "angle = global_axis_text_x_angle", fixed = TRUE)
+  expect_match(panel_txt, "angle = global_axis_text_y_angle", fixed = TRUE)
+  expect_match(panel_txt, "legend.text = combo_text_element", fixed = TRUE)
+  expect_match(panel_txt, "combo_override_typography = input$combo_override_typography", fixed = TRUE)
+  expect_match(panel_txt, "combo_axis_text_x_angle = input$combo_axis_text_x_angle", fixed = TRUE)
+  expect_match(panel_txt, "combo_axis_text_y_angle = input$combo_axis_text_y_angle", fixed = TRUE)
 })
 
 test_that("composition clipboard copy is wired in UI and server", {
@@ -195,23 +240,28 @@ test_that("composition supports global title and shared legend modes", {
     perl = TRUE
   ))
   expect_true(grepl(
-    "axis.line = element_line\\(linewidth = global_axis_line_size",
+    "bioszen_scale_saved_plot_theme\\(p, panel_scale\\)",
     panel_txt,
     perl = TRUE
   ))
   expect_true(grepl(
-    "axis.title.x = combo_text_element\\(\"axis_title_x\", default_face = \"bold\", size = global_axis_title_size\\)",
+    "axis.line = element_line\\(linewidth = global_axis_line_size \\* panel_scale",
     panel_txt,
     perl = TRUE
   ))
   expect_true(grepl(
-    "axis.text.x = combo_text_element\\(\"axis_text_x\", default_face = \"plain\", size = global_axis_text_size\\)",
+    "plot_type = as.character\\(info\\$type %\\|\\|% \"\"\\)",
+    panel_txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "inherits\\(g, \"GeomBoxplot\"\\) && !identical\\(plot_type, \"Violin\"\\)",
     panel_txt,
     perl = TRUE
   ))
 })
 
-test_that("composition auto-expands columns and rejects incomplete custom layouts", {
+test_that("composition auto-balances its grid and rejects incomplete custom layouts", {
   panel_txt <- read_app_file("inst", "app", "server", "panel_module.R")
 
   expect_true(grepl(
@@ -220,12 +270,17 @@ test_that("composition auto-expands columns and rejects incomplete custom layout
     perl = TRUE
   ))
   expect_true(grepl(
-    "if \\(nrow_combo \\* ncol_eff < n_plots\\)",
+    "bioszen_expand_combo_grid\\(",
     panel_txt,
     perl = TRUE
   ))
   expect_true(grepl(
-    "updateNumericInput\\(session, \"ncol_combo\", value = as.integer\\(ncol_eff\\)\\)",
+    "updateNumericInput\\(session, \"nrow_combo\", value = nrow_eff\\)",
+    panel_txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "updateNumericInput\\(session, \"ncol_combo\", value = ncol_eff\\)",
     panel_txt,
     perl = TRUE
   ))

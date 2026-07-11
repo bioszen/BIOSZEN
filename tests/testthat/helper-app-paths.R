@@ -69,3 +69,10 @@ app_test_launch_dir <- function() {
   if (file.exists(file.path(root, "app.R"))) return(root)
   app_test_path()
 }
+
+# Some focused tests source global.R directly instead of the full app bootstrap.
+# Load the shared constants first so those tests mirror the production order.
+dpi_config_path <- app_test_path("config.R")
+if (file.exists(dpi_config_path)) {
+  sys.source(dpi_config_path, envir = globalenv())
+}

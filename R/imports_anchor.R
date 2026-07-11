@@ -29,6 +29,8 @@
     nortest::ad.test
     officer::read_docx
     rvg::dml
+    later::later
+    xml2::xml_find_first
     stringr::str_detect
     forcats::fct_relevel
     tibble::tibble

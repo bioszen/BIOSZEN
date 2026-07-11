@@ -648,3 +648,40 @@ heatmap_row_clusters_n,Number of row clusters
 heatmap_col_clusters_n,Number of column clusters
 heatmap_download_clusters,Download heatmap clusters (.xlsx)
 heatmap_enable_row_clusters,Enable row clustering to export parameter clusters.
+violin_inner,Violin interior:
+violin_inner_box,Inner box
+violin_inner_points,Individual points
+axis_title_spacing_x,X-axis title spacing (pt):
+axis_title_spacing_y,Y-axis title spacing (pt):
+export_dpi,Export resolution (DPI):
+export_dpi_help,"Default: 300 DPI. Supported values: 72 to 600. DPI changes raster export and clipboard resolution only; dimensions and layout remain unchanged. PDF and compatible PowerPoint exports remain vector-based."
+dpi_invalid_fallback,"The DPI value is missing, invalid, or unsupported. BIOSZEN will use 300 DPI. Supported values are 72 to 600 DPI."
+dpi_metadata_invalid_fallback,"The loaded metadata contains an invalid or unsupported DPI value. BIOSZEN restored the remaining settings and used 300 DPI."
+combo_section_pptx,PowerPoint slide
+combo_pptx_preset,Slide format:
+combo_pptx_standard_4_3,Standard (4:3)
+combo_pptx_widescreen_16_9,Widescreen (16:9)
+combo_pptx_custom,Custom
+combo_pptx_orientation,Slide orientation:
+combo_pptx_landscape,Landscape
+combo_pptx_portrait,Portrait
+combo_pptx_width,Slide width (in):
+combo_pptx_height,Slide height (in):
+combo_pptx_margin,Minimum edge margin (in):
+combo_pptx_help,The export always creates one slide and proportionally fits the preview composition inside the selected slide size.
+combo_pptx_small_warning,The selected slide is small; the composition was scaled proportionally to prevent overlap or clipping.
+combo_pptx_vector_fallback,Editable vector rendering was unavailable; PowerPoint was generated with a high-resolution raster composition instead.
+combo_preserve_original_style,Preserve each plot's original appearance
+combo_preserve_original_style_help,Enabled by default. Text and axis elements scale only as needed to fit the composition; point sizes and plot geometry remain unchanged. Disable it to apply the global composition style controls.
+combo_override_typography,Apply composition typography to every plot
+combo_override_typography_help,"Uses the shared sizes, font family, styles, angles, and alignment below for all plots in this composition while preserving their data geometry and colors."
+combo_axis_text_x_size,X tick-label size
+combo_axis_text_y_size,Y tick-label size
+combo_axis_text_x_angle,X tick-label angle
+combo_axis_text_y_angle,Y tick-label angle
+combo_axis_text_x_align,X tick-label alignment
+combo_axis_text_y_align,Y tick-label alignment
+combo_axis_align_auto,Automatic
+combo_axis_align_left,Left
+combo_axis_align_center,Center
+combo_axis_align_right,Right

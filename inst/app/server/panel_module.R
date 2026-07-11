@@ -18,6 +18,48 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     combo_text_style_inputs_ready(TRUE)
   }, once = TRUE)
 
+  combo_dpi_input_resetting <- reactiveVal(FALSE)
+  observeEvent(input$combo_export_dpi, {
+    if (isTRUE(combo_dpi_input_resetting())) return()
+    status <- bioszen_validate_dpi(input$combo_export_dpi)
+    if (isTRUE(status$valid)) return()
+
+    combo_dpi_input_resetting(TRUE)
+    on.exit(combo_dpi_input_resetting(FALSE), add = TRUE)
+    updateNumericInput(session, "combo_export_dpi", value = status$value)
+    showNotification(
+      tr_text("dpi_invalid_fallback", input$app_lang %||% i18n_lang),
+      type = "warning",
+      duration = 6
+    )
+  }, ignoreInit = TRUE, ignoreNULL = FALSE)
+
+  update_combo_pptx_dimensions <- function(preset, orientation) {
+    dims <- bioszen_pptx_preset_size(preset)
+    if (is.null(dims)) return(invisible(FALSE))
+    dims <- bioszen_pptx_oriented_size(dims$width, dims$height, orientation)
+    updateNumericInput(session, "combo_pptx_width", value = dims$width)
+    updateNumericInput(session, "combo_pptx_height", value = dims$height)
+    invisible(TRUE)
+  }
+
+  observeEvent(input$combo_pptx_preset, {
+    update_combo_pptx_dimensions(
+      input$combo_pptx_preset %||% "standard_4_3",
+      input$combo_pptx_orientation %||% "landscape"
+    )
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$combo_pptx_orientation, {
+    dims <- bioszen_pptx_oriented_size(
+      input$combo_pptx_width %||% 10,
+      input$combo_pptx_height %||% 7.5,
+      input$combo_pptx_orientation %||% "landscape"
+    )
+    updateNumericInput(session, "combo_pptx_width", value = dims$width)
+    updateNumericInput(session, "combo_pptx_height", value = dims$height)
+  }, ignoreInit = TRUE)
+
   override_target_ids <- function(ids = names(plot_bank$all)) {
     ids <- as.character(ids %||% character(0))
     if (!length(ids)) return(character(0))
@@ -269,7 +311,9 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       scope     = input$scope,
       strain    = if (identical(input$scope, 'Por Cepa')) sanitize(input$strain) else NULL,
       meta      = meta,
-      curve_cfg = cfg
+      curve_cfg = cfg,
+      source_width = as.numeric(input$plot_w %||% 1000),
+      source_height = as.numeric(input$plot_h %||% 700)
     )
     showNotification(tr("combo_added"), type = 'message', duration = 2)
     if (!panel_inserto()) {
@@ -395,15 +439,26 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     list(
       design = design,
       nrow = nr,
-      ncol = nc
+      ncol = nc,
+      matrix = mat
     )
   }
 
   clamp_num <- function(x, default, lo = -Inf, hi = Inf) {
     val <- suppressWarnings(as.numeric(x))
-    if (!is.finite(val)) val <- default
+    if (!length(val) || !is.finite(val[[1]])) {
+      val <- default
+    } else {
+      val <- val[[1]]
+    }
     val <- max(lo, min(hi, val))
     val
+  }
+
+  finite_num_or_null <- function(x) {
+    val <- suppressWarnings(as.numeric(x))
+    if (!length(val) || !is.finite(val[[1]])) return(NULL)
+    val[[1]]
   }
 
   safe_color <- function(x, fallback = "black") {
@@ -651,12 +706,31 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     )
   }
 
-  combo_plot <- reactive({
+  combo_text_style_targets <- function() {
+    if (exists("bioszen_plot_text_targets", mode = "function")) {
+      bioszen_plot_text_targets()
+    } else {
+      c(
+        "title",
+        "axis_titles", "axis_title_x", "axis_title_y",
+        "axis_text", "axis_text_x", "axis_text_y",
+        "legend", "data_labels", "significance"
+      )
+    }
+  }
+
+  build_combo_plot <- function(export_scale = 1) {
+    export_scale <- bioszen_clamp_number(export_scale, 1, minimum = 0.1, maximum = 4)
     input$makeCombo
     input$show_legend_combo; input$combo_pal; input$nrow_combo;
     input$ncol_combo; input$fs_title_all;
-    input$fs_axis_title_all; input$fs_axis_text_all; input$fs_legend_all;
+    input$fs_axis_title_all; input$fs_axis_text_all;
+    input$fs_axis_text_x_all; input$fs_axis_text_y_all; input$fs_legend_all;
     input$combo_axis_line_size;
+    input$combo_axis_title_spacing_x; input$combo_axis_title_spacing_y;
+    input$combo_preserve_original_style; input$combo_override_typography;
+    input$combo_axis_text_x_angle; input$combo_axis_text_y_angle;
+    input$combo_axis_text_x_align; input$combo_axis_text_y_align;
     input$combo_title; input$combo_title_size; input$combo_legend_scope; input$combo_legend_side
     input$combo_axis_xy_custom
     input$combo_apply_paper_theme; input$combo_font_family
@@ -685,19 +759,6 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
           axis.text = element_text(colour = "black", family = family),
           legend.text = element_text(colour = "black", family = family)
         )
-    }
-
-    combo_text_style_targets <- function() {
-      if (exists("bioszen_plot_text_targets", mode = "function")) {
-        bioszen_plot_text_targets()
-      } else {
-        c(
-          "title",
-          "axis_titles", "axis_title_x", "axis_title_y",
-          "axis_text", "axis_text_x", "axis_text_y",
-          "legend", "data_labels", "significance"
-        )
-      }
     }
 
     combo_text_style_input_id <- function(target) {
@@ -768,7 +829,11 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       "underline" %in% combo_text_styles_for_target(target)
     }
 
-    combo_text_element <- function(target, default_face = "plain", size = NULL, family = combo_family, colour = "black") {
+    combo_text_element <- function(target, default_face = "plain", size = NULL,
+                                   family = combo_family, colour = "black",
+                                   angle = NULL, hjust = NULL,
+                                   axis_spacing_x = global_axis_spacing_x,
+                                   axis_spacing_y = global_axis_spacing_y) {
       if (isTRUE(combo_text_underlined(target)) && requireNamespace("ggtext", quietly = TRUE)) {
         el <- ggtext::element_markdown()
       } else {
@@ -778,7 +843,25 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       el$face <- combo_text_face(target, default_face)
       if (!is.null(size)) el$size <- size
       if (!is.null(colour)) el$colour <- colour
+      if (!is.null(angle)) el$angle <- angle
+      if (!is.null(hjust)) el$hjust <- hjust
+      target_chr <- as.character(target %||% "")
+      if (identical(target_chr, "axis_title_x")) {
+        el$margin <- margin(t = axis_spacing_x, unit = "pt")
+      } else if (identical(target_chr, "axis_title_y")) {
+        el$margin <- margin(r = axis_spacing_y, unit = "pt")
+      }
       el
+    }
+
+    combo_axis_text_hjust <- function(alignment, angle = 0) {
+      alignment <- as.character(alignment %||% "auto")
+      if (identical(alignment, "left")) return(0)
+      if (identical(alignment, "center")) return(0.5)
+      if (identical(alignment, "right")) return(1)
+      if (angle > 0) return(1)
+      if (angle < 0) return(0)
+      0.5
     }
 
     combo_underline_label <- function(text) {
@@ -844,11 +927,20 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       p
     }
 
-    adjust_box_layers <- function(p, width = NULL, size = NULL, jit = NULL, err_lwd = NULL) {
+    adjust_box_layers <- function(p, width = NULL, size = NULL, jit = NULL,
+                                  err_lwd = NULL, plot_type = NULL) {
+      width <- finite_num_or_null(width)
+      size <- finite_num_or_null(size)
+      jit <- finite_num_or_null(jit)
+      err_lwd <- finite_num_or_null(err_lwd)
       for (i in seq_along(p$layers)) {
         g <- p$layers[[i]]$geom
         if (!is.null(width)) {
-          if (inherits(g, "GeomBoxplot") || inherits(g, "GeomCol"))
+          if (inherits(g, "GeomBoxplot") && !identical(plot_type, "Violin")) {
+            p$layers[[i]]$geom_params$width <- width
+            p$layers[[i]]$stat_params$width <- width
+          }
+          if (inherits(g, "GeomCol"))
             p$layers[[i]]$geom_params$width <- width
           if (inherits(g, "GeomErrorbar")) {
             w <- width * 0.35
@@ -893,51 +985,208 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     if (!length(selected_ids)) selected_ids <- all_ids
     req(length(selected_ids) > 0)
 
+    n_plots <- length(selected_ids)
+    layout_grid <- parse_layout_grid(input$combo_layout_grid, n_plots)
+    nrow_combo <- suppressWarnings(as.integer(input$nrow_combo))
+    ncol_combo <- suppressWarnings(as.integer(input$ncol_combo))
+    if (!is.finite(nrow_combo) || nrow_combo < 1) nrow_combo <- 1L
+    if (!is.finite(ncol_combo) || ncol_combo < 1) ncol_combo <- 1L
+    col_widths_raw <- parse_numeric_vector(input$combo_col_widths)
+    row_heights_raw <- parse_numeric_vector(input$combo_row_heights)
+
+    if (!is.null(layout_grid)) {
+      layout_matrix <- layout_grid$matrix
+      col_widths <- normalize_layout_vector(col_widths_raw, layout_grid$ncol)
+      row_heights <- normalize_layout_vector(row_heights_raw, layout_grid$nrow)
+    } else {
+      expanded_grid <- bioszen_expand_combo_grid(
+        n_plots,
+        nrow = nrow_combo,
+        ncol = ncol_combo,
+        canvas_width = input$combo_width %||% 1000,
+        canvas_height = input$combo_height %||% 700
+      )
+      nrow_eff <- expanded_grid$nrow
+      ncol_eff <- expanded_grid$ncol
+      if (!identical(nrow_combo, nrow_eff)) {
+        updateNumericInput(session, "nrow_combo", value = nrow_eff)
+      }
+      if (!identical(ncol_combo, ncol_eff)) {
+        updateNumericInput(session, "ncol_combo", value = ncol_eff)
+      }
+      layout_values <- c(seq_len(n_plots), rep(0L, nrow_eff * ncol_eff - n_plots))
+      layout_matrix <- matrix(layout_values, nrow = nrow_eff, ncol = ncol_eff, byrow = TRUE)
+      col_widths <- normalize_layout_vector(col_widths_raw, ncol_eff)
+      row_heights <- normalize_layout_vector(row_heights_raw, nrow_eff)
+    }
+
+    source_widths <- vapply(selected_ids, function(id) {
+      finite_num_or_null(plot_bank$all[[id]]$source_width) %||% 1000
+    }, numeric(1))
+    source_heights <- vapply(selected_ids, function(id) {
+      finite_num_or_null(plot_bank$all[[id]]$source_height) %||% 700
+    }, numeric(1))
+    panel_scales <- bioszen_combo_cell_scales(
+      layout_matrix = layout_matrix,
+      canvas_width = input$combo_width %||% 1000,
+      canvas_height = input$combo_height %||% 700,
+      source_widths = source_widths,
+      source_heights = source_heights,
+      column_weights = col_widths,
+      row_weights = row_heights
+    )
+
     combo_family <- as.character(input$combo_font_family %||% "Helvetica")
     if (!nzchar(combo_family)) combo_family <- "Helvetica"
     use_paper_theme <- isTRUE(input$combo_apply_paper_theme)
-    global_title_size <- clamp_num(input$fs_title_all, 20, lo = 6, hi = 120)
-    global_axis_title_size <- clamp_num(input$fs_axis_title_all, 16, lo = 6, hi = 120)
-    global_axis_text_size <- clamp_num(input$fs_axis_text_all, 14, lo = 6, hi = 120)
+    preserve_original_style <- isTRUE(input$combo_preserve_original_style) && !use_paper_theme
+    apply_combo_typography <- !isTRUE(preserve_original_style) ||
+      isTRUE(input$combo_override_typography %||% FALSE)
+    combo_scale <- bioszen_plot_dimension_scale(
+      input$combo_width %||% 1000,
+      input$combo_height %||% 700
+    )
+    global_title_size <- clamp_num(
+      input$fs_title_all,
+      bioszen_visual_defaults$title_size,
+      lo = 6,
+      hi = 120
+    )
+    global_axis_title_size <- clamp_num(
+      input$fs_axis_title_all,
+      bioszen_visual_defaults$axis_size,
+      lo = 6,
+      hi = 120
+    )
+    global_axis_text_size <- clamp_num(
+      input$fs_axis_text_all,
+      bioszen_visual_defaults$axis_size * bioszen_visual_defaults$axis_tick_ratio,
+      lo = 6,
+      hi = 120
+    )
+    global_axis_text_x_size <- if (isTRUE(combo_axis_xy_custom_enabled())) {
+      clamp_num(input$fs_axis_text_x_all, global_axis_text_size, lo = 6, hi = 120)
+    } else {
+      global_axis_text_size
+    }
+    global_axis_text_y_size <- if (isTRUE(combo_axis_xy_custom_enabled())) {
+      clamp_num(input$fs_axis_text_y_all, global_axis_text_size, lo = 6, hi = 120)
+    } else {
+      global_axis_text_size
+    }
+    global_axis_text_x_angle <- clamp_num(input$combo_axis_text_x_angle, 0, lo = -90, hi = 90)
+    global_axis_text_y_angle <- clamp_num(input$combo_axis_text_y_angle, 0, lo = -90, hi = 90)
+    global_axis_text_x_hjust <- combo_axis_text_hjust(
+      input$combo_axis_text_x_align,
+      global_axis_text_x_angle
+    )
+    global_axis_text_y_hjust <- combo_axis_text_hjust(
+      input$combo_axis_text_y_align,
+      global_axis_text_y_angle
+    )
     global_legend_size <- clamp_num(input$fs_legend_all, 16, lo = 6, hi = 120)
-    global_axis_line_size <- clamp_num(input$combo_axis_line_size, 1, lo = 0.1, hi = 10)
+    global_axis_line_size <- clamp_num(input$combo_axis_line_size, bioszen_visual_defaults$axis_line_size, lo = 0.1, hi = 10)
+    global_axis_spacing_x <- clamp_num(
+      input$combo_axis_title_spacing_x,
+      bioszen_visual_defaults$axis_title_spacing_x,
+      lo = 0,
+      hi = 100
+    )
+    global_axis_spacing_y <- clamp_num(
+      input$combo_axis_title_spacing_y,
+      bioszen_visual_defaults$axis_title_spacing_y,
+      lo = 0,
+      hi = 100
+    )
     show_legends <- isTRUE(input$show_legend_combo)
     legend_scope <- as.character(input$combo_legend_scope %||% "by_type")
     legend_side <- as.character(input$combo_legend_side %||% "right")
     if (!legend_side %in% c("right", "left")) legend_side <- "right"
 
-    plots <- lapply(selected_ids, function(id) {
+    plots <- lapply(seq_along(selected_ids), function(plot_index) {
+      id <- selected_ids[[plot_index]]
       info <- plot_bank$all[[id]]
-      p  <- info$plot
+      p  <- bioszen_clone_plot(info$plot)
       ov <- info$overrides
-      if (use_paper_theme) {
+      panel_scale <- (panel_scales[[plot_index]] %||% 1) * export_scale
+      if (isTRUE(preserve_original_style)) {
+        p <- bioszen_scale_saved_plot_theme(p, panel_scale)
+      } else if (use_paper_theme) {
         p <- p + theme_paper(
-          bs = 18,
+          bs = 18 * panel_scale,
           family = combo_family,
-          ax = global_axis_line_size
+          ax = global_axis_line_size * panel_scale
         )
       }
-      p <- p + theme(
-        text = element_text(family = combo_family),
-        plot.title = combo_text_element("title", default_face = "bold", size = global_title_size),
-        axis.title = combo_text_element("axis_titles", default_face = "bold", size = global_axis_title_size),
-        axis.text = combo_text_element("axis_text", default_face = "plain", size = global_axis_text_size),
-        legend.text = combo_text_element("legend", default_face = "plain", size = global_legend_size),
-        legend.title = combo_text_element("legend", default_face = "bold", size = global_legend_size),
-        axis.line = element_line(linewidth = global_axis_line_size, colour = "black"),
-        axis.ticks = element_line(linewidth = global_axis_line_size, colour = "black")
-      )
+      if (isTRUE(apply_combo_typography)) {
+        scaled_axis_spacing_x <- global_axis_spacing_x * panel_scale
+        scaled_axis_spacing_y <- global_axis_spacing_y * panel_scale
+        p <- p + theme(
+          text = element_text(family = combo_family),
+          plot.title = combo_text_element(
+            "title", default_face = "bold", size = global_title_size * panel_scale
+          ),
+          axis.title = combo_text_element(
+            "axis_titles", default_face = "bold", size = global_axis_title_size * panel_scale
+          ),
+          axis.title.x = combo_text_element(
+            "axis_title_x",
+            default_face = "bold",
+            size = global_axis_title_size * panel_scale,
+            axis_spacing_x = scaled_axis_spacing_x,
+            axis_spacing_y = scaled_axis_spacing_y
+          ),
+          axis.title.y = combo_text_element(
+            "axis_title_y",
+            default_face = "bold",
+            size = global_axis_title_size * panel_scale,
+            axis_spacing_x = scaled_axis_spacing_x,
+            axis_spacing_y = scaled_axis_spacing_y
+          ),
+          axis.text = combo_text_element(
+            "axis_text", default_face = "plain", size = global_axis_text_size * panel_scale
+          ),
+          axis.text.x = combo_text_element(
+            "axis_text_x",
+            default_face = "plain",
+            size = global_axis_text_x_size * panel_scale,
+            angle = global_axis_text_x_angle,
+            hjust = global_axis_text_x_hjust
+          ),
+          axis.text.y = combo_text_element(
+            "axis_text_y",
+            default_face = "plain",
+            size = global_axis_text_y_size * panel_scale,
+            angle = global_axis_text_y_angle,
+            hjust = global_axis_text_y_hjust
+          ),
+          legend.text = combo_text_element("legend", default_face = "plain", size = global_legend_size),
+          legend.title = combo_text_element("legend", default_face = "bold", size = global_legend_size),
+          axis.line = element_line(linewidth = global_axis_line_size * panel_scale, colour = "black"),
+          axis.ticks = element_line(linewidth = global_axis_line_size * panel_scale, colour = "black")
+        )
+      }
       if (!is.null(ov$title))
         p <- p + ggtitle(ov$title)
       if (!is.null(ov$sig_lwd) || !is.null(ov$sig_txt))
         p <- adjust_sig_layers(p, ov$sig_lwd, ov$sig_txt)
       p <- adjust_curve_layers(p, ov$cur_lwd, ov$cur_pt)
-      p <- adjust_box_layers(p, ov$box_w, ov$pt_size, ov$pt_jit, ov$errbar_size)
+      p <- adjust_box_layers(
+        p,
+        ov$box_w,
+        ov$pt_size,
+        ov$pt_jit,
+        ov$errbar_size,
+        plot_type = as.character(info$type %||% "")
+      )
       if (show_legends) {
         p <- force_enable_plot_legend(p, legend_side)
       }
-      p <- combo_style_plot_labels(p)
-      p <- combo_style_text_layers(p)
+      if (isTRUE(apply_combo_typography)) {
+        p <- combo_style_plot_labels(p)
+        p <- combo_style_text_layers(p)
+      }
+      p <- bioszen_scale_plot_layers(p, export_scale)
       p
     })
 
@@ -977,51 +1226,14 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     } else {
       pal <- pal_fill <- NULL
     }
-    layout_grid <- parse_layout_grid(input$combo_layout_grid, length(plots))
-    nrow_combo <- suppressWarnings(as.integer(input$nrow_combo))
-    ncol_combo <- suppressWarnings(as.integer(input$ncol_combo))
-    if (!is.finite(nrow_combo) || nrow_combo < 1) nrow_combo <- 1L
-    if (!is.finite(ncol_combo) || ncol_combo < 1) ncol_combo <- 1L
-    n_plots <- length(plots)
-
-    col_widths_raw <- parse_numeric_vector(input$combo_col_widths)
-    row_heights_raw <- parse_numeric_vector(input$combo_row_heights)
-
     if (!is.null(layout_grid)) {
       res <- wrap_plots(plots, design = layout_grid$design)
-      col_widths <- normalize_layout_vector(col_widths_raw, layout_grid$ncol)
-      row_heights <- normalize_layout_vector(row_heights_raw, layout_grid$nrow)
     } else {
-      ncol_eff <- ncol_combo
-      if (nrow_combo * ncol_eff < n_plots) {
-        ncol_eff <- ceiling(n_plots / nrow_combo)
-        if (!identical(as.integer(input$ncol_combo %||% 0), as.integer(ncol_eff))) {
-          updateNumericInput(session, "ncol_combo", value = as.integer(ncol_eff))
-        }
-      }
-      res <- wrap_plots(plots, nrow = nrow_combo, ncol = ncol_eff)
-      col_widths <- normalize_layout_vector(col_widths_raw, ncol_eff)
-      row_heights <- normalize_layout_vector(row_heights_raw, nrow_combo)
+      res <- wrap_plots(plots, nrow = nrow_eff, ncol = ncol_eff)
     }
     if (!is.null(col_widths) || !is.null(row_heights)) {
       res <- res + plot_layout(widths = col_widths, heights = row_heights)
     }
-    # Final composition-level style pass so global controls always win
-    # even when individual plots define axis.title.x/.y or axis.text.x/.y.
-      res <- res & theme(
-      text = element_text(family = combo_family),
-      plot.title = combo_text_element("title", default_face = "bold", size = global_title_size),
-      axis.title = combo_text_element("axis_titles", default_face = "bold", size = global_axis_title_size),
-      axis.title.x = combo_text_element("axis_title_x", default_face = "bold", size = global_axis_title_size),
-      axis.title.y = combo_text_element("axis_title_y", default_face = "bold", size = global_axis_title_size),
-      axis.text = combo_text_element("axis_text", default_face = "plain", size = global_axis_text_size),
-      axis.text.x = combo_text_element("axis_text_x", default_face = "plain", size = global_axis_text_size),
-      axis.text.y = combo_text_element("axis_text_y", default_face = "plain", size = global_axis_text_size),
-      axis.ticks = element_line(linewidth = global_axis_line_size, colour = "black"),
-      axis.line = element_line(linewidth = global_axis_line_size, colour = "black"),
-      legend.text = combo_text_element("legend", default_face = "plain", size = global_legend_size),
-      legend.title = combo_text_element("legend", default_face = "bold", size = global_legend_size)
-    )
     if (!is.null(pal)) {
       res <- apply_combo_manual_scales(res, pal, pal_fill)
     }
@@ -1034,6 +1246,7 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     if (nzchar(trimws(combo_title))) {
       combo_title_size <- suppressWarnings(as.numeric(input$combo_title_size))
       if (!is.finite(combo_title_size) || combo_title_size <= 0) combo_title_size <- 24
+      combo_title_size <- combo_title_size * combo_scale * export_scale
       combo_title_label <- if (isTRUE(combo_text_underlined("title")) &&
                                requireNamespace("ggtext", quietly = TRUE)) {
         combo_underline_label(combo_title)
@@ -1050,7 +1263,9 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       )
     }
     add_combo_richtext(res)
-  })
+  }
+
+  combo_plot <- reactive(build_combo_plot())
 
   output$comboPreview <- renderPlot({
     withCallingHandlers({
@@ -1067,7 +1282,7 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     })
   }, width = function() input$combo_width,
      height = function() input$combo_height,
-     res = 96)
+     res = BIOSZEN_CSS_DPI)
 
   combo_metadata_style_input_id <- function(target) {
     paste0("combo_text_style_", as.character(target %||% ""))
@@ -1078,19 +1293,23 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
   }
 
   combo_metadata_text_style_row <- function(text, target, size, size_input_id) {
+    scalar_text <- function(value, default = "") {
+      if (is.null(value) || !length(value) || is.na(value[[1]])) return(default)
+      as.character(value[[1]])
+    }
     style <- combo_metadata_style_value(target)
     parsed <- metadata_parse_text_style_value(style)
     data.frame(
-      Text = text,
-      Target = target,
-      FontFamily = as.character(input$combo_font_family %||% "Helvetica"),
-      Size = as.character(size),
-      Style = style,
+      Text = scalar_text(text),
+      Target = scalar_text(target),
+      FontFamily = scalar_text(input$combo_font_family, "Helvetica"),
+      Size = scalar_text(size),
+      Style = scalar_text(style, "normal"),
       Bold = as.character("bold" %in% parsed),
       Italic = as.character("italic" %in% parsed),
       Underline = as.character("underline" %in% parsed),
-      InputId = combo_metadata_style_input_id(target),
-      SizeInputId = size_input_id,
+      InputId = scalar_text(combo_metadata_style_input_id(target)),
+      SizeInputId = scalar_text(size_input_id),
       stringsAsFactors = FALSE
     )
   }
@@ -1105,8 +1324,8 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
         combo_metadata_text_style_row(metadata_text_target_label("axis_title_x"), "axis_title_x", input$fs_axis_title_all, "fs_axis_title_all"),
         combo_metadata_text_style_row(metadata_text_target_label("axis_title_y"), "axis_title_y", input$fs_axis_title_all, "fs_axis_title_all"),
         combo_metadata_text_style_row(metadata_text_target_label("axis_text"), "axis_text", input$fs_axis_text_all, "fs_axis_text_all"),
-        combo_metadata_text_style_row(metadata_text_target_label("axis_text_x"), "axis_text_x", input$fs_axis_text_all, "fs_axis_text_all"),
-        combo_metadata_text_style_row(metadata_text_target_label("axis_text_y"), "axis_text_y", input$fs_axis_text_all, "fs_axis_text_all"),
+        combo_metadata_text_style_row(metadata_text_target_label("axis_text_x"), "axis_text_x", input$fs_axis_text_x_all %||% input$fs_axis_text_all, "fs_axis_text_x_all"),
+        combo_metadata_text_style_row(metadata_text_target_label("axis_text_y"), "axis_text_y", input$fs_axis_text_y_all %||% input$fs_axis_text_all, "fs_axis_text_y_all"),
         combo_metadata_text_style_row(metadata_text_target_label("legend"), "legend", input$fs_legend_all, "fs_legend_all"),
         combo_metadata_text_style_row(metadata_text_target_label("data_labels"), "data_labels", input$fs_axis_text_all, "fs_axis_text_all"),
         combo_metadata_text_style_row(metadata_text_target_label("significance"), "significance", input$ov_sig_txt, "ov_sig_txt")
@@ -1172,6 +1391,14 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       ncol_combo        = input$ncol_combo,
       combo_width       = input$combo_width,
       combo_height      = input$combo_height,
+      combo_export_dpi  = bioszen_effective_dpi(input$combo_export_dpi),
+      combo_pptx_preset = input$combo_pptx_preset,
+      combo_pptx_orientation = input$combo_pptx_orientation,
+      combo_pptx_width  = input$combo_pptx_width,
+      combo_pptx_height = input$combo_pptx_height,
+      combo_pptx_margin = input$combo_pptx_margin,
+      combo_preserve_original_style = input$combo_preserve_original_style,
+      combo_override_typography = input$combo_override_typography,
       combo_apply_paper_theme = input$combo_apply_paper_theme,
       combo_font_family = input$combo_font_family,
       combo_axis_xy_custom = input$combo_axis_xy_custom,
@@ -1199,7 +1426,15 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       fs_title_all      = input$fs_title_all,
       fs_axis_title_all = input$fs_axis_title_all,
       fs_axis_text_all  = input$fs_axis_text_all,
+      fs_axis_text_x_all = input$fs_axis_text_x_all,
+      fs_axis_text_y_all = input$fs_axis_text_y_all,
+      combo_axis_text_x_angle = input$combo_axis_text_x_angle,
+      combo_axis_text_y_angle = input$combo_axis_text_y_angle,
+      combo_axis_text_x_align = input$combo_axis_text_x_align,
+      combo_axis_text_y_align = input$combo_axis_text_y_align,
       combo_axis_line_size = input$combo_axis_line_size,
+      combo_axis_title_spacing_x = input$combo_axis_title_spacing_x,
+      combo_axis_title_spacing_y = input$combo_axis_title_spacing_y,
       fs_legend_all     = input$fs_legend_all,
       combo_pal         = input$combo_pal,
       combo_layout_grid = input$combo_layout_grid,
@@ -1227,7 +1462,10 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     )
     tibble::tibble(
       Campo = names(vals),
-      Valor = vapply(vals, as.character, character(1))
+      Valor = vapply(vals, function(value) {
+        if (is.null(value) || !length(value) || is.na(value[[1]])) return("")
+        as.character(value[[1]])
+      }, character(1))
     )
   }
 
@@ -1286,38 +1524,79 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       parse_bool <- function(x) {
         tolower(trimws(first_val(x))) %in% c("true", "1", "yes", "y")
       }
+      update_numeric_from_metadata <- function(field, input_id = field) {
+        value <- finite_num_or_null(gv(field))
+        if (is.null(value)) return(NULL)
+        updateNumericInput(session, input_id, value = value)
+        value
+      }
+      restore_combo_dpi_metadata <- function(value) {
+        status <- bioszen_validate_dpi(value)
+        updateNumericInput(session, "combo_export_dpi", value = status$value)
+        if (!isTRUE(status$valid) && !identical(status$reason, "missing")) {
+          showNotification(
+            tr_text("dpi_metadata_invalid_fallback", input$app_lang %||% i18n_lang),
+            type = "warning",
+            duration = 7
+          )
+        }
+        invisible(status$value)
+      }
       if (!is.null(v <- gv('show_legend_combo')))
         updateCheckboxInput(session, 'show_legend_combo', value = parse_bool(v))
       else if (!is.null(v <- gv('combo_legend_on_right')))
         updateCheckboxInput(session, 'show_legend_combo', value = parse_bool(v))
       if (!is.null(v <- gv('combo_title')))
         updateTextInput(session, 'combo_title', value = v)
-      if (!is.null(v <- gv('combo_title_size')))
-        updateNumericInput(session, 'combo_title_size', value = as.numeric(v))
+      update_numeric_from_metadata('combo_title_size')
       if (!is.null(v <- gv('combo_legend_scope')))
         updateSelectInput(session, 'combo_legend_scope', selected = v)
       if (!is.null(v <- gv('combo_legend_side')))
         updateRadioButtons(session, 'combo_legend_side', selected = v)
       else if (!is.null(v <- gv('combo_legend_on_right')) && parse_bool(v))
         updateRadioButtons(session, 'combo_legend_side', selected = "right")
-      if (!is.null(v <- gv('nrow_combo')))
-        updateNumericInput(session, 'nrow_combo', value = as.numeric(v))
-      if (!is.null(v <- gv('ncol_combo')))
-        updateNumericInput(session, 'ncol_combo', value = as.numeric(v))
-      if (!is.null(v <- gv('combo_width')))
-        updateNumericInput(session, 'combo_width', value = as.numeric(v))
-      if (!is.null(v <- gv('combo_height')))
-        updateNumericInput(session, 'combo_height', value = as.numeric(v))
-      if (!is.null(v <- gv('fs_title_all')))
-        updateNumericInput(session, 'fs_title_all', value = as.numeric(v))
-      if (!is.null(v <- gv('fs_axis_title_all')))
-        updateNumericInput(session, 'fs_axis_title_all', value = as.numeric(v))
-      if (!is.null(v <- gv('fs_axis_text_all')))
-        updateNumericInput(session, 'fs_axis_text_all', value = as.numeric(v))
-      if (!is.null(v <- gv('combo_axis_line_size')))
-        updateNumericInput(session, 'combo_axis_line_size', value = as.numeric(v))
-      if (!is.null(v <- gv('fs_legend_all')))
-        updateNumericInput(session, 'fs_legend_all', value = as.numeric(v))
+      update_numeric_from_metadata('nrow_combo')
+      update_numeric_from_metadata('ncol_combo')
+      update_numeric_from_metadata('combo_width')
+      update_numeric_from_metadata('combo_height')
+      restore_combo_dpi_metadata(gv('combo_export_dpi'))
+      if (!is.null(v <- gv('combo_pptx_preset')))
+        updateSelectInput(session, 'combo_pptx_preset', selected = v)
+      if (!is.null(v <- gv('combo_pptx_orientation')))
+        updateRadioButtons(session, 'combo_pptx_orientation', selected = v)
+      update_numeric_from_metadata('combo_pptx_width')
+      update_numeric_from_metadata('combo_pptx_height')
+      update_numeric_from_metadata('combo_pptx_margin')
+      if (!is.null(v <- gv('combo_preserve_original_style'))) {
+        updateCheckboxInput(session, 'combo_preserve_original_style', value = parse_bool(v))
+      } else {
+        # Legacy composition metadata used global restyling unconditionally.
+        updateCheckboxInput(session, 'combo_preserve_original_style', value = FALSE)
+      }
+      if (!is.null(v <- gv('combo_override_typography'))) {
+        updateCheckboxInput(session, 'combo_override_typography', value = parse_bool(v))
+      } else {
+        updateCheckboxInput(session, 'combo_override_typography', value = FALSE)
+      }
+      update_numeric_from_metadata('fs_title_all')
+      update_numeric_from_metadata('fs_axis_title_all')
+      update_numeric_from_metadata('fs_axis_text_all')
+      if (is.null(update_numeric_from_metadata('fs_axis_text_x_all'))) {
+        update_numeric_from_metadata('fs_axis_text_all', 'fs_axis_text_x_all')
+      }
+      if (is.null(update_numeric_from_metadata('fs_axis_text_y_all'))) {
+        update_numeric_from_metadata('fs_axis_text_all', 'fs_axis_text_y_all')
+      }
+      update_numeric_from_metadata('combo_axis_text_x_angle')
+      update_numeric_from_metadata('combo_axis_text_y_angle')
+      if (!is.null(v <- gv('combo_axis_text_x_align')))
+        updateSelectInput(session, 'combo_axis_text_x_align', selected = v)
+      if (!is.null(v <- gv('combo_axis_text_y_align')))
+        updateSelectInput(session, 'combo_axis_text_y_align', selected = v)
+      update_numeric_from_metadata('combo_axis_line_size')
+      update_numeric_from_metadata('combo_axis_title_spacing_x')
+      update_numeric_from_metadata('combo_axis_title_spacing_y')
+      update_numeric_from_metadata('fs_legend_all')
       if (!is.null(v <- gv('combo_pal')))
         updateSelectInput(session, 'combo_pal', selected = v)
       if (!is.null(v <- gv('combo_apply_paper_theme')))
@@ -1328,8 +1607,8 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
         updateSelectInput(session, 'combo_font_family', selected = v)
       if (!is.null(v <- gv('combo_axis_xy_custom')))
         updateCheckboxInput(session, 'combo_axis_xy_custom', value = parse_bool(v))
-      if (is.null(gv('fs_legend_all')) && !is.null(v <- gv('combo_legend_font_size')))
-        updateNumericInput(session, 'fs_legend_all', value = as.numeric(v))
+      if (is.null(gv('fs_legend_all')))
+        update_numeric_from_metadata('combo_legend_font_size', 'fs_legend_all')
       for (target in combo_text_style_targets()) {
         input_id <- paste0("combo_text_style_", target)
         if (!is.null(v <- gv(input_id))) {
@@ -1367,16 +1646,11 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
         updateCheckboxInput(session, 'combo_rich_enable', value = tolower(v) == 'true')
       if (!is.null(v <- gv('combo_rich_text')))
         updateTextAreaInput(session, 'combo_rich_text', value = v)
-      if (!is.null(v <- gv('combo_rich_x')))
-        updateNumericInput(session, 'combo_rich_x', value = as.numeric(v))
-      if (!is.null(v <- gv('combo_rich_y')))
-        updateNumericInput(session, 'combo_rich_y', value = as.numeric(v))
-      if (!is.null(v <- gv('combo_rich_box_w')))
-        updateNumericInput(session, 'combo_rich_box_w', value = as.numeric(v))
-      if (!is.null(v <- gv('combo_rich_box_h')))
-        updateNumericInput(session, 'combo_rich_box_h', value = as.numeric(v))
-      if (!is.null(v <- gv('combo_rich_size')))
-        updateNumericInput(session, 'combo_rich_size', value = as.numeric(v))
+      update_numeric_from_metadata('combo_rich_x')
+      update_numeric_from_metadata('combo_rich_y')
+      update_numeric_from_metadata('combo_rich_box_w')
+      update_numeric_from_metadata('combo_rich_box_h')
+      update_numeric_from_metadata('combo_rich_size')
       if (!is.null(v <- gv('combo_rich_color')))
         updateTextInput(session, 'combo_rich_color', value = v)
       if (!is.null(v <- gv('combo_rich_fill')))
@@ -1386,40 +1660,23 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
 
       ov_new <- list()
       if (!is.null(v <- gv('ov_title'))) {
-        updateTextInput(session, 'ov_title', value = v)
-        ov_new$title <- v
+        title_value <- first_val(v)
+        updateTextInput(session, 'ov_title', value = title_value)
+        if (nzchar(trimws(title_value))) ov_new$title <- title_value
       }
-      if (!is.null(v <- gv('ov_cur_lwd'))) {
-        updateNumericInput(session, 'ov_cur_lwd', value = as.numeric(v))
-        ov_new$cur_lwd <- as.numeric(v)
-      }
-      if (!is.null(v <- gv('ov_cur_pt'))) {
-        updateNumericInput(session, 'ov_cur_pt', value = as.numeric(v))
-        ov_new$cur_pt <- as.numeric(v)
-      }
-      if (!is.null(v <- gv('ov_box_w'))) {
-        updateNumericInput(session, 'ov_box_w', value = as.numeric(v))
-        ov_new$box_w <- as.numeric(v)
-      }
-      if (!is.null(v <- gv('ov_errbar_size'))) {
-        updateNumericInput(session, 'ov_errbar_size', value = as.numeric(v))
-        ov_new$errbar_size <- as.numeric(v)
-      }
-      if (!is.null(v <- gv('ov_pt_size'))) {
-        updateNumericInput(session, 'ov_pt_size', value = as.numeric(v))
-        ov_new$pt_size <- as.numeric(v)
-      }
-      if (!is.null(v <- gv('ov_pt_jit'))) {
-        updateNumericInput(session, 'ov_pt_jit', value = as.numeric(v))
-        ov_new$pt_jit <- as.numeric(v)
-      }
-      if (!is.null(v <- gv('ov_sig_lwd'))) {
-        updateNumericInput(session, 'ov_sig_lwd', value = as.numeric(v))
-        ov_new$sig_lwd <- as.numeric(v)
-      }
-      if (!is.null(v <- gv('ov_sig_txt'))) {
-        updateNumericInput(session, 'ov_sig_txt', value = as.numeric(v))
-        ov_new$sig_txt <- as.numeric(v)
+      override_numeric_fields <- c(
+        ov_cur_lwd = "cur_lwd",
+        ov_cur_pt = "cur_pt",
+        ov_box_w = "box_w",
+        ov_errbar_size = "errbar_size",
+        ov_pt_size = "pt_size",
+        ov_pt_jit = "pt_jit",
+        ov_sig_lwd = "sig_lwd",
+        ov_sig_txt = "sig_txt"
+      )
+      for (field in names(override_numeric_fields)) {
+        value <- update_numeric_from_metadata(field)
+        if (!is.null(value)) ov_new[[override_numeric_fields[[field]]]] <- value
       }
 
       if (length(ov_new)) {
@@ -1539,5 +1796,8 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
     showNotification(msg, type = "message", duration = 4)
   })
 
-  combo_plot
+  list(
+    plot = combo_plot,
+    build = build_combo_plot
+  )
 }

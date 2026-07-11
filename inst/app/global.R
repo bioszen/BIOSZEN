@@ -284,6 +284,25 @@ ggplot2::theme_update(
   text = ggplot2::element_text(colour = "black", family = "Helvetica")
 )
 
+# Shared publication-style defaults. Plot dimensions and legend behavior stay
+# unchanged; the server scales text/line spacing proportionally at render time.
+bioszen_plot_visual_defaults <- function() {
+  list(
+    base_size = 18,
+    title_size = 24,
+    axis_size = 20,
+    axis_tick_ratio = 0.82,
+    legend_size = 17,
+    axis_line_size = 1.3,
+    axis_title_spacing_x = 10,
+    axis_title_spacing_y = 12,
+    export_dpi = BIOSZEN_DEFAULT_DPI,
+    violin_inner = "box"
+  )
+}
+
+bioszen_visual_defaults <- bioszen_plot_visual_defaults()
+
 #──────── helpers genéricos para objetos sin método broom::tidy() ────────
 # Las funciones matrix_to_tibble() y pmcmr_to_tibble() ahora residen en
 # helpers.R para evitar duplicaciones.
@@ -325,11 +344,32 @@ tab_compos <- tabPanel(
           textOutput("comboLayoutMap"),
           numericInput("combo_width",  tr("combo_width"), 1000, min = 400),
           numericInput("combo_height", tr("combo_height"), 700, min = 400),
+          numericInput(
+            "combo_export_dpi",
+            tr("export_dpi"),
+            bioszen_visual_defaults$export_dpi,
+            min = BIOSZEN_MIN_DPI,
+            max = BIOSZEN_MAX_DPI,
+            step = 1
+          ),
+          helpText(tr("export_dpi_help")),
           value = "combo_section_layout"
         ),
         accordion_panel_safe(
           tr("combo_section_style"),
           helpText(tr("combo_style_live_hint")),
+          checkboxInput(
+            "combo_preserve_original_style",
+            tr("combo_preserve_original_style"),
+            value = TRUE
+          ),
+          helpText(tr("combo_preserve_original_style_help")),
+          checkboxInput(
+            "combo_override_typography",
+            tr("combo_override_typography"),
+            value = FALSE
+          ),
+          helpText(tr("combo_override_typography_help")),
           checkboxInput("show_legend_combo", tr("combo_show_legend"), value = FALSE),
           textInput("combo_title", tr("combo_title"), ""),
           numericInput("combo_title_size", tr("combo_comp_title_size"), 24, min = 8),
@@ -486,10 +526,109 @@ tab_compos <- tabPanel(
             )
           ),
           checkboxInput("combo_apply_paper_theme", tr("combo_apply_paper_theme"), value = FALSE),
-          numericInput("fs_title_all",      tr("combo_plot_title_size"), 20, min = 6),
-          numericInput("fs_axis_title_all", tr("combo_axis_titles"), 16, min = 6),
-          numericInput("fs_axis_text_all",  tr("combo_axis_ticks"),  14, min = 6),
-          numericInput("combo_axis_line_size", tr("combo_axis_line_size"), 1, min = 0.1, step = 0.1),
+          numericInput("fs_title_all",      tr("combo_plot_title_size"), bioszen_visual_defaults$title_size, min = 6),
+          numericInput("fs_axis_title_all", tr("combo_axis_titles"), bioszen_visual_defaults$axis_size, min = 6),
+          numericInput("fs_axis_text_all",  tr("combo_axis_ticks"),  round(bioszen_visual_defaults$axis_size * bioszen_visual_defaults$axis_tick_ratio, 1), min = 6),
+          conditionalPanel(
+            condition = "input.combo_axis_xy_custom == true",
+            fluidRow(
+              column(
+                6,
+                numericInput(
+                  "fs_axis_text_x_all",
+                  tr("combo_axis_text_x_size"),
+                  round(bioszen_visual_defaults$axis_size * bioszen_visual_defaults$axis_tick_ratio, 1),
+                  min = 6,
+                  max = 120,
+                  step = 0.5
+                )
+              ),
+              column(
+                6,
+                numericInput(
+                  "fs_axis_text_y_all",
+                  tr("combo_axis_text_y_size"),
+                  round(bioszen_visual_defaults$axis_size * bioszen_visual_defaults$axis_tick_ratio, 1),
+                  min = 6,
+                  max = 120,
+                  step = 0.5
+                )
+              )
+            )
+          ),
+          fluidRow(
+            column(
+              6,
+              numericInput(
+                "combo_axis_text_x_angle",
+                tr("combo_axis_text_x_angle"),
+                0,
+                min = -90,
+                max = 90,
+                step = 5
+              )
+            ),
+            column(
+              6,
+              numericInput(
+                "combo_axis_text_y_angle",
+                tr("combo_axis_text_y_angle"),
+                0,
+                min = -90,
+                max = 90,
+                step = 5
+              )
+            )
+          ),
+          fluidRow(
+            column(
+              6,
+              selectInput(
+                "combo_axis_text_x_align",
+                tr("combo_axis_text_x_align"),
+                choices = named_choices(
+                  c("auto", "left", "center", "right"),
+                  tr_text(
+                    c("combo_axis_align_auto", "combo_axis_align_left", "combo_axis_align_center", "combo_axis_align_right"),
+                    i18n_lang
+                  )
+                ),
+                selected = "auto"
+              )
+            ),
+            column(
+              6,
+              selectInput(
+                "combo_axis_text_y_align",
+                tr("combo_axis_text_y_align"),
+                choices = named_choices(
+                  c("auto", "left", "center", "right"),
+                  tr_text(
+                    c("combo_axis_align_auto", "combo_axis_align_left", "combo_axis_align_center", "combo_axis_align_right"),
+                    i18n_lang
+                  )
+                ),
+                selected = "auto"
+              )
+            )
+          ),
+          numericInput("combo_axis_line_size", tr("combo_axis_line_size"), bioszen_visual_defaults$axis_line_size, min = 0.1, step = 0.1),
+          numericInput(
+            "combo_axis_title_spacing_x",
+            tr("axis_title_spacing_x"),
+            bioszen_visual_defaults$axis_title_spacing_x,
+            min = 0,
+            max = 100,
+            step = 1
+          ),
+          numericInput(
+            "combo_axis_title_spacing_y",
+            tr("axis_title_spacing_y"),
+            bioszen_visual_defaults$axis_title_spacing_y,
+            min = 0,
+            max = 100,
+            step = 1
+          ),
           numericInput("fs_legend_all",     tr("combo_legend_text"), 16, min = 6),
           selectInput(
             "combo_pal",
@@ -609,6 +748,36 @@ tab_compos <- tabPanel(
           helpText(tr("combo_override_apply_hint")),
           uiOutput("plotOverrideUI"),
           value = "combo_section_overrides"
+        ),
+        accordion_panel_safe(
+          tr("combo_section_pptx"),
+          selectInput(
+            "combo_pptx_preset",
+            tr("combo_pptx_preset"),
+            choices = named_choices(
+              c("standard_4_3", "widescreen_16_9", "custom"),
+              tr_text(
+                c("combo_pptx_standard_4_3", "combo_pptx_widescreen_16_9", "combo_pptx_custom"),
+                i18n_lang
+              )
+            ),
+            selected = "standard_4_3"
+          ),
+          radioButtons(
+            "combo_pptx_orientation",
+            tr("combo_pptx_orientation"),
+            choices = named_choices(
+              c("landscape", "portrait"),
+              tr_text(c("combo_pptx_landscape", "combo_pptx_portrait"), i18n_lang)
+            ),
+            selected = "landscape",
+            inline = TRUE
+          ),
+          numericInput("combo_pptx_width", tr("combo_pptx_width"), 10, min = 2, max = 56, step = 0.01),
+          numericInput("combo_pptx_height", tr("combo_pptx_height"), 7.5, min = 2, max = 56, step = 0.01),
+          numericInput("combo_pptx_margin", tr("combo_pptx_margin"), 0, min = 0, max = 5, step = 0.05),
+          helpText(tr("combo_pptx_help")),
+          value = "combo_section_pptx"
         ),
         accordion_panel_safe(
           tr("combo_section_actions"),

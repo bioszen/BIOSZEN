@@ -284,17 +284,29 @@ specific measurement type.
 
 ### Composition Panel
 
-Recommended steps:
+Recommended workflow:
 
-1. Click **Add to panel** from individual plots.
-2. Open **Composition Panel** tab.
-3. Select and order plots.
-4. Configure layout (rows/columns, grid, output size).
-5. Configure style (legend mode, legend side, fonts, text sizes, palette).
-6. Optionally add rich text and per-plot overrides.
-7. Export to `PNG`, `PPTX`, `PDF`.
+1. Build and edit each source graph, then click **Add to panel**.
+2. Open **Composition Panel** and use the plot picker to include, exclude, and order plots. Deselecting a plot removes it from the active composition without deleting the source graph.
+3. Set rows and columns. For non-rectangular or repeated-cell layouts, enter the layout grid; column widths and row heights control relative sizing and positioning.
+4. Set composition width and height in pixels. These values define the preview canvas and the composition aspect ratio; they are independent of export DPI and PowerPoint slide size.
+5. Configure style, shared legends, typography, palette, rich text, and optional per-plot overrides. **Apply composition typography to every plot** changes tick-label sizes, X/Y angles and alignment, font family, and text styles across every included graph while preserving its data geometry.
+6. Configure the PowerPoint slide preset (`4:3`, `16:9`, or custom), width, height, orientation, and edge margin.
+7. Review the preview and export `PNG`, `PPTX`, `PDF`, or composition metadata.
 
-Composition style controls apply in parallel to all selected plots. The composition **Text styling** section mirrors the individual plot controls: the font family is applied across all plot text, while bold/italic/underline can be selected separately for titles, axes, legends, data labels, and significance text. Composition exports preserve these settings in `PNG`, `PDF`, and `PPTX`.
+#### DPI and physical dimensions
+
+- The default export resolution is **300 DPI**. The supported range is **72 to 600 DPI**, and the value remains editable.
+- DPI applies to raster output, including `PNG`, raster clipboard output, and the raster fallback used only when editable PowerPoint vector rendering is unavailable.
+- `PDF` and the normal editable `PPTX` path are vector-based, so DPI does not alter their vector elements. A selected DPI is still stored in metadata for reproducibility and for any raster fallback.
+- The browser preview uses screen/CSS pixel density. Changing export DPI does not resize or reposition the preview.
+- Increasing DPI increases raster pixel count, rendering time, memory use, and file size. It does not change composition width/height, graph proportions, layout positions, or PowerPoint slide dimensions.
+- Composition width/height control the logical canvas. PowerPoint width/height control the physical slide. DPI controls raster sampling quality. These are separate settings.
+- Metadata stores the effective DPI and restores it when loaded. Legacy metadata without a DPI field uses 300 DPI. Missing, non-numeric, zero, negative, or out-of-range DPI values safely fall back to 300 DPI; other valid metadata fields are still restored.
+
+Composition style controls apply in parallel to all selected plots. The composition **Text styling** section mirrors the individual plot controls: the font family is applied across all plot text, while bold/italic/underline can be selected separately for titles, axes, legends, data labels, and significance text. Composition metadata also preserves layout, dimensions, slide settings, DPI, typography, legend configuration, palette, rich text, and per-plot overrides.
+
+The PowerPoint export always creates one slide and proportionally fits the preview layout within the selected margins. If a slide is too small, BIOSZEN scales the composition down and warns the user rather than overlapping or clipping plots. Very dense layouts, long labels, large fonts, and small portrait slides may require a larger slide, fewer plots, shorter labels, or wider margins. Preview and PowerPoint text can differ slightly because browser and PowerPoint font metrics are not identical; BIOSZEN applies a proportional safety adjustment when shrinking the layout.
 
 ![Significance and annotation setup](manual_images/10_significance_annotations.png)
 
@@ -438,6 +450,8 @@ Main outputs:
 - Merged platemap/curves exports (if merge tools were used).
 
 Plot exports preserve the active visual configuration, including font family, per-text-part bold/italic/underline choices, selected error-bar statistic, significance labels, and axis/legend settings. Composition exports preserve the same typography controls across all plots in the layout.
+
+Raster exports use **300 DPI by default** and accept supported user values from 72 to 600 DPI. The selected effective DPI is included in metadata and bundle versions. Vector PDF/PPTX elements do not use DPI; graph width, height, and slide dimensions are configured separately.
 
 ## 13. Growth Module
 

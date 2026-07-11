@@ -285,17 +285,29 @@ tipo específico de medición.
 
 ### Panel de Composición
 
-Pasos recomendados:
+Flujo recomendado:
 
-1. Desde cada gráfico, usar **Añadir al panel**.
-2. Abrir pestaña **Panel de Composición**.
-3. Seleccionar y ordenar gráficos.
-4. Configurar layout (filas/columnas, malla, tamaño final).
-5. Ajustar estilo (modo de leyenda, lado de leyenda, fuentes, tamaños, paleta).
-6. Agregar texto enriquecido y overrides opcionales.
-7. Exportar a `PNG`, `PPTX`, `PDF`.
+1. Crear y editar cada gráfico de origen y luego usar **Añadir al panel**.
+2. Abrir **Panel de Composición** y usar el selector para incluir, excluir y ordenar gráficos. Deseleccionar un gráfico lo quita de la composición activa sin borrar el gráfico de origen.
+3. Definir filas y columnas. Para distribuciones no rectangulares o celdas repetidas, ingresar la malla; los anchos de columna y altos de fila controlan el tamaño y la posición relativos.
+4. Definir ancho y alto de la composición en píxeles. Estos valores determinan el lienzo de previsualización y su proporción; son independientes de los DPI de exportación y del tamaño de diapositiva de PowerPoint.
+5. Configurar estilo, leyendas compartidas, tipografía, paleta, texto enriquecido y ajustes opcionales por gráfico. **Aplicar la tipografía de la composición a todos los gráficos** modifica tamaños de etiquetas de ticks, ángulos y alineación X/Y, familia tipográfica y estilos de texto en todos los gráficos incluidos sin cambiar la geometría de los datos.
+6. Configurar el formato de diapositiva (`4:3`, `16:9` o personalizado), ancho, alto, orientación y margen de borde.
+7. Revisar la previsualización y exportar `PNG`, `PPTX`, `PDF` o el metadata de composición.
 
-Los controles de estilo de la composición se aplican en paralelo a todos los gráficos seleccionados. La sección **Estilo de texto** de composición replica los controles de gráficos individuales: la familia tipográfica se aplica a todo el texto de todos los gráficos, mientras que negrita/cursiva/subrayado se seleccionan por separado para títulos, ejes, leyendas, etiquetas de datos y texto de significancia. Las exportaciones de composición conservan estos ajustes en `PNG`, `PDF` y `PPTX`.
+#### DPI y dimensiones físicas
+
+- La resolución de exportación predeterminada es **300 DPI**. El rango compatible es **72 a 600 DPI** y el valor sigue siendo editable.
+- Los DPI se aplican a salidas raster, incluyendo `PNG`, imagen raster copiada al portapapeles y el respaldo raster que se usa solo cuando no está disponible la representación vectorial editable de PowerPoint.
+- `PDF` y la ruta normal editable de `PPTX` son vectoriales, por lo que los DPI no modifican sus elementos vectoriales. El DPI seleccionado igualmente se guarda en el metadata para reproducibilidad y para cualquier respaldo raster.
+- La previsualización del navegador utiliza densidad de píxeles de pantalla/CSS. Cambiar los DPI de exportación no redimensiona ni reposiciona la previsualización.
+- Aumentar los DPI incrementa la cantidad de píxeles, el tiempo de renderizado, el uso de memoria y el tamaño del archivo. No cambia el ancho/alto de la composición, las proporciones, las posiciones del layout ni las dimensiones de la diapositiva.
+- El ancho/alto de composición controlan el lienzo lógico. El ancho/alto de PowerPoint controlan la diapositiva física. Los DPI controlan la calidad de muestreo raster. Son ajustes independientes.
+- El metadata guarda el DPI efectivo y lo restaura al cargarlo. El metadata antiguo sin campo DPI usa 300 DPI. Valores ausentes, no numéricos, cero, negativos o fuera de rango vuelven de forma segura a 300 DPI; los demás campos válidos igualmente se restauran.
+
+Los controles de estilo de la composición se aplican en paralelo a todos los gráficos seleccionados. La sección **Estilo de texto** de composición replica los controles de gráficos individuales: la familia tipográfica se aplica a todo el texto de todos los gráficos, mientras que negrita/cursiva/subrayado se seleccionan por separado para títulos, ejes, leyendas, etiquetas de datos y texto de significancia. El metadata de composición también conserva layout, dimensiones, ajustes de diapositiva, DPI, tipografía, configuración de leyendas, paleta, texto enriquecido y ajustes por gráfico.
+
+La exportación a PowerPoint siempre crea una diapositiva y ajusta proporcionalmente el layout de la previsualización dentro de los márgenes seleccionados. Si la diapositiva es demasiado pequeña, BIOSZEN reduce proporcionalmente la composición y avisa al usuario en lugar de superponer o cortar gráficos. Los layouts muy densos, etiquetas largas, fuentes grandes y diapositivas verticales pequeñas pueden requerir una diapositiva mayor, menos gráficos, etiquetas más breves o márgenes más amplios. La tipografía puede diferir levemente entre la previsualización y PowerPoint porque el navegador y PowerPoint usan métricas distintas; BIOSZEN aplica un margen proporcional de seguridad al reducir el layout.
 
 ![Configuración de significancia y anotaciones](manual_images/10_significance_annotations.png)
 
@@ -439,6 +451,8 @@ Salidas principales:
 - Exportación de merge platemap/curvas (si se usó merge).
 
 Las exportaciones de gráficos conservan la configuración visual activa, incluyendo familia tipográfica, estilos por tipo de texto (negrita/cursiva/subrayado), estadístico de barras de error seleccionado, etiquetas de significancia y ajustes de ejes/leyenda. Las exportaciones de composición conservan los mismos controles tipográficos en todos los gráficos del layout.
+
+Las exportaciones raster usan **300 DPI de forma predeterminada** y aceptan valores compatibles elegidos por el usuario entre 72 y 600 DPI. El DPI efectivo seleccionado se incluye en el metadata y en las versiones del bundle. Los elementos vectoriales PDF/PPTX no usan DPI; el ancho, alto y tamaño de diapositiva se configuran por separado.
 
 ## 13. Módulo de Crecimiento
 

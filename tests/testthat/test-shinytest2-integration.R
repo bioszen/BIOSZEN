@@ -142,6 +142,19 @@ wait_for_shiny_connected <- function(app, timeout_sec = 20) {
   FALSE
 }
 
+wait_for_numeric_input_value <- function(app, input_id, expected, timeout_sec = 30, tolerance = 1e-8) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  while (Sys.time() < deadline) {
+    current <- tryCatch(as.numeric(app$get_value(input = input_id)), error = function(e) NA_real_)
+    if (length(current) && is.finite(current[[1]]) &&
+        abs(current[[1]] - expected) <= tolerance) {
+      return(TRUE)
+    }
+    Sys.sleep(0.25)
+  }
+  FALSE
+}
+
 install_loop_probe <- function(app) {
   app$get_js(
     "(function(){
@@ -482,6 +495,34 @@ rapid_click_checked_checkboxes <- function(app, name, limit = 3L) {
   jsonlite::fromJSON(normalize_js_scalar(app$get_js(js)))
 }
 
+set_checkbox_group_dom_values <- function(app, name, selected) {
+  skip_if_not_installed("jsonlite")
+  name_json <- jsonlite::toJSON(as.character(name), auto_unbox = TRUE)
+  selected_json <- jsonlite::toJSON(as.character(selected %||% character(0)), auto_unbox = FALSE)
+  raw <- app$get_js(sprintf(
+    "(function(){
+       var name = %s;
+       var selected = %s.map(String);
+       var lookup = {};
+       selected.forEach(function(value){ lookup[String(value)] = true; });
+       var clicked = [];
+       Array.from(document.querySelectorAll('input[type=\"checkbox\"]'))
+         .filter(function(box){ return String(box.name || '') === name; })
+         .forEach(function(box){
+           var shouldCheck = !!lookup[String(box.value || '')];
+           if (box.checked !== shouldCheck) {
+             box.click();
+             clicked.push(String(box.value || ''));
+           }
+         });
+       return JSON.stringify({clicked: clicked});
+     })()",
+    name_json,
+    selected_json
+  ))
+  jsonlite::fromJSON(normalize_js_scalar(raw))
+}
+
 checkbox_group_state <- function(app, name_prefix = NULL, exact_name = NULL) {
   skip_if_not_installed("jsonlite")
   state_arg <- jsonlite::toJSON(
@@ -792,6 +833,29 @@ expect_nonempty_download <- function(path, label) {
     file.info(path)$size > 0,
     info = sprintf("%s download was empty.", label)
   )
+}
+
+write_dpi_metadata_variant <- function(source, target, field, value = NULL, remove = FALSE) {
+  stopifnot(requireNamespace("openxlsx", quietly = TRUE))
+  sheets <- openxlsx::getSheetNames(source)
+  wb <- openxlsx::createWorkbook()
+  for (sheet in sheets) {
+    dat <- openxlsx::read.xlsx(source, sheet = sheet, check.names = FALSE)
+    if (identical(sheet, "Metadata") && all(c("Campo", "Valor") %in% names(dat))) {
+      idx <- which(as.character(dat$Campo) == field)
+      if (isTRUE(remove)) {
+        if (length(idx)) dat <- dat[-idx, , drop = FALSE]
+      } else if (length(idx)) {
+        dat$Valor[idx[[1]]] <- as.character(value)
+      } else {
+        dat <- rbind(dat, data.frame(Campo = field, Valor = as.character(value)))
+      }
+    }
+    openxlsx::addWorksheet(wb, sheet)
+    openxlsx::writeData(wb, sheet, dat)
+  }
+  openxlsx::saveWorkbook(wb, target, overwrite = TRUE)
+  target
 }
 
 expect_grouped_download_accepts_filtered_tabs <- function(path, require_filtered = FALSE) {
@@ -1510,6 +1574,7 @@ test_that("rapid checkbox clicks do not replay stale group or replicate selectio
   medias <- medias[!is.na(medias) & nzchar(medias)]
   if (length(medias) < 2) skip("Not enough media choices to test rapid media toggles.")
   app$set_inputs(showMedios = medias, wait_ = TRUE, timeout_ = 90000)
+  expect_true(wait_for_dom_selected_values(app, "showMedios", medias, timeout_sec = 45))
   target_media <- medias[[1]]
   rapid_click_checkbox(app, css_checkbox_selector("showMedios", target_media), times = 7L)
   expect_true(
@@ -1559,6 +1624,7 @@ test_that("rapid checkbox clicks do not replay stale group or replicate selectio
   groups <- groups[!is.na(groups) & nzchar(groups)]
   if (length(groups) < 2) skip("Not enough combined groups to test rapid group toggles.")
   app$set_inputs(showGroups = groups, wait_ = TRUE, timeout_ = 90000)
+  expect_true(wait_for_dom_selected_values(app, "showGroups", groups, timeout_sec = 45))
   target_group <- groups[[1]]
   rapid_click_checkbox(app, css_checkbox_selector("showGroups", target_group), times = 7L)
   expect_true(
@@ -1719,8 +1785,9 @@ test_that("rapid combined group bursts render once across plot types", {
   }
 
   for (plot_type in plot_types) {
-    app$set_inputs(showGroups = groups, wait_ = TRUE, timeout_ = 90000)
+    set_checkbox_group_dom_values(app, "showGroups", groups)
     expect_true(wait_for_selected_values(app, "showGroups", groups, timeout_sec = 45))
+    expect_true(wait_for_dom_selected_values(app, "showGroups", groups, timeout_sec = 45))
 
     app$set_inputs(
       tipo = plot_type,
@@ -2139,6 +2206,288 @@ test_that("normalized parameter switching keeps axis and metadata on the selecte
   expect_false(grepl("_Norm$", fields[["param"]], ignore.case = TRUE))
   expect_identical(fields[["param"]], tail(switch_seq, 1))
   expect_identical(tolower(fields[["doNorm"]]), "true")
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("publication style exports preserve DPI metadata and one-slide PowerPoint geometry", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("readxl")
+  skip_if_not_installed("png")
+  skip_if_not_installed("officer")
+  skip_if_not_installed("openxlsx")
+
+  data_fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx")
+  curve_fixture <- app_test_path("www", "reference_files", "Ejemplo_curvas.xlsx")
+  expect_true(file.exists(data_fixture))
+  expect_true(file.exists(curve_fixture))
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(dataFile = normalizePath(data_fixture), wait_ = TRUE, timeout_ = 120000)
+  app$upload_file(curveFile = normalizePath(curve_fixture), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "strain", timeout = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  expect_equal(as.numeric(app$get_value(input = "export_dpi")), 300)
+  app$set_inputs(export_dpi = 0, wait_ = TRUE, timeout_ = 120000)
+  expect_true(wait_for_numeric_input_value(app, "export_dpi", 300))
+
+  app$set_inputs(
+    tipo = "Curvas",
+    plot_w = 600,
+    plot_h = 420,
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  expect_true(wait_for_plot_idle(app, timeout_sec = 45))
+  default_dpi_png <- app$get_download(output = "downloadPlot_png")
+  expect_nonempty_download(default_dpi_png, "default 300 DPI plot")
+  default_png_array <- png::readPNG(default_dpi_png)
+  expect_equal(ncol(default_png_array), 1875)
+  expect_equal(nrow(default_png_array), 1313, tolerance = 1)
+  expect_equal(ncol(default_png_array) / nrow(default_png_array), 600 / 420, tolerance = 0.002)
+
+  app$set_inputs(
+    tipo = "Violin",
+    violin_inner = "box",
+    axis_title_spacing_x = 11,
+    axis_title_spacing_y = 13,
+    export_dpi = 192,
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  expect_true(wait_for_plot_idle(app, timeout_sec = 45))
+
+  metadata_path <- app$get_download(output = "downloadMetadata")
+  expect_nonempty_download(metadata_path, "publication metadata")
+  metadata <- readxl::read_excel(metadata_path, sheet = "Metadata")
+  metadata_fields <- stats::setNames(as.character(metadata$Valor), as.character(metadata$Campo))
+  expect_identical(metadata_fields[["violin_inner"]], "box")
+  expect_identical(metadata_fields[["axis_title_spacing_x"]], "11")
+  expect_identical(metadata_fields[["axis_title_spacing_y"]], "13")
+  expect_identical(metadata_fields[["export_dpi"]], "192")
+
+  legacy_meta <- tempfile("metadata_legacy_dpi_", fileext = ".xlsx")
+  invalid_meta <- tempfile("metadata_invalid_dpi_", fileext = ".xlsx")
+  on.exit(unlink(c(legacy_meta, invalid_meta), force = TRUE), add = TRUE)
+  write_dpi_metadata_variant(metadata_path, legacy_meta, "export_dpi", remove = TRUE)
+  write_dpi_metadata_variant(metadata_path, invalid_meta, "export_dpi", value = "0")
+
+  app$set_inputs(export_dpi = 450, wait_ = TRUE, timeout_ = 120000)
+  app$upload_file(metaFiles = legacy_meta, wait_ = TRUE, timeout_ = 120000)
+  expect_true(wait_for_numeric_input_value(app, "export_dpi", 300))
+
+  app$set_inputs(export_dpi = 450, wait_ = TRUE, timeout_ = 120000)
+  app$upload_file(metaFiles = invalid_meta, wait_ = TRUE, timeout_ = 120000)
+  expect_true(wait_for_numeric_input_value(app, "export_dpi", 300))
+
+  app$set_inputs(export_dpi = 192, wait_ = TRUE, timeout_ = 120000)
+
+  app$set_inputs(violin_inner = "points", wait_ = TRUE, timeout_ = 120000)
+  expect_identical(as.character(app$get_value(input = "violin_inner"))[[1]], "points")
+  expect_true(wait_for_plot_idle(app, timeout_sec = 45))
+
+  app$set_inputs(export_dpi = 150, wait_ = FALSE, timeout_ = 120000)
+  app$set_inputs(export_dpi = 450, wait_ = FALSE, timeout_ = 120000)
+  app$set_inputs(
+    tipo = "Curvas",
+    plot_w = 600,
+    plot_h = 420,
+    export_dpi = 192,
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  expect_true(wait_for_plot_idle(app, timeout_sec = 45))
+  dpi_png <- app$get_download(output = "downloadPlot_png")
+  expect_nonempty_download(dpi_png, "192 DPI plot")
+  png_array <- png::readPNG(dpi_png)
+  expect_equal(ncol(png_array), 1200)
+  expect_equal(nrow(png_array), 840)
+  expect_equal(ncol(png_array) / nrow(png_array), 600 / 420, tolerance = 1e-8)
+
+  app$click("add2panel")
+  app$set_inputs(tipo = "Boxplot", export_dpi = 96, wait_ = TRUE, timeout_ = 120000)
+  expect_true(wait_for_plot_idle(app, timeout_sec = 45))
+  app$click("add2panel")
+  app$set_inputs(mainTabs = "tab_composition", wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "combo_pptx_preset", timeout = 120000)
+  expect_equal(as.numeric(app$get_value(input = "combo_export_dpi")), 300)
+  app$set_inputs(combo_export_dpi = 0, wait_ = TRUE, timeout_ = 120000)
+  expect_true(wait_for_numeric_input_value(app, "combo_export_dpi", 300))
+
+  app$set_inputs(
+    combo_width = 1000,
+    combo_height = 700,
+    combo_export_dpi = 180,
+    combo_pptx_preset = "custom",
+    combo_pptx_orientation = "landscape",
+    combo_pptx_width = 13.333,
+    combo_pptx_height = 7.5,
+    combo_pptx_margin = 0.2,
+    combo_override_typography = TRUE,
+    combo_axis_xy_custom = TRUE,
+    fs_axis_text_all = 17,
+    fs_axis_text_x_all = 19,
+    fs_axis_text_y_all = 15,
+    combo_axis_text_x_angle = 35,
+    combo_axis_text_y_angle = -10,
+    combo_axis_text_x_align = "right",
+    combo_axis_text_y_align = "left",
+    fs_legend_all = 18,
+    combo_font_family = "Arial",
+    combo_text_style_axis_text_x = c("bold", "italic"),
+    combo_text_style_legend = "underline",
+    makeCombo = "click",
+    wait_ = TRUE,
+    timeout_ = 120000,
+    allow_no_input_binding_ = TRUE
+  )
+
+  combo_meta <- app$get_download(output = "dl_combo_meta")
+  expect_nonempty_download(combo_meta, "composition metadata")
+  combo_metadata <- readxl::read_excel(combo_meta, sheet = "Metadata")
+  combo_fields <- stats::setNames(as.character(combo_metadata$Valor), as.character(combo_metadata$Campo))
+  expect_identical(combo_fields[["combo_export_dpi"]], "180")
+  expect_identical(combo_fields[["combo_pptx_orientation"]], "landscape")
+  expect_identical(combo_fields[["combo_pptx_width"]], "13.333")
+  expect_identical(combo_fields[["combo_pptx_height"]], "7.5")
+  expect_identical(combo_fields[["combo_override_typography"]], "TRUE")
+  expect_identical(combo_fields[["combo_axis_xy_custom"]], "TRUE")
+  expect_identical(combo_fields[["fs_axis_text_x_all"]], "19")
+  expect_identical(combo_fields[["fs_axis_text_y_all"]], "15")
+  expect_identical(combo_fields[["combo_axis_text_x_angle"]], "35")
+  expect_identical(combo_fields[["combo_axis_text_y_angle"]], "-10")
+  expect_identical(combo_fields[["combo_axis_text_x_align"]], "right")
+  expect_identical(combo_fields[["combo_axis_text_y_align"]], "left")
+  expect_identical(combo_fields[["fs_legend_all"]], "18")
+  expect_identical(combo_fields[["combo_font_family"]], "Arial")
+  expect_identical(combo_fields[["combo_text_style_axis_text_x"]], "bold,italic")
+  expect_identical(combo_fields[["combo_text_style_legend"]], "underline")
+
+  combo_png <- app$get_download(output = "dl_combo_png")
+  expect_nonempty_download(combo_png, "180 DPI composition PNG")
+  combo_png_array <- png::readPNG(combo_png)
+  expect_equal(ncol(combo_png_array), 1875)
+  expect_equal(nrow(combo_png_array), 1313, tolerance = 1)
+  expect_equal(ncol(combo_png_array) / nrow(combo_png_array), 1000 / 700, tolerance = 0.002)
+
+  landscape_pptx <- app$get_download(output = "dl_combo_pptx")
+  expect_nonempty_download(landscape_pptx, "landscape PowerPoint")
+  landscape_doc <- officer::read_pptx(landscape_pptx)
+  expect_length(landscape_doc, 1)
+  expect_equal(officer::slide_size(landscape_doc)$width, 13.333, tolerance = 1e-5)
+  expect_equal(officer::slide_size(landscape_doc)$height, 7.5, tolerance = 1e-5)
+  expect_gt(nrow(officer::pptx_summary(landscape_doc)), 0)
+
+  app$set_inputs(
+    combo_pptx_preset = "custom",
+    combo_pptx_orientation = "portrait",
+    combo_pptx_width = 7.5,
+    combo_pptx_height = 10,
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  portrait_pptx <- app$get_download(output = "dl_combo_pptx")
+  expect_nonempty_download(portrait_pptx, "portrait PowerPoint")
+  portrait_doc <- officer::read_pptx(portrait_pptx)
+  expect_length(portrait_doc, 1)
+  expect_equal(officer::slide_size(portrait_doc)$width, 7.5, tolerance = 1e-5)
+  expect_equal(officer::slide_size(portrait_doc)$height, 10, tolerance = 1e-5)
+  expect_gt(nrow(officer::pptx_summary(portrait_doc)), 0)
+
+  app$set_inputs(
+    combo_export_dpi = 96,
+    combo_pptx_orientation = "landscape",
+    combo_pptx_width = 10,
+    combo_pptx_height = 7.5,
+    combo_override_typography = FALSE,
+    combo_axis_xy_custom = FALSE,
+    fs_axis_text_x_all = 12,
+    fs_axis_text_y_all = 12,
+    combo_axis_text_x_angle = 0,
+    combo_axis_text_y_angle = 0,
+    combo_axis_text_x_align = "auto",
+    combo_axis_text_y_align = "auto",
+    fs_legend_all = 16,
+    combo_font_family = "Helvetica",
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  combo_meta_upload <- tempfile("composition_metadata_roundtrip_", fileext = ".xlsx")
+  on.exit(unlink(combo_meta_upload, force = TRUE), add = TRUE)
+  expect_true(file.copy(combo_meta, combo_meta_upload, overwrite = TRUE))
+  app$upload_file(combo_meta = combo_meta_upload, wait_ = TRUE, timeout_ = 120000)
+  restore_deadline <- Sys.time() + 30
+  restore_error <- NULL
+  restored_dpi <- tryCatch(
+    as.numeric(app$get_value(input = "combo_export_dpi")),
+    error = function(e) {
+      restore_error <<- e
+      NA_real_
+    }
+  )
+  while (is.null(restore_error) && Sys.time() < restore_deadline && !identical(restored_dpi, 180)) {
+    Sys.sleep(0.5)
+    restored_dpi <- tryCatch(
+      as.numeric(app$get_value(input = "combo_export_dpi")),
+      error = function(e) {
+        restore_error <<- e
+        NA_real_
+      }
+    )
+  }
+  if (!is.null(restore_error)) {
+    logs <- tryCatch(app$get_logs(), error = function(e) data.frame())
+    log_tail <- if (is.data.frame(logs) && nrow(logs)) {
+      paste(tail(as.character(logs$message), 30), collapse = "\n")
+    } else {
+      "No server log was available."
+    }
+    stop(
+      paste0(
+        "Shiny stopped during composition metadata restore: ",
+        conditionMessage(restore_error),
+        "\nRecent server log:\n",
+        log_tail
+      ),
+      call. = FALSE
+    )
+  }
+  expect_equal(restored_dpi, 180)
+  expect_identical(as.character(app$get_value(input = "combo_pptx_orientation"))[[1]], "landscape")
+  expect_equal(as.numeric(app$get_value(input = "combo_pptx_width")), 13.333, tolerance = 1e-5)
+  expect_equal(as.numeric(app$get_value(input = "combo_pptx_height")), 7.5, tolerance = 1e-5)
+  expect_true(isTRUE(app$get_value(input = "combo_override_typography")))
+  expect_true(isTRUE(app$get_value(input = "combo_axis_xy_custom")))
+  expect_equal(as.numeric(app$get_value(input = "fs_axis_text_x_all")), 19)
+  expect_equal(as.numeric(app$get_value(input = "fs_axis_text_y_all")), 15)
+  expect_equal(as.numeric(app$get_value(input = "combo_axis_text_x_angle")), 35)
+  expect_equal(as.numeric(app$get_value(input = "combo_axis_text_y_angle")), -10)
+  expect_identical(as.character(app$get_value(input = "combo_axis_text_x_align"))[[1]], "right")
+  expect_identical(as.character(app$get_value(input = "combo_axis_text_y_align"))[[1]], "left")
+  expect_equal(as.numeric(app$get_value(input = "fs_legend_all")), 18)
+  expect_identical(as.character(app$get_value(input = "combo_font_family"))[[1]], "Arial")
+
+  combo_legacy_meta <- tempfile("composition_metadata_legacy_dpi_", fileext = ".xlsx")
+  combo_invalid_meta <- tempfile("composition_metadata_invalid_dpi_", fileext = ".xlsx")
+  on.exit(unlink(c(combo_legacy_meta, combo_invalid_meta), force = TRUE), add = TRUE)
+  write_dpi_metadata_variant(combo_meta, combo_legacy_meta, "combo_export_dpi", remove = TRUE)
+  write_dpi_metadata_variant(combo_meta, combo_invalid_meta, "combo_export_dpi", value = "unsupported")
+
+  app$set_inputs(combo_export_dpi = 450, wait_ = TRUE, timeout_ = 120000)
+  app$upload_file(combo_meta = combo_legacy_meta, wait_ = TRUE, timeout_ = 120000)
+  expect_true(wait_for_numeric_input_value(app, "combo_export_dpi", 300))
+
+  app$set_inputs(combo_export_dpi = 450, wait_ = TRUE, timeout_ = 120000)
+  app$upload_file(combo_meta = combo_invalid_meta, wait_ = TRUE, timeout_ = 120000)
+  expect_true(wait_for_numeric_input_value(app, "combo_export_dpi", 300))
 
   critical <- find_critical_frontend_logs(app$get_logs())
   expect_equal(

@@ -5,7 +5,17 @@ The format is based on Keep a Changelog and this project adheres to
 Semantic Versioning.
 
 ## [Unreleased]
-- No notable changes yet.
+
+## [2.0.4] - 2026-07-11
+- Changed the shared raster export default from 96 to 300 DPI while keeping the 72-600 DPI control user-editable.
+- Centralized export DPI validation and separated the 300 DPI export default from the browser's 96 CSS pixels-per-inch geometry.
+- Added safe 300 DPI fallback behavior for missing, malformed, zero, negative, and out-of-range input or metadata values.
+- Added backward-compatible metadata restore behavior so legacy files without DPI remain usable and other valid settings are preserved.
+- Applied selected DPI consistently to individual/composition PNG exports, Plotly downloads, raster clipboard output, saved plot versions, and PowerPoint raster fallback without changing logical dimensions or layout.
+- Added publication-style plot defaults, internal violin boxes, proportional composition rendering, and configurable one-slide PowerPoint dimensions/orientation.
+- Added universal composition typography controls for tick labels, legends, font family/styles, X/Y size, angle, and alignment, with metadata round-trip support.
+- Expanded unit and real-browser regression coverage for DPI, composition styling, metadata compatibility, PowerPoint geometry, and preview/export fidelity.
+- Updated English and Spanish manuals with composition, PowerPoint, DPI, metadata, performance, and compatibility guidance.
 
 ## [2.0.3] - 2026-06-26
 - Hardened downloads for generated workbooks, metadata, statistics, PNG/PDF graphics, and bundle ZIP exports.
