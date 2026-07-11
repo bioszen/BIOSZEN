@@ -1112,7 +1112,9 @@ test_that("core user processes settle without reload loops", {
   groups <- groups[!is.na(groups) & nzchar(groups)]
   if (length(groups) >= 2) {
     expected_groups <- groups[-1]
-    app$set_inputs(showGroups = expected_groups, wait_ = TRUE, timeout_ = 90000)
+    set_checkbox_group_dom_values(app, "showGroups", expected_groups)
+    expect_true(wait_for_dom_selected_values(app, "showGroups", expected_groups, timeout_sec = 45))
+    expect_true(wait_for_selected_values(app, "showGroups", expected_groups, timeout_sec = 45))
     expect_app_idle_without_loop(app, "combined group deselection", idle_timeout = 45)
     Sys.sleep(7)
     persisted_groups <- unique(as.character(app$get_value(input = "showGroups")))
@@ -1123,13 +1125,16 @@ test_that("core user processes settle without reload loops", {
       info = "Combined group deselection should not be reselected by filter sync after the plot settles."
     )
     expect_app_idle_without_loop(app, "combined group deselection persistence", idle_timeout = 45)
-    app$set_inputs(showGroups = character(0), wait_ = TRUE, timeout_ = 90000)
+    set_checkbox_group_dom_values(app, "showGroups", character(0))
+    expect_true(wait_for_dom_selected_values(app, "showGroups", character(0), timeout_sec = 45))
+    expect_true(wait_for_selected_values(app, "showGroups", character(0), timeout_sec = 45))
     expect_app_idle_without_loop(app, "combined group clear all", idle_timeout = 45)
     send_filter_toggle_user_change(app, "toggleGroups", TRUE)
     expect_true(
       wait_for_selected_values(app, "showGroups", groups, timeout_sec = 45),
       info = "Combined select-all recovery should restore every group after the selection becomes empty."
     )
+    expect_true(wait_for_dom_selected_values(app, "showGroups", groups, timeout_sec = 45))
     expect_app_idle_without_loop(app, "combined group select-all recovery", idle_timeout = 45)
   }
 
@@ -1139,7 +1144,9 @@ test_that("core user processes settle without reload loops", {
   medias <- medias[!is.na(medias) & nzchar(medias)]
   if (length(medias) >= 2) {
     expected_medias <- medias[-1]
-    app$set_inputs(showMedios = expected_medias, wait_ = TRUE, timeout_ = 90000)
+    set_checkbox_group_dom_values(app, "showMedios", expected_medias)
+    expect_true(wait_for_dom_selected_values(app, "showMedios", expected_medias, timeout_sec = 45))
+    expect_true(wait_for_selected_values(app, "showMedios", expected_medias, timeout_sec = 45))
     expect_app_idle_without_loop(app, "condition deselection", idle_timeout = 45)
     Sys.sleep(7)
     persisted_medias <- unique(as.character(app$get_value(input = "showMedios")))
@@ -1150,13 +1157,16 @@ test_that("core user processes settle without reload loops", {
       info = "Condition deselection should not be reselected by filter sync after the plot settles."
     )
     expect_app_idle_without_loop(app, "condition deselection persistence", idle_timeout = 45)
-    app$set_inputs(showMedios = character(0), wait_ = TRUE, timeout_ = 90000)
+    set_checkbox_group_dom_values(app, "showMedios", character(0))
+    expect_true(wait_for_dom_selected_values(app, "showMedios", character(0), timeout_sec = 45))
+    expect_true(wait_for_selected_values(app, "showMedios", character(0), timeout_sec = 45))
     expect_app_idle_without_loop(app, "condition clear all", idle_timeout = 45)
     send_filter_toggle_user_change(app, "toggleMedios", TRUE)
     expect_true(
       wait_for_selected_values(app, "showMedios", medias, timeout_sec = 45),
       info = "Condition select-all recovery should restore every media after the selection becomes empty."
     )
+    expect_true(wait_for_dom_selected_values(app, "showMedios", medias, timeout_sec = 45))
     expect_app_idle_without_loop(app, "condition select-all recovery", idle_timeout = 45)
   }
 
