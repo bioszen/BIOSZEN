@@ -1101,7 +1101,7 @@ server <- function(input, output, session) {
     begin_quiet_reactive_flag(
       flag_rv = filter_selection_sync_inflight,
       flag_key = "filter_selection_sync_inflight",
-      quiet_ms = 1400L
+      quiet_ms = 1000L
     )
   }
 
@@ -1318,14 +1318,15 @@ server <- function(input, output, session) {
   begin_bulk_update <- function(flag_rv,
                                 flag_key,
                                 flush_cycles = 2L,
-                                timeout_ms = 450L) {
+                                timeout_ms = 450L,
+                                restart_if_active = FALSE) {
     if (!is.function(flag_rv)) return(FALSE)
     begin_reactive_stabilizer(
       flag_key = flag_key,
       flag_rv = flag_rv,
       flush_cycles = flush_cycles,
       timeout_ms = timeout_ms,
-      skip_if_active = TRUE
+      skip_if_active = !isTRUE(restart_if_active)
     )
   }
 
@@ -5518,6 +5519,26 @@ server <- function(input, output, session) {
     invisible(TRUE)
   }
 
+  set_checkbox_group_final <- function(input_id,
+                                       choices,
+                                       selected,
+                                       freeze_input = TRUE) {
+    choices <- normalize_update_values(choices)
+    selected <- intersect(normalize_update_values(selected), choices)
+    update_checkbox_group_input_if_changed(
+      input_id = input_id,
+      choices = choices,
+      selected = selected,
+      freeze_input = freeze_input
+    )
+    record_selector_commit(input_id, selected)
+    session$sendCustomMessage(
+      "bioszen-set-checkbox-group-values",
+      list(id = input_id, selected = unname(selected))
+    )
+    invisible(TRUE)
+  }
+
   show_medios_input_committed <- debounce(
     reactive({
       list(
@@ -5603,7 +5624,7 @@ server <- function(input, output, session) {
       val <- selected_show_medios()
       if (is.null(val)) NULL else as.character(val)
     }),
-    300
+    200
   )
 
   show_groups_for_reps <- debounce(
@@ -5611,7 +5632,7 @@ server <- function(input, output, session) {
       val <- selected_show_groups()
       if (is.null(val)) NULL else as.character(val)
     }),
-    300
+    200
   )
   
   
@@ -5803,11 +5824,8 @@ server <- function(input, output, session) {
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0 || !"Media" %in% names(df)) return()
     medias <- sort(unique(df$Media))  
     sel    <- if (toggle_value) medias else character(0)
-    current_sel <- sort(unique(as.character(input$showMedios %||% character(0))))
-    target_sel <- sort(unique(as.character(sel %||% character(0))))
-    if (identical(current_sel, target_sel)) return()
     set_filter_selection_state(filter_medios_selected, sel, medias)
-    update_checkbox_group_input_if_changed(
+    set_checkbox_group_final(
       input_id = "showMedios",
       choices = medias,
       selected = sel,
@@ -5824,11 +5842,8 @@ server <- function(input, output, session) {
         !"Strain" %in% names(df) || !"Media" %in% names(df)) return()
     grps <- unique(paste(df$Strain, df$Media, sep = "-"))  
     sel  <- if (toggle_value) grps else character(0)
-    current_sel <- sort(unique(as.character(input$showGroups %||% character(0))))
-    target_sel <- sort(unique(as.character(sel %||% character(0))))
-    if (identical(current_sel, target_sel)) return()
     set_filter_selection_state(filter_groups_selected, sel, grps)
-    update_checkbox_group_input_if_changed(
+    set_checkbox_group_final(
       input_id = "showGroups",
       choices = grps,
       selected = sel,
@@ -5917,6 +5932,12 @@ server <- function(input, output, session) {
         "repsStrainSelectAll",
         tr("reps_media_select_all"),
         class = "btn btn-outline-primary w-100",
+        style = "white-space: normal; margin-bottom: 6px;"
+      ),
+      actionButton(
+        "repsStrainDeselectAll",
+        tr("reps_media_deselect_all"),
+        class = "btn btn-outline-secondary w-100",
         style = "white-space: normal; margin-bottom: 8px;"
       ),
       lapply(unique(df$Media), function(m){  
@@ -6054,6 +6075,12 @@ server <- function(input, output, session) {
           "repsGrpSelectAll",
           tr("reps_group_select_all"),
           class = "btn btn-outline-primary w-100",
+          style = "white-space: normal; margin-bottom: 6px;"
+        ),
+        actionButton(
+          "repsGrpDeselectAll",
+          tr("reps_group_deselect_all"),
+          class = "btn btn-outline-secondary w-100",
           style = "white-space: normal; margin-bottom: 8px;"
         ),
         tagList(                       # envolver lapply
@@ -6099,7 +6126,11 @@ server <- function(input, output, session) {
   )
 
   observeEvent(rm_reps_all_debounced(), {
-    if (!begin_bulk_update(replicate_bulk_updating, "replicate_bulk_updating")) return()
+    if (!begin_bulk_update(
+      replicate_bulk_updating,
+      "replicate_bulk_updating",
+      restart_if_active = TRUE
+    )) return()
     drop_all <- rm_reps_all_debounced()
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
     df <- if (use_param) {
@@ -9424,22 +9455,26 @@ server <- function(input, output, session) {
   })
 
   qc_tech_param_cols <- reactive({
-    params <- qc_param_cols()
-    if (!length(params)) return(character(0))
+    params <- safe_plot_setting_params()
+    raw_df <- datos_combinados()
+    if (!is.data.frame(raw_df) || !length(params)) return(character(0))
 
-    selected_param <- normalize_param_selection(input$param, safe_plot_setting_params())
+    present <- intersect(unique(c(params, paste0(params, "_Norm"))), names(raw_df))
+    if (!length(present)) return(character(0))
 
+    # Use the last committed valid parameter so transient selectize resets do
+    # not rename every technical-replicate input during a bulk selection.
+    selected_param <- normalize_param_selection(last_param_selection(), params)
     if (nzchar(selected_param)) {
-      selected_candidates <- c(selected_param)
-      if (isTRUE(input$doNorm) && has_ctrl_selected() && !grepl("_Norm$", selected_param, fixed = TRUE)) {
-        selected_candidates <- c(selected_candidates, paste0(selected_param, "_Norm"))
-      }
-      selected_candidates <- unique(selected_candidates)
-      selected_match <- intersect(selected_candidates, params)
+      selected_candidates <- unique(c(
+        if (isTRUE(input$doNorm) && has_ctrl_selected()) paste0(selected_param, "_Norm") else character(0),
+        selected_param
+      ))
+      selected_match <- intersect(selected_candidates, present)
       if (length(selected_match)) return(selected_match[[1]])
     }
 
-    params[[1]]
+    present[[1]]
   })
 
   qc_tech_param_key <- reactive({
@@ -9490,12 +9525,10 @@ server <- function(input, output, session) {
   qc_tech_input_id <- function(group, biorep, strain = NULL, media = NULL, param_key = NULL) {
     key <- qc_tech_selection_key(group, biorep, strain = strain, media = media)
     if (!nzchar(key)) return("")
-    pkey <- as.character(param_key %||% "")
-    if (!length(pkey) || is.na(pkey[[1]]) || !nzchar(pkey[[1]])) {
-      pkey <- isolate(qc_tech_param_key())
-    }
-    if (!length(pkey) || is.na(pkey[[1]]) || !nzchar(pkey[[1]])) pkey <- "_all"
-    stable_input_suffix(pkey[[1]], key, prefix = "qc_tech_rep_")
+    # The parameter-specific selection lives in qc_tech_selected_by_param().
+    # Keep the browser input ID tied only to the physical replicate group so a
+    # transient parameter refresh cannot replace every checkbox in the panel.
+    stable_input_suffix(group, biorep, prefix = "qc_tech_rep_")
   }
 
   qc_tech_available <- reactive({
@@ -9602,25 +9635,31 @@ server <- function(input, output, session) {
     group_var <- qc_group_var()
     required <- c(group_var, "BiologicalReplicate", "TechnicalReplicate")
 
-    df_primary <- qc_scope_bio_df()
-    if (is.data.frame(df_primary) && nrow(df_primary) && all(required %in% names(df_primary))) {
-      return(df_primary)
-    }
+    # Keep the selector universe independent from qc_tech_selected(). Plot data
+    # is already filtered by that map, so deriving choices from it would make a
+    # full deselection impossible to restore without restarting the session.
+    df <- param_rep_df()
+    if (!is.data.frame(df) || !nrow(df)) return(df)
 
-    df_fallback <- qc_selector_base_df()
-    if (!is.data.frame(df_fallback) || !nrow(df_fallback)) return(df_primary)
-
-    if (!"Label" %in% names(df_fallback) && all(c("Strain", "Media") %in% names(df_fallback))) {
-      df_fallback <- df_fallback %>% dplyr::mutate(Label = paste(Strain, Media, sep = "-"))
+    if (!"Label" %in% names(df) && all(c("Strain", "Media") %in% names(df))) {
+      df <- df %>% dplyr::mutate(Label = paste(Strain, Media, sep = "-"))
     }
-    if (!all(required %in% names(df_fallback))) return(df_primary)
+    if (!all(required %in% names(df))) return(df[0, , drop = FALSE])
 
     if (input$scope == "Por Cepa") {
-      df_fallback <- filter_reps_strain(df_fallback)
+      strain_sel <- current_strain_value()
+      if (!nzchar(strain_sel)) return(df[0, , drop = FALSE])
+      df <- df %>%
+        dplyr::filter(Strain == strain_sel) %>%
+        dplyr::filter(Media %in% selected_show_medios())
+      filter_reps_strain(df)
     } else {
-      df_fallback <- filter_reps_group(df_fallback)
+      groups <- selected_show_groups()
+      if (!length(groups)) return(df[0, , drop = FALSE])
+      df <- df %>%
+        dplyr::filter(paste(Strain, Media, sep = "-") %in% groups)
+      filter_reps_group(df)
     }
-    df_fallback
   })
 
   qc_tech_selector_state <- reactive({
@@ -9650,7 +9689,11 @@ server <- function(input, output, session) {
       dplyr::arrange(Group, Strain, Media, BiologicalReplicate, TechnicalReplicate)
     if (!nrow(combos)) return(out)
 
-    stored_map <- qc_tech_selected()
+    # Selection changes must not invalidate and rebuild their own renderUI.
+    # The observer below synchronizes values in place; structural changes
+    # (scope, parameter, groups, biological replicates) still invalidate this
+    # reactive through df/active_param_key.
+    stored_map <- isolate(qc_tech_selected())
     split_keys <- unique(paste(combos$Group, combos$Strain, combos$Media, combos$BiologicalReplicate, sep = "||"))
     for (key in split_keys) {
       idx <- paste(combos$Group, combos$Strain, combos$Media, combos$BiologicalReplicate, sep = "||") == key
@@ -9677,10 +9720,10 @@ server <- function(input, output, session) {
       stored <- stored_map[[canonical_key]]
       current <- selector_committed_or_input(
         input_id,
-        input[[input_id]],
+        isolate(input[[input_id]]),
         cached = stored
       )
-      prefer_stored <- isTRUE(qc_tech_render_from_store())
+      prefer_stored <- isTRUE(isolate(qc_tech_render_from_store()))
       selected <- if (isTRUE(prefer_stored) && !is.null(stored)) {
         normalize_rep_selection(intersect(as.character(stored), choices))
       } else if (!is.null(current)) {
@@ -9912,7 +9955,11 @@ server <- function(input, output, session) {
 
   qc_apply_tech_selection <- function(selector_state, selected_map) {
     if (!length(selector_state)) return(invisible(NULL))
-    if (!begin_bulk_update(qc_tech_bulk_updating, "qc_tech_bulk_updating")) return(invisible(NULL))
+    if (!begin_bulk_update(
+      qc_tech_bulk_updating,
+      "qc_tech_bulk_updating",
+      restart_if_active = TRUE
+    )) return(invisible(NULL))
     next_map <- setNames(vector("list", length(selector_state)), names(selector_state))
     current_map <- isolate(qc_tech_selected())
     qc_tech_render_from_store(TRUE)
@@ -9923,17 +9970,11 @@ server <- function(input, output, session) {
       if (is.null(next_sel)) next_sel <- info$selected
       next_sel <- normalize_rep_selection(intersect(as.character(next_sel), info$choices))
       next_map[[key]] <- next_sel
-      current_input <- normalize_rep_selection(intersect(as.character(input[[info$id]] %||% character(0)), info$choices))
-      if (identical(current_input, next_sel)) next
-      update_checkbox_group_input_if_changed(
+      set_checkbox_group_final(
         input_id = info$id,
         choices = info$choices,
         selected = next_sel,
         freeze_input = FALSE
-      )
-      session$sendCustomMessage(
-        "bioszen-set-checkbox-group-values",
-        list(id = info$id, selected = unname(as.character(next_sel)))
       )
     }
 
@@ -10305,7 +10346,11 @@ server <- function(input, output, session) {
 
   qc_apply_replicate_selection <- function(selector_state, selected_map) {
     if (!length(selector_state)) return(invisible(NULL))
-    if (!begin_bulk_update(replicate_bulk_updating, "replicate_bulk_updating")) return(invisible(NULL))
+    if (!begin_bulk_update(
+      replicate_bulk_updating,
+      "replicate_bulk_updating",
+      restart_if_active = TRUE
+    )) return(invisible(NULL))
     map_strain <- reps_strain_selected()
     map_group <- reps_group_selected()
     for (g in names(selector_state)) {
@@ -13781,30 +13826,8 @@ server <- function(input, output, session) {
 
   plot_base_interactive <- debounce(
     reactive(plot_base()),
-    millis = 900
+    millis = 750
   )
-
-  plot_selection_settled_signal <- debounce(
-    reactive({
-      list(
-        scope = input$scope,
-        strain = input$strain,
-        show_medios = selected_show_medios(),
-        show_groups = selected_show_groups(),
-        rm_reps_all = input$rm_reps_all,
-        reps_strain = reactive_loop_signature_value(reps_strain_selected()),
-        reps_group = reactive_loop_signature_value(reps_group_selected()),
-        qc_tech = reactive_loop_signature_value(qc_tech_selected()),
-        qc_tech_by_param = reactive_loop_signature_value(qc_tech_selected_by_param())
-      )
-    }),
-    millis = 900
-  )
-
-  observeEvent(plot_selection_settled_signal(), {
-    if (isTRUE(dataset_loading())) return()
-    plot_settle_tick(isolate(plot_settle_tick()) + 1L)
-  }, ignoreInit = TRUE, priority = -100)
 
   # --- Salidas ---  
   output$plotInteractivoUI <- renderUI({
@@ -14002,160 +14025,104 @@ server <- function(input, output, session) {
     }
   })
 
-  observeEvent(input$repsGrpSelectAll, {
-    if (!begin_bulk_update(replicate_bulk_updating, "replicate_bulk_updating")) return()
+  apply_biological_replicate_bulk_selection <- function(scope_mode, select_all = TRUE) {
+    if (!begin_bulk_update(
+      replicate_bulk_updating,
+      "replicate_bulk_updating",
+      restart_if_active = TRUE
+    )) return(invisible(FALSE))
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
     df <- if (use_param) {
       param_rep_df()
     } else {
       active_plot_data()
     }
-    if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return()
-
-    all_groups <- df %>%
-      dplyr::transmute(
-        Strain = as.character(Strain),
-        Media = as.character(Media)
-      ) %>%
-      dplyr::filter(
-        !is.na(Strain), nzchar(trimws(Strain)),
-        !is.na(Media), nzchar(trimws(Media))
-      ) %>%
-      dplyr::transmute(Group = paste(Strain, Media, sep = "-")) %>%
-      dplyr::distinct(Group) %>%
-      dplyr::pull(Group)
-    if (!length(all_groups)) return()
-
-    ordered_groups <- datos_agrupados() %>%
-      dplyr::distinct(Strain, Media, Orden) %>%
-      dplyr::mutate(Group = paste(Strain, Media, sep = "-")) %>%
-      dplyr::arrange(Orden) %>%
-      dplyr::pull(Group)
-    if (length(ordered_groups)) {
-      all_groups <- intersect(ordered_groups, all_groups)
-    } else {
-      all_groups <- sort(unique(all_groups))
-    }
-
-    current_groups <- sort(unique(as.character(selected_show_groups() %||% character(0))))
-    target_groups <- sort(unique(as.character(all_groups %||% character(0))))
-    if (!identical(current_groups, target_groups)) {
-      set_filter_selection_state(filter_groups_selected, all_groups, all_groups)
-      update_checkbox_group_input_if_changed(
-        input_id = "showGroups",
-        choices = all_groups,
-        selected = all_groups,
-        freeze_input = TRUE
-      )
-    }
-    sync_filter_toggle_input("toggleGroups", choices = all_groups, selected = all_groups)
-    update_text_input_if_changed("orderGroups", paste(all_groups, collapse = ","))
-
+    if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return(invisible(FALSE))
     drop_all <- as.character(input$rm_reps_all %||% character(0))
-    grp_id <- paste(df$Strain, df$Media, sep = "-")
-
-    map_group <- reps_group_selected()
     map_strain <- reps_strain_selected()
-    for (g in all_groups) {
-      idx <- grp_id == g
-      reps <- normalize_rep_selection(df$BiologicalReplicate[idx])
-      selected <- normalize_rep_selection(setdiff(reps, drop_all))
-      strain_g <- if (any(idx)) as.character(df$Strain[idx][[1]]) else ""
-      media_g <- if (any(idx)) as.character(df$Media[idx][[1]]) else ""
-      sync_maps <- set_synced_media_selection(
-        strain_map = map_strain,
-        group_map = map_group,
-        strain = strain_g,
-        media = media_g,
-        selected = selected
-      )
-      map_strain <- sync_maps$reps_strain_map
-      map_group <- sync_maps$reps_group_map
-      current_input <- normalize_rep_selection(
-        intersect(as.character(input[[group_rep_input_id(g)]] %||% character(0)), reps)
-      )
-      if (identical(current_input, selected)) next
-      update_checkbox_group_input_if_changed(
-        input_id = group_rep_input_id(g),
-        choices = reps,
-        selected = selected,
-        freeze_input = TRUE
-      )
+    map_group <- reps_group_selected()
+
+    if (identical(scope_mode, "Combinado")) {
+      groups <- normalize_update_values(selected_show_groups())
+      if (!length(groups)) return(invisible(FALSE))
+      group_id <- paste(df$Strain, df$Media, sep = "-")
+      df <- df[group_id %in% groups, , drop = FALSE]
+      group_id <- paste(df$Strain, df$Media, sep = "-")
+      for (group in groups) {
+        idx <- group_id == group
+        if (!any(idx)) next
+        reps <- normalize_rep_selection(df$BiologicalReplicate[idx])
+        selected <- if (isTRUE(select_all)) normalize_rep_selection(setdiff(reps, drop_all)) else character(0)
+        strain_g <- as.character(df$Strain[idx][[1]])
+        media_g <- as.character(df$Media[idx][[1]])
+        sync_maps <- set_synced_media_selection(
+          strain_map = map_strain,
+          group_map = map_group,
+          strain = strain_g,
+          media = media_g,
+          selected = selected
+        )
+        map_strain <- sync_maps$reps_strain_map
+        map_group <- sync_maps$reps_group_map
+        set_checkbox_group_final(
+          input_id = group_rep_input_id(group),
+          choices = reps,
+          selected = selected,
+          freeze_input = TRUE
+        )
+      }
+    } else if (identical(scope_mode, "Por Cepa")) {
+      strain <- current_strain_value()
+      medias <- normalize_update_values(selected_show_medios())
+      if (!nzchar(strain) || !length(medias)) return(invisible(FALSE))
+      df <- df %>% dplyr::filter(Strain == strain, Media %in% medias)
+      for (media in medias) {
+        reps <- normalize_rep_selection(df$BiologicalReplicate[df$Media == media])
+        if (!length(reps)) next
+        selected <- if (isTRUE(select_all)) normalize_rep_selection(setdiff(reps, drop_all)) else character(0)
+        sync_maps <- set_synced_media_selection(
+          strain_map = map_strain,
+          group_map = map_group,
+          strain = strain,
+          media = media,
+          selected = selected
+        )
+        map_strain <- sync_maps$reps_strain_map
+        map_group <- sync_maps$reps_group_map
+        set_checkbox_group_final(
+          input_id = strain_rep_input_id(media),
+          choices = reps,
+          selected = selected,
+          freeze_input = TRUE
+        )
+      }
+    } else {
+      return(invisible(FALSE))
+    }
+
+    if (!identical(map_strain, isolate(reps_strain_selected()))) {
+      reps_strain_selected(map_strain)
     }
     if (!identical(map_group, isolate(reps_group_selected()))) {
       reps_group_selected(map_group)
     }
-    if (!identical(map_strain, isolate(reps_strain_selected()))) {
-      reps_strain_selected(map_strain)
-    }
-  }, ignoreInit = FALSE)
+    invisible(TRUE)
+  }
+
+  observeEvent(input$repsGrpSelectAll, {
+    apply_biological_replicate_bulk_selection("Combinado", select_all = TRUE)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$repsGrpDeselectAll, {
+    apply_biological_replicate_bulk_selection("Combinado", select_all = FALSE)
+  }, ignoreInit = TRUE)
 
   observeEvent(input$repsStrainSelectAll, {
-    if (!begin_bulk_update(replicate_bulk_updating, "replicate_bulk_updating")) return()
-    use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
-    df <- if (use_param) {
-      param_rep_df()
-    } else {
-      active_plot_data()
-    }
-    if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) return()
-    if (is.null(input$strain) || !length(input$strain)) return()
-    df <- df %>% dplyr::filter(Strain == input$strain)
+    apply_biological_replicate_bulk_selection("Por Cepa", select_all = TRUE)
+  }, ignoreInit = TRUE)
 
-    medias <- df %>%
-      dplyr::transmute(Media = as.character(Media), Orden = Orden) %>%
-      dplyr::filter(!is.na(Media), nzchar(Media)) %>%
-      dplyr::distinct(Media, Orden) %>%
-      dplyr::arrange(Orden) %>%
-      dplyr::pull(Media)
-    if (!length(medias)) return()
-
-    current_medias <- sort(unique(as.character(selected_show_medios() %||% character(0))))
-    target_medias <- sort(unique(as.character(medias %||% character(0))))
-    if (!identical(current_medias, target_medias)) {
-      set_filter_selection_state(filter_medios_selected, medias, medias)
-      update_checkbox_group_input_if_changed(
-        input_id = "showMedios",
-        choices = medias,
-        selected = medias,
-        freeze_input = TRUE
-      )
-    }
-    sync_filter_toggle_input("toggleMedios", choices = medias, selected = medias)
-    update_text_input_if_changed("orderMedios", paste(medias, collapse = ","))
-
-    drop_all <- as.character(input$rm_reps_all %||% character(0))
-    map_strain <- reps_strain_selected()
-    map_group <- reps_group_selected()
-    for (m in medias) {
-      reps <- normalize_rep_selection(df$BiologicalReplicate[df$Media == m])
-      selected <- normalize_rep_selection(setdiff(reps, drop_all))
-      sync_maps <- set_synced_media_selection(
-        strain_map = map_strain,
-        group_map = map_group,
-        strain = input$strain,
-        media = m,
-        selected = selected
-      )
-      map_strain <- sync_maps$reps_strain_map
-      map_group <- sync_maps$reps_group_map
-      current_input <- normalize_rep_selection(
-        intersect(as.character(input[[strain_rep_input_id(m)]] %||% character(0)), reps)
-      )
-      if (identical(current_input, selected)) next
-      update_checkbox_group_input_if_changed(
-        input_id = strain_rep_input_id(m),
-        choices = reps,
-        selected = selected,
-        freeze_input = TRUE
-      )
-    }
-    if (!identical(map_strain, isolate(reps_strain_selected()))) {
-      reps_strain_selected(map_strain)
-    }
-    if (!identical(map_group, isolate(reps_group_selected()))) {
-      reps_group_selected(map_group)
-    }
+  observeEvent(input$repsStrainDeselectAll, {
+    apply_biological_replicate_bulk_selection("Por Cepa", select_all = FALSE)
   }, ignoreInit = TRUE)
 
   plotly_tooltip_fields <- function(tipo) {

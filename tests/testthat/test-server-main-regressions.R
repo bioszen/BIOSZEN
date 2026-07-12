@@ -65,12 +65,12 @@ test_that("automatic technical QC selections persist while browser inputs catch 
   )
   expect_match(
     server_txt,
-    "prefer_stored <- isTRUE\\(qc_tech_render_from_store\\(\\)\\)",
+    "prefer_stored <- isTRUE\\(isolate\\(qc_tech_render_from_store\\(\\)\\)\\)",
     info = "Selector rendering must prefer stored values only during programmatic technical QC updates."
   )
   expect_match(
     server_txt,
-    "current <- selector_committed_or_input\\(\\s*input_id,\\s*input\\[\\[input_id\\]\\],\\s*cached = stored\\s*\\)",
+    "current <- selector_committed_or_input\\(\\s*input_id,\\s*isolate\\(input\\[\\[input_id\\]\\]\\),\\s*cached = stored\\s*\\)",
     perl = TRUE,
     info = "Manual rapid technical QC clicks must render from the committed final selector state, not stale raw input."
   )
@@ -145,7 +145,7 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     server_txt,
-    "begin_filter_selection_sync <- function\\(\\) \\{[\\s\\S]*?begin_quiet_reactive_flag\\([\\s\\S]*?flag_key = \"filter_selection_sync_inflight\"[\\s\\S]*?quiet_ms = 1400L",
+    "begin_filter_selection_sync <- function\\(\\) \\{[\\s\\S]*?begin_quiet_reactive_flag\\([\\s\\S]*?flag_key = \"filter_selection_sync_inflight\"[\\s\\S]*?quiet_ms = 1000L",
     perl = TRUE,
     info = "Filter changes should wait for selected groups/conditions to settle before redraw."
   )
@@ -193,7 +193,7 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     server_txt,
-    "begin_filter_selection_sync <- function\\(\\) \\{[\\s\\S]*?begin_quiet_reactive_flag\\([\\s\\S]*?quiet_ms = 1400L",
+    "begin_filter_selection_sync <- function\\(\\) \\{[\\s\\S]*?begin_quiet_reactive_flag\\([\\s\\S]*?quiet_ms = 1000L",
     perl = TRUE,
     info = "Filter selection changes should stay held until the user stops rapidly toggling."
   )
@@ -244,21 +244,13 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     server_txt,
-    "plot_base_interactive\\s*<-\\s*debounce\\([\\s\\S]*?millis = 900",
+    "plot_base_interactive\\s*<-\\s*debounce\\([\\s\\S]*?millis = 750",
     perl = TRUE,
     info = "The plot output should debounce long enough to avoid visible intermediate plot states."
   )
-  expect_match(
-    server_txt,
-    "plot_selection_settled_signal <- debounce\\([\\s\\S]*?show_groups = selected_show_groups\\(\\)[\\s\\S]*?reps_group = reactive_loop_signature_value\\(reps_group_selected\\(\\)\\)[\\s\\S]*?millis = 900",
-    perl = TRUE,
-    info = "Rapid group and replicate changes should coalesce into one explicit final plot refresh."
-  )
-  expect_match(
-    server_txt,
-    "observeEvent\\(plot_selection_settled_signal\\(\\), \\{[\\s\\S]*?plot_settle_tick\\(isolate\\(plot_settle_tick\\(\\)\\) \\+ 1L\\)",
-    perl = TRUE,
-    info = "The settled selection signal should remain available for non-plot outputs and future explicit refreshes."
+  expect_false(
+    grepl("plot_selection_settled_signal", server_txt, fixed = TRUE),
+    info = "A second settled-selection tick must not invalidate an already debounced final plot."
   )
   plot_output <- sub(
     "^[\\s\\S]*?output\\$plotInteractivo <- renderPlotly\\(\\{",
@@ -832,8 +824,10 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   expect_match(ui_txt, "target.id !== 'toggleMedios' && target.id !== 'toggleGroups'", fixed = TRUE)
   expect_match(ui_txt, "ev.isTrusted", fixed = TRUE)
   expect_match(ui_txt, "BIOSZEN_debouncedCheckboxGroups", fixed = TRUE)
-  expect_match(ui_txt, "version: 4", fixed = TRUE)
+  expect_match(ui_txt, "version: 5", fixed = TRUE)
   expect_match(ui_txt, "pendingSelections", fixed = TRUE)
+  expect_match(ui_txt, "setFinal: function", fixed = TRUE)
+  expect_match(ui_txt, "delete pendingSelections[name]", fixed = TRUE)
   expect_match(ui_txt, "releasedSelections", fixed = TRUE)
   expect_match(ui_txt, "releasedKeys: activeReleasedKeys()", fixed = TRUE)
   expect_match(ui_txt, "var minHoldMs = 900", fixed = TRUE)
@@ -965,8 +959,8 @@ test_that("core reactive controls keep loop guards around programmatic updates",
     "observeEvent\\(input\\$toggleMedios_user_change",
     "observeEvent\\(input\\$toggleGroups_user_change"
   )
-  expect_match(toggle_medios, "identical\\(current_sel, target_sel\\)", perl = TRUE)
-  expect_match(toggle_medios, "update_checkbox_group_input_if_changed", fixed = TRUE)
+  expect_match(toggle_medios, "set_checkbox_group_final", fixed = TRUE)
+  expect_false(grepl("identical(current_sel, target_sel)", toggle_medios, fixed = TRUE))
   expect_match(toggle_medios, "freeze_input = TRUE", fixed = TRUE)
   expect_match(toggle_medios, "toggle_payload\\$value", perl = TRUE)
   expect_match(toggle_medios, "ignoreInit = TRUE", fixed = TRUE)
@@ -977,8 +971,8 @@ test_that("core reactive controls keep loop guards around programmatic updates",
     "observeEvent\\(input\\$toggleGroups_user_change",
     "observeEvent\\(\\s*list\\(selected_show_medios\\(\\), selected_show_groups\\(\\), datos_agrupados\\(\\)\\)"
   )
-  expect_match(toggle_groups, "identical\\(current_sel, target_sel\\)", perl = TRUE)
-  expect_match(toggle_groups, "update_checkbox_group_input_if_changed", fixed = TRUE)
+  expect_match(toggle_groups, "set_checkbox_group_final", fixed = TRUE)
+  expect_false(grepl("identical(current_sel, target_sel)", toggle_groups, fixed = TRUE))
   expect_match(toggle_groups, "freeze_input = TRUE", fixed = TRUE)
   expect_match(toggle_groups, "toggle_payload\\$value", perl = TRUE)
   expect_match(toggle_groups, "ignoreInit = TRUE", fixed = TRUE)
@@ -1019,20 +1013,24 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   expect_match(filter_guard, "ignoreInit = TRUE", fixed = TRUE)
   expect_match(filter_guard, "priority = 100", fixed = TRUE)
 
-  group_select_all <- extract_section(
+  replicate_bulk_helper <- extract_section(
     server_txt,
-    "observeEvent\\(input\\$repsGrpSelectAll",
-    "observeEvent\\(input\\$repsStrainSelectAll"
+    "apply_biological_replicate_bulk_selection <- function",
+    "observeEvent\\(input\\$repsGrpSelectAll"
   )
-  strain_select_all <- extract_section(
-    server_txt,
-    "observeEvent\\(input\\$repsStrainSelectAll",
-    "output\\$plotInteractivo <- renderPlotly"
-  )
-  expect_match(group_select_all, "begin_bulk_update\\(replicate_bulk_updating, \"replicate_bulk_updating\"\\)", perl = TRUE)
-  expect_match(strain_select_all, "begin_bulk_update\\(replicate_bulk_updating, \"replicate_bulk_updating\"\\)", perl = TRUE)
-  expect_match(group_select_all, "update_checkbox_group_input_if_changed", fixed = TRUE)
-  expect_match(strain_select_all, "update_checkbox_group_input_if_changed", fixed = TRUE)
+  expect_match(replicate_bulk_helper, "begin_bulk_update\\(\\s*replicate_bulk_updating,[\\s\\S]*?\"replicate_bulk_updating\"", perl = TRUE)
+  expect_match(replicate_bulk_helper, "restart_if_active = TRUE", fixed = TRUE)
+  expect_match(replicate_bulk_helper, "set_checkbox_group_final", fixed = TRUE)
+  expect_match(replicate_bulk_helper, "if \\(isTRUE\\(select_all\\)\\)", perl = TRUE)
+  expect_match(server_txt, "observeEvent(input$repsGrpDeselectAll", fixed = TRUE)
+  expect_match(server_txt, "observeEvent(input$repsStrainDeselectAll", fixed = TRUE)
+  expect_match(server_txt, "apply_biological_replicate_bulk_selection(\"Combinado\", select_all = FALSE)", fixed = TRUE)
+  expect_match(server_txt, "apply_biological_replicate_bulk_selection(\"Por Cepa\", select_all = FALSE)", fixed = TRUE)
+  expect_match(server_txt, "repsGrpDeselectAll", fixed = TRUE)
+  expect_match(server_txt, "repsStrainDeselectAll", fixed = TRUE)
+  expect_match(server_txt, "set_checkbox_group_final <- function", fixed = TRUE)
+  expect_match(server_txt, "record_selector_commit(input_id, selected)", fixed = TRUE)
+  expect_match(ui_txt, "BIOSZEN_debouncedCheckboxGroups.setFinal", fixed = TRUE)
 
   expect_match(server_txt, "stable_input_suffix <- function", fixed = TRUE)
   expect_match(server_txt, "strain_rep_input_id <- function", fixed = TRUE)

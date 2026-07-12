@@ -344,6 +344,8 @@ select_groups_prompt,Select groups to show first.
 reps_by_group,Replicates by group
 reps_media_select_all,Select all replicates again
 reps_group_select_all,Select all replicates again
+reps_media_deselect_all,Deselect all biological replicates
+reps_group_deselect_all,Deselect all biological replicates
 posthoc_label,Post-hoc:
 plot_label,Plot
 default_title_combined,%s combined of %s

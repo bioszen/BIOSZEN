@@ -1259,6 +1259,11 @@ ui <- fluidPage(
           if (!payload || !payload.id) return;
           var id = String(payload.id);
           var selected = Array.isArray(payload.selected) ? payload.selected.map(String) : [];
+          if (window.BIOSZEN_debouncedCheckboxGroups &&
+              typeof window.BIOSZEN_debouncedCheckboxGroups.setFinal === 'function' &&
+              window.BIOSZEN_debouncedCheckboxGroups.setFinal(id, selected)) {
+            return;
+          }
           var container = document.getElementById(id);
           var boxes = [];
           if (container) {
@@ -1295,7 +1300,7 @@ ui <- fluidPage(
   tags$script(HTML("
     (function(){
       if (window.BIOSZEN_debouncedCheckboxGroups &&
-          window.BIOSZEN_debouncedCheckboxGroups.version >= 4) {
+          window.BIOSZEN_debouncedCheckboxGroups.version >= 5) {
         return;
       }
       var pendingTimers = {};
@@ -1313,7 +1318,7 @@ ui <- fluidPage(
       var minHoldMs = 900;
       var holdMs = 3000;
       var maxHoldMs = 120000;
-      document.documentElement.setAttribute('data-bioszen-selector-guard', '4');
+      document.documentElement.setAttribute('data-bioszen-selector-guard', '5');
 
       function isDebouncedGroup(name) {
         if (!name) return false;
@@ -1702,7 +1707,7 @@ ui <- fluidPage(
       }
 
       window.BIOSZEN_debouncedCheckboxGroups = {
-        version: 4,
+        version: 5,
         flush: function(name) {
           name = String(name || '');
           if (!pendingKinds[name] && !isDebouncedGroup(name)) return false;
@@ -1715,6 +1720,35 @@ ui <- fluidPage(
           return Object.prototype.hasOwnProperty.call(pendingSelections, name) ?
             pendingSelections[name].slice() :
             null;
+        },
+        setFinal: function(name, selected) {
+          name = String(name || '');
+          if (!name || !isDebouncedGroup(name)) return false;
+          selected = normalizeProtectedValue(selected, 'checkbox-group');
+          if (pendingTimers[name]) window.clearTimeout(pendingTimers[name]);
+          delete pendingTimers[name];
+          delete pendingSelections[name];
+          delete pendingKinds[name];
+          delete pendingStartedAt[name];
+          delete releasedSelections[name];
+          delete releasedKinds[name];
+          delete releasedExpiresAt[name];
+          applySelection(name, selected, 'checkbox-group');
+          releasedSelections[name] = selected.slice();
+          releasedKinds[name] = 'checkbox-group';
+          releasedExpiresAt[name] = Date.now() + holdMs;
+          if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+            Shiny.setInputValue('bioszen_selector_commit', {
+              key: name,
+              kind: 'checkbox-group',
+              value: selected.slice(),
+              nonce: Date.now() + Math.random()
+            }, {priority: 'event'});
+            Shiny.setInputValue(name, selected, {priority: 'event'});
+          }
+          startReapplyLoop();
+          scheduleReapply();
+          return true;
         },
         debug: function() {
           return {

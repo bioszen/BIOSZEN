@@ -523,6 +523,84 @@ set_checkbox_group_dom_values <- function(app, name, selected) {
   jsonlite::fromJSON(normalize_js_scalar(raw))
 }
 
+click_element_by_id <- function(app, id) {
+  skip_if_not_installed("jsonlite")
+  id_json <- jsonlite::toJSON(as.character(id), auto_unbox = TRUE)
+  normalize_js_bool(app$get_js(sprintf(
+    "(function(){
+       var el = document.getElementById(%s);
+       if (!el) return false;
+       el.click();
+       return true;
+     })()",
+    id_json
+  )))
+}
+
+checkbox_values_by_name <- function(state, prefix) {
+  if (!is.data.frame(state) || !nrow(state)) return(list())
+  keep <- startsWith(as.character(state$name), prefix)
+  state <- state[keep, , drop = FALSE]
+  if (!nrow(state)) return(list())
+  split(as.character(state$value), as.character(state$name))
+}
+
+expect_bulk_checkbox_state <- function(app, expected, label, timeout_sec = 30) {
+  normalize_selection <- function(x) {
+    if (is.null(x)) x <- character(0)
+    x <- sort(unique(as.character(x)))
+    x[!is.na(x) & nzchar(x)]
+  }
+  expected <- lapply(expected, normalize_selection)
+  server_actual <- setNames(vector("list", length(expected)), names(expected))
+  dom_actual <- setNames(vector("list", length(expected)), names(expected))
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  repeat {
+    for (name in names(expected)) {
+      server_actual[name] <- list(tryCatch(
+        normalize_selection(app$get_value(input = name)),
+        error = function(e) character(0)
+      ))
+      dom_actual[name] <- list(tryCatch(
+        normalize_selection(checkbox_dom_selected_values(app, name)),
+        error = function(e) character(0)
+      ))
+    }
+    server_ok <- vapply(names(expected), function(name) {
+      identical(server_actual[[name]], expected[[name]])
+    }, logical(1))
+    dom_ok <- vapply(names(expected), function(name) {
+      identical(dom_actual[[name]], expected[[name]])
+    }, logical(1))
+    if (all(server_ok) && all(dom_ok)) break
+    if (Sys.time() >= deadline) break
+    Sys.sleep(0.2)
+  }
+
+  for (name in names(expected)) {
+    expect_true(
+      isTRUE(server_ok[[name]]),
+      info = sprintf(
+        "Server selection did not settle for %s (%s): expected [%s], observed [%s].",
+        label,
+        name,
+        paste(expected[[name]], collapse = ", "),
+        paste(server_actual[[name]], collapse = ", ")
+      )
+    )
+    expect_true(
+      isTRUE(dom_ok[[name]]),
+      info = sprintf(
+        "DOM selection did not settle for %s (%s): expected [%s], observed [%s].",
+        label,
+        name,
+        paste(expected[[name]], collapse = ", "),
+        paste(dom_actual[[name]], collapse = ", ")
+      )
+    )
+  }
+}
+
 checkbox_group_state <- function(app, name_prefix = NULL, exact_name = NULL) {
   skip_if_not_installed("jsonlite")
   state_arg <- jsonlite::toJSON(
@@ -1708,6 +1786,163 @@ test_that("rapid checkbox clicks do not replay stale group or replicate selectio
     )
     expect_app_idle_without_loop(app, "rapid technical replicate clicks", idle_timeout = 45)
   }
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("master filters and replicate bulk actions commit the requested final state", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("jsonlite")
+
+  fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx")
+  expect_true(file.exists(fixture))
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(dataFile = normalizePath(fixture), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "strain", timeout = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  app$set_inputs(tipo = "Boxplot", wait_ = TRUE, timeout_ = 60000)
+  install_loop_probe(app)
+  expect_true(install_plot_loading_probe(app, timeout_sec = 45))
+
+  app$set_inputs(scope = "Combinado", wait_ = TRUE, timeout_ = 90000)
+  app$wait_for_value(input = "showGroups", timeout = 90000)
+  groups <- sort(unique(as.character(app$get_value(input = "showGroups"))))
+  groups <- groups[!is.na(groups) & nzchar(groups)]
+  if (length(groups) < 2) skip("Not enough combined groups for bulk selector tests.")
+  set_checkbox_group_dom_values(app, "showGroups", groups)
+  expect_true(wait_for_selected_values(app, "showGroups", groups, timeout_sec = 30))
+  expect_true(wait_for_dom_selected_values(app, "showGroups", groups, timeout_sec = 30))
+  expect_app_idle_without_loop(app, "combined groups before master toggle", idle_timeout = 45)
+
+  reset_plot_loading_probe(app)
+  started <- Sys.time()
+  expect_true(click_element_by_id(app, "toggleGroups"))
+  expect_true(
+    wait_for_selected_values(app, "showGroups", character(0), timeout_sec = 8),
+    info = "The combined master toggle should deselect every group."
+  )
+  expect_true(wait_for_dom_selected_values(app, "showGroups", character(0), timeout_sec = 8))
+  expect_lte(as.numeric(difftime(Sys.time(), started, units = "secs")), 6)
+  expect_app_idle_without_loop(app, "combined master deselect all", idle_timeout = 45)
+  expect_lte(as.numeric(plot_loading_probe_counts(app)$loadingOn %||% 0), 1)
+
+  expect_true(click_element_by_id(app, "toggleGroups"))
+  expect_true(wait_for_selected_values(app, "showGroups", groups, timeout_sec = 8))
+  expect_true(wait_for_dom_selected_values(app, "showGroups", groups, timeout_sec = 8))
+  expect_app_idle_without_loop(app, "combined master select all", idle_timeout = 45)
+
+  group_rep_choices <- checkbox_values_by_name(checkbox_group_state(app, name_prefix = "reps_grp_"), "reps_grp_")
+  if (length(group_rep_choices)) {
+    expect_true(click_element_by_id(app, "repsGrpDeselectAll"))
+    expect_bulk_checkbox_state(app, lapply(group_rep_choices, function(x) character(0)), "combined biological deselect all")
+    expect_app_idle_without_loop(app, "combined biological deselect all", idle_timeout = 45)
+    expect_true(click_element_by_id(app, "repsGrpSelectAll"))
+    expect_bulk_checkbox_state(app, group_rep_choices, "combined biological select all")
+    expect_app_idle_without_loop(app, "combined biological select all", idle_timeout = 45)
+  }
+
+  app$set_inputs(scope = "Por Cepa", wait_ = TRUE, timeout_ = 90000)
+  app$wait_for_value(input = "showMedios", timeout = 90000)
+  medias <- sort(unique(as.character(app$get_value(input = "showMedios"))))
+  medias <- medias[!is.na(medias) & nzchar(medias)]
+  expect_true(length(medias) >= 1)
+  set_checkbox_group_dom_values(app, "showMedios", medias)
+  expect_true(wait_for_selected_values(app, "showMedios", medias, timeout_sec = 30))
+  expect_true(wait_for_dom_selected_values(app, "showMedios", medias, timeout_sec = 30))
+
+  expect_true(click_element_by_id(app, "toggleMedios"))
+  expect_true(wait_for_selected_values(app, "showMedios", character(0), timeout_sec = 8))
+  expect_true(wait_for_dom_selected_values(app, "showMedios", character(0), timeout_sec = 8))
+  expect_app_idle_without_loop(app, "media master deselect all", idle_timeout = 45)
+  expect_true(click_element_by_id(app, "toggleMedios"))
+  expect_true(wait_for_selected_values(app, "showMedios", medias, timeout_sec = 8))
+  expect_true(wait_for_dom_selected_values(app, "showMedios", medias, timeout_sec = 8))
+  expect_app_idle_without_loop(app, "media master select all", idle_timeout = 45)
+
+  strain_rep_state <- checkbox_group_state(app, name_prefix = "reps_")
+  if (is.data.frame(strain_rep_state) && nrow(strain_rep_state)) {
+    strain_rep_state <- strain_rep_state[
+      !startsWith(as.character(strain_rep_state$name), "reps_grp_") &
+        as.character(strain_rep_state$name) != "rm_reps_all",
+      ,
+      drop = FALSE
+    ]
+  }
+  strain_rep_choices <- checkbox_values_by_name(strain_rep_state, "reps_")
+  if (length(strain_rep_choices)) {
+    expect_true(click_element_by_id(app, "repsStrainDeselectAll"))
+    expect_bulk_checkbox_state(app, lapply(strain_rep_choices, function(x) character(0)), "per-strain biological deselect all")
+    expect_app_idle_without_loop(app, "per-strain biological deselect all", idle_timeout = 45)
+    expect_true(click_element_by_id(app, "repsStrainSelectAll"))
+    expect_bulk_checkbox_state(app, strain_rep_choices, "per-strain biological select all")
+    expect_app_idle_without_loop(app, "per-strain biological select all", idle_timeout = 45)
+  }
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("technical replicate bulk actions commit empty and restored states", {
+  skip_if_shiny_e2e_unavailable()
+
+  fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx")
+  expect_true(file.exists(fixture))
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(dataFile = normalizePath(fixture), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "strain", timeout = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  app$set_inputs(tipo = "Boxplot", wait_ = TRUE, timeout_ = 60000)
+  current_strain <- normalize_js_scalar(app$get_value(input = "strain"))
+  expect_true(nzchar(current_strain))
+  app$set_inputs(strain = current_strain, wait_ = TRUE, timeout_ = 60000)
+  install_loop_probe(app)
+  expect_app_idle_without_loop(app, "technical fixture upload", idle_timeout = 45)
+  tech_available <- tryCatch(
+    identical(normalize_js_scalar(app$get_value(output = "qcTechTabAvailable")), "TRUE"),
+    error = function(e) FALSE
+  )
+  if (!isTRUE(tech_available)) skip("Technical replicate controls are unavailable for this fixture.")
+
+  tech_state <- open_qc_tech_controls(app, timeout_sec = 60)
+  tech_choices <- checkbox_values_by_name(tech_state, "qc_tech_rep_")
+  expect_true(length(tech_choices) > 0)
+
+  expect_true(length(app$get_html(selector = "#qc_tech_deselect_all")) > 0)
+  app$set_inputs(qc_tech_deselect_all = "click", wait_ = TRUE, timeout_ = 90000)
+  expect_bulk_checkbox_state(
+    app,
+    lapply(tech_choices, function(x) character(0)),
+    "technical deselect all",
+    timeout_sec = 15
+  )
+  expect_app_idle_without_loop(app, "technical deselect all", idle_timeout = 45)
+  expect_identical(
+    normalize_js_scalar(app$get_value(output = "qcTechTabAvailable")),
+    "TRUE",
+    info = "Technical replicate choices must remain available after deselecting every technical replicate."
+  )
+
+  expect_true(length(app$get_html(selector = "#qc_tech_select_all")) > 0)
+  app$set_inputs(qc_tech_select_all = "click", wait_ = TRUE, timeout_ = 90000)
+  expect_bulk_checkbox_state(app, tech_choices, "technical select all", timeout_sec = 15)
+  expect_app_idle_without_loop(app, "technical select all", idle_timeout = 45)
 
   critical <- find_critical_frontend_logs(app$get_logs())
   expect_equal(

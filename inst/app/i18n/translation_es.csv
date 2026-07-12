@@ -344,6 +344,8 @@ select_groups_prompt,Selecciona primero los grupos a mostrar.
 reps_by_group,Réplicas por grupo
 reps_media_select_all,Seleccionar todas las réplicas nuevamente
 reps_group_select_all,Seleccionar todas las réplicas nuevamente
+reps_media_deselect_all,Deseleccionar todas las réplicas biológicas
+reps_group_deselect_all,Deseleccionar todas las réplicas biológicas
 posthoc_label,Post-hoc:
 plot_label,Gráfico
 default_title_combined,%s combinado de %s
