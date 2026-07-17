@@ -27,11 +27,11 @@ jobs:
       matrix:
         include:
           - platform: windows
-            artifact-name: BIOSZEN_WINDOWS
+            artifact-name: BIOSZEN_windows
             os: windows-latest
             r-version: release
           - platform: macos
-            artifact-name: BIOSZEN_MAC
+            artifact-name: BIOSZEN_mac
             os: macos-15
             r-version: release
 
