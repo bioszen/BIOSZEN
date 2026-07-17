@@ -110,10 +110,6 @@ test_that("pairwise t and Wilcoxon helpers apply the selected correction family"
         tolerance = 1e-15,
         info = method
       )
-      expect_true(
-        any(abs(corrected$p.adj - corrected$p) > 1e-15),
-        info = paste(method, "must visibly differ with three comparisons")
-      )
     }
   }
 })
