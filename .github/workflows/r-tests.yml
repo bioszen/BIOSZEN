@@ -12,29 +12,45 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: r-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    name: test (${{ matrix.os }}, R-${{ matrix.r-version }})
+    name: test-${{ matrix.platform }} (${{ matrix.os }}, R-${{ matrix.r-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
-        r-version: [release]
+        include:
+          - platform: windows
+            os: windows-latest
+            r-version: release
+          - platform: macos
+            os: macos-15
+            r-version: release
+
     env:
       NOT_CRAN: "true"
+      CI: "true"
+      RGL_USE_NULL: "true"
+      SHINYTEST2_TIMEOUT: "120000"
+      SHINYTEST2_LOAD_TIMEOUT: "120000"
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up R
         uses: r-lib/actions/setup-r@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590
         with:
           r-version: ${{ matrix.r-version }}
+          use-public-rspm: true
 
-      - name: Install dependencies (full lane)
-        if: matrix.os == 'windows-latest' && matrix.r-version == 'release'
+      - name: Install R dependencies
         uses: r-lib/actions/setup-r-dependencies@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590
         with:
           extra-packages: |
@@ -44,19 +60,42 @@ jobs:
           needs: check
           pak-version: stable
 
-      - name: Install dependencies (core lanes)
-        if: matrix.os != 'windows-latest' || matrix.r-version != 'release'
-        uses: r-lib/actions/setup-r-dependencies@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590
+      - name: Check test environment
+        shell: Rscript {0}
+        run: |
+          cat("Test platform:", Sys.getenv("RUNNER_OS"), "\n")
+          cat("Operating system:", Sys.info()[["sysname"]], "\n")
+          cat("Operating system release:", Sys.info()[["release"]], "\n")
+          cat("Architecture:", Sys.info()[["machine"]], "\n")
+          cat("R version:", R.version.string, "\n")
+          cat("testthat version:", as.character(packageVersion("testthat")), "\n")
+          cat("shinytest2 version:", as.character(packageVersion("shinytest2")), "\n")
+          cat("chromote version:", as.character(packageVersion("chromote")), "\n")
+          cat("Chrome executable:", chromote::find_chrome(), "\n")
+          cat("Snapshot platform variant:", shinytest2::platform_variant(), "\n")
+
+      - name: Run complete test suite
+        shell: Rscript {0}
+        run: |
+          options(
+            shinytest2.timeout = 120000,
+            shinytest2.load_timeout = 120000,
+            testthat.progress.max_fails = Inf
+          )
+
+          testthat::test_dir(
+            path = "tests/testthat",
+            reporter = "summary",
+            stop_on_failure = TRUE,
+            stop_on_warning = FALSE
+          )
+
+      - name: Upload platform-specific test snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          extra-packages: |
-            any::testthat
-          needs: check
-          pak-version: stable
-
-      - name: Run full testthat suite (incl shiny e2e)
-        if: matrix.os == 'windows-latest' && matrix.r-version == 'release'
-        run: Rscript -e "testthat::test_dir('tests/testthat')"
-
-      - name: Run core testthat suite (exclude shiny e2e)
-        if: matrix.os != 'windows-latest' || matrix.r-version != 'release'
-        run: Rscript -e "files <- list.files('tests/testthat', pattern='^test-.*[.]R$', full.names = TRUE); files <- files[basename(files) != 'test-shinytest2-integration.R']; invisible(lapply(files, testthat::test_file))"
+          name: shinytest2-${{ matrix.platform }}-${{ runner.arch }}-R-${{ matrix.r-version }}
+          path: |
+            tests/testthat/_snaps/**
+          if-no-files-found: ignore
+          retention-days: 14
