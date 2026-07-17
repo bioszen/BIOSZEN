@@ -27,9 +27,11 @@ jobs:
       matrix:
         include:
           - platform: windows
+            artifact-name: BIOSZEN_WINDOWS
             os: windows-latest
             r-version: release
           - platform: macos
+            artifact-name: BIOSZEN_MAC
             os: macos-15
             r-version: release
 
@@ -94,7 +96,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shinytest2-${{ matrix.platform }}-${{ runner.arch }}-R-${{ matrix.r-version }}
+          name: ${{ matrix.artifact-name }}
           path: |
             tests/testthat/_snaps/**
           if-no-files-found: ignore
