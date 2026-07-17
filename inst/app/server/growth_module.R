@@ -140,40 +140,73 @@
   normalizePath(path, winslash = "/", mustWork = TRUE)
 }
 
-.bioszen_choose_growth_output_dir <- function(initial = "", caption = "Select growth output folder") {
-  initial <- trimws(as.character(initial %||% ""))
-  if (nzchar(initial)) {
-    initial <- path.expand(initial)
+.bioszen_growth_output_roots <- function() {
+  home <- normalizePath(path.expand("~"), winslash = "/", mustWork = FALSE)
+  volumes <- tryCatch(shinyFiles::getVolumes()(), error = function(e) character(0))
+  roots <- c(Home = home, volumes)
+  roots <- roots[nzchar(roots) & dir.exists(roots)]
+  if (!length(roots)) return(c(Home = home))
+
+  root_names <- names(roots)
+  normalized <- normalizePath(roots, winslash = "/", mustWork = FALSE)
+  keys <- if (identical(.Platform$OS.type, "windows")) tolower(normalized) else normalized
+  keep <- !duplicated(keys)
+  roots <- normalized[keep]
+  root_names <- root_names[keep]
+  unnamed <- is.na(root_names) | !nzchar(root_names)
+  root_names[unnamed] <- basename(roots[unnamed])
+  names(roots) <- make.unique(root_names)
+  roots
+}
+
+.bioszen_parse_growth_output_dir <- function(selection, roots = .bioszen_growth_output_roots()) {
+  if (is.null(selection) || !is.list(selection) || !length(selection)) return(NULL)
+  selected <- shinyFiles::parseDirPath(roots, selection)
+  if (!length(selected) || is.na(selected[[1]]) || !nzchar(selected[[1]])) return(NULL)
+  .bioszen_resolve_growth_output_dir(selected[[1]])
+}
+
+.bioszen_create_growth_output_dir <- function(request, roots = .bioszen_growth_output_roots()) {
+  if (is.null(request) || !is.list(request)) {
+    stop("Invalid folder creation request.", call. = FALSE)
   }
-  if (!nzchar(initial) || !dir.exists(initial)) {
-    initial <- path.expand("~")
+  name <- trimws(as.character(request$name %||% ""))
+  if (!nzchar(name) || name %in% c(".", "..") || grepl("[/\\\\]", name)) {
+    stop("Enter a valid folder name without path separators.", call. = FALSE)
   }
 
-  selected <- NULL
-  if (requireNamespace("rstudioapi", quietly = TRUE) &&
-      isTRUE(tryCatch(rstudioapi::isAvailable(), error = function(e) FALSE))) {
-    selected <- tryCatch(
-      rstudioapi::selectDirectory(caption = caption, path = initial),
-      error = function(e) NULL
-    )
+  root_value <- as.character(request$root %||% "")
+  root <- NULL
+  if (root_value %in% names(roots)) root <- unname(roots[[root_value]])
+  if (is.null(root)) {
+    root_match <- which(as.character(roots) == root_value)
+    if (length(root_match)) root <- unname(roots[[root_match[[1]]]])
+  }
+  if (is.null(root) || !dir.exists(root)) {
+    stop("The selected root folder is unavailable.", call. = FALSE)
+  }
+  root <- normalizePath(root, winslash = "/", mustWork = TRUE)
+
+  parts <- unlist(request$path %||% character(0), use.names = FALSE)
+  parts <- trimws(as.character(parts))
+  parts <- parts[nzchar(parts)]
+  if (any(parts %in% c(".", "..")) || any(grepl("[/\\\\]", parts))) {
+    stop("The selected folder path is invalid.", call. = FALSE)
+  }
+  parent <- if (length(parts)) do.call(file.path, as.list(c(root, parts))) else root
+  parent <- normalizePath(parent, winslash = "/", mustWork = TRUE)
+  compare <- function(x) if (identical(.Platform$OS.type, "windows")) tolower(x) else x
+  root_key <- paste0(sub("/+$", "", compare(root)), "/")
+  parent_key <- paste0(sub("/+$", "", compare(parent)), "/")
+  if (!startsWith(parent_key, root_key)) {
+    stop("The new folder must remain inside the selected root.", call. = FALSE)
   }
 
-  if ((is.null(selected) || !nzchar(selected)) && identical(.Platform$OS.type, "windows")) {
-    selected <- tryCatch(
-      utils::choose.dir(default = initial, caption = caption),
-      error = function(e) NULL
-    )
+  target <- file.path(parent, name)
+  if (!dir.exists(target) && !dir.create(target, recursive = FALSE, showWarnings = FALSE)) {
+    stop(sprintf("Could not create the folder: %s", target), call. = FALSE)
   }
-
-  if ((is.null(selected) || !nzchar(selected)) && requireNamespace("tcltk", quietly = TRUE)) {
-    selected <- tryCatch(
-      tcltk::tk_choose.dir(default = initial, caption = caption),
-      error = function(e) NULL
-    )
-  }
-
-  if (is.null(selected) || !nzchar(selected) || is.na(selected[[1]])) return(NULL)
-  normalizePath(path.expand(selected[[1]]), winslash = "/", mustWork = FALSE)
+  normalizePath(target, winslash = "/", mustWork = TRUE)
 }
 
 .bioszen_copy_growth_output_file <- function(file, output_dir) {
@@ -713,6 +746,16 @@ setup_growth_module <- function(input, output, session) {
     default
   }
 
+  growth_output_roots <- .bioszen_growth_output_roots()
+  shinyFiles::shinyDirChoose(
+    input,
+    "browseGrowthOutputDir",
+    roots = growth_output_roots,
+    session = session,
+    defaultRoot = "Home",
+    allowDirCreate = TRUE
+  )
+
   pump_growth_events <- function() {
     if (requireNamespace("httpuv", quietly = TRUE)) {
       try(httpuv::service(1), silent = TRUE)
@@ -929,9 +972,9 @@ setup_growth_module <- function(input, output, session) {
 
   observeEvent(input$browseGrowthOutputDir, {
     selected <- tryCatch(
-      .bioszen_choose_growth_output_dir(
-        initial = isolate(input$growthOutputDir %||% ""),
-        caption = growth_tr("growth_browse_dir_caption", "Select growth output folder", current_lang())
+      .bioszen_parse_growth_output_dir(
+        input$browseGrowthOutputDir,
+        roots = growth_output_roots
       ),
       error = function(e) {
         msg <- conditionMessage(e)
@@ -947,6 +990,31 @@ setup_growth_module <- function(input, output, session) {
     if (!is.null(selected) && nzchar(selected)) {
       updateTextInput(session, "growthOutputDir", value = selected)
     }
+  }, ignoreInit = TRUE)
+
+  observeEvent(input[["browseGrowthOutputDir-newDir"]], {
+    request <- input[["browseGrowthOutputDir-newDir"]]
+    created <- tryCatch(
+      .bioszen_create_growth_output_dir(request, roots = growth_output_roots),
+      error = function(e) {
+        msg <- conditionMessage(e)
+        status_text(sprintf("Error: %s", msg))
+        safe_show_growth_notification(
+          sprintf(growth_tr("growth_folder_create_error", "Could not create folder: %s", current_lang()), msg),
+          type = "error",
+          duration = 8
+        )
+        NULL
+      }
+    )
+    if (is.null(created)) return()
+    updateTextInput(session, "growthOutputDir", value = created)
+    safe_show_growth_notification(
+      sprintf(growth_tr("growth_folder_created", "Folder created: %s", current_lang()), created),
+      type = "message",
+      duration = 5
+    )
+    session$sendCustomMessage("bioszenGrowthFolderCreated", list(path = created))
   }, ignoreInit = TRUE)
 
   observeEvent(input$growthFiles, {

@@ -221,6 +221,7 @@ corr_ylab,Etiqueta eje Y:
 corr_ymax,Y max:
 corr_ymin,Y min:
 curves_linewidth,Grosor curvas:
+curves_point_size,Tamaño de puntos de curvas:
 curves_settings,Ajustes Curvas
 curves_xbreak,Int X:
 curves_xlab,Etiqueta eje X:
@@ -572,7 +573,7 @@ sig_auto_include,Incluir comparaciones:
 sig_auto_significant,Solo significativas
 sig_auto_all,Todas las comparaciones
 sig_auto_label_mode,Modo de etiqueta automática:
-sig_auto_label_stars,Estrellas (*, **, ***)
+sig_auto_label_stars,"Estrellas (*, **, ***, ****)"
 sig_auto_label_p,P-value (3 decimales)
 sig_auto_replace,Reemplazar barras actuales
 sig_auto_apply,Agregar barras automáticamente
@@ -687,3 +688,25 @@ combo_axis_align_auto,Automática
 combo_axis_align_left,Izquierda
 combo_axis_align_center,Centro
 combo_axis_align_right,Derecha
+download_save_failed,No se pudo guardar el archivo en la ubicación seleccionada.
+download_file_description,Archivo de BIOSZEN
+shinyfiles_create_folder,Crear nueva carpeta
+shinyfiles_folder_name,Nombre de la carpeta
+shinyfiles_sort_content,Ordenar contenido
+shinyfiles_name,Nombre
+shinyfiles_type,Tipo
+shinyfiles_size,Tamaño
+shinyfiles_created,Creado
+shinyfiles_modified,Modificado
+shinyfiles_sort_direction,Dirección del orden
+shinyfiles_enter_path,Ingresar ruta
+shinyfiles_volumes,Volúmenes
+shinyfiles_directories,Directorios
+shinyfiles_content,Contenido
+shinyfiles_no_folder,No hay carpetas
+shinyfiles_no_selection,Ninguna carpeta seleccionada
+shinyfiles_empty_folder,Carpeta vacía
+shinyfiles_cancel,Cancelar
+shinyfiles_select,Seleccionar
+growth_folder_created,Carpeta creada: %s
+growth_folder_create_error,No se pudo crear la carpeta: %s

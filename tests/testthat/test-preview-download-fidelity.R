@@ -34,6 +34,26 @@ test_that("export pipeline is wired to preview-aligned renderer", {
     txt,
     perl = TRUE
   ))
+  expect_true(grepl(
+    "write_current_plot_pptx\\s*<-\\s*function[\\s\\S]*?build_plot\\(scope_sel, strain_sel, input\\$tipo, for_interactive = TRUE\\)[\\s\\S]*?bioszen_write_editable_plot_pptx",
+    txt,
+    perl = TRUE
+  ))
+  expect_false(grepl(
+    "bioszen_write_plotly_svg_pptx|current_plotly_svg|bioszen_plot_svg",
+    txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "outputOptions\\(output,\\s*\"downloadPlot_pptx\",\\s*suspendWhenHidden\\s*=\\s*FALSE\\)",
+    txt,
+    perl = TRUE
+  ))
+  expect_true(grepl(
+    "outputOptions\\(output,\\s*\"downloadPlotly_pptx\",\\s*suspendWhenHidden\\s*=\\s*FALSE\\)",
+    txt,
+    perl = TRUE
+  ))
   curve_static_exports <- gregexpr(
     "if \\(identical\\(input\\$tipo %\\|\\|% \"\", \"Curvas\"\\)\\)[\\s\\S]*?ggplot2::ggsave",
     txt,
@@ -167,6 +187,27 @@ download_pdf_with_retry <- function(app, output_id, retries = 4L, pause_sec = 1)
 
   if (!is.null(last_err)) stop(last_err)
   stop("Failed to download PDF: unknown error")
+}
+
+download_pptx_with_retry <- function(app, output_id, retries = 4L, pause_sec = 1) {
+  last_err <- NULL
+  for (i in seq_len(retries)) {
+    try(app$wait_for_idle(duration = 500, timeout = 120000), silent = TRUE)
+    attempt <- tryCatch(
+      app$get_download(output = output_id),
+      error = function(e) {
+        last_err <<- e
+        NULL
+      }
+    )
+    if (!is.null(attempt) && file.exists(attempt)) {
+      return(attempt)
+    }
+    Sys.sleep(pause_sec)
+  }
+
+  if (!is.null(last_err)) stop(last_err)
+  stop("Failed to download PPTX: unknown error")
 }
 
 pdf_page_size_pts <- function(path) {
@@ -368,5 +409,97 @@ test_that("PNG download dimensions match preview dimensions across plot types", 
       expected_png_h,
       info = paste("height mismatch for type", tp)
     )
+  }
+})
+
+test_that("editable PPTX downloads contain one vector slide across plot types", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("officer")
+  skip_if_not_installed("xml2")
+
+  data_fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx")
+  curve_fixture <- app_test_path("www", "reference_files", "Ejemplo_curvas.xlsx")
+  expect_true(file.exists(data_fixture))
+  expect_true(file.exists(curve_fixture))
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(dataFile = normalizePath(data_fixture), wait_ = TRUE, timeout_ = 120000)
+  app$upload_file(curveFile = normalizePath(curve_fixture), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "strain", timeout = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  ensure_select_has_value(app, "strain")
+  ensure_select_has_value(app, "param")
+
+  logical_w <- 1200
+  logical_h <- 800
+  app$set_inputs(
+    scope = "Combinado",
+    plot_w = logical_w,
+    plot_h = logical_h,
+    wait_ = TRUE,
+    timeout_ = 120000,
+    allow_no_input_binding_ = TRUE
+  )
+  helper_env <- new.env(parent = globalenv())
+  helper_env$`%||%` <- `%||%`
+  helper_env$BIOSZEN_CSS_DPI <- BIOSZEN_CSS_DPI
+  sys.source(app_test_path("helpers.R"), envir = helper_env)
+  plot_types <- c(
+    "Boxplot", "Barras", "Violin", "Curvas", "Apiladas",
+    "Correlacion", "MatrizCorrelacion", "Heatmap"
+  )
+
+  for (tp in plot_types) {
+    app$set_inputs(tipo = tp, wait_ = FALSE, allow_no_input_binding_ = TRUE)
+    wait_for_input_value(app, "tipo", tp, timeout_sec = 120)
+    wait_for_plot_ready(app, timeout_sec = 120)
+
+    output_id <- if (identical(tp, "Apiladas")) {
+      "downloadPlotly_pptx"
+    } else {
+      "downloadPlot_pptx"
+    }
+    out <- download_pptx_with_retry(app, output_id = output_id)
+    expect_true(file.exists(out), info = paste("Missing PPTX export for type", tp))
+    expect_true(file.info(out)$size > 1000, info = paste("Empty PPTX export for type", tp))
+
+    deck <- officer::read_pptx(out)
+    expect_equal(length(deck), 1, info = paste("Unexpected slide count for type", tp))
+    slide_dims <- officer::slide_size(deck)
+    expected_page <- if (identical(tp, "Curvas")) {
+      list(width_px = logical_w, height_px = logical_h)
+    } else {
+      helper_env$bioszen_pdf_page_size_from_pixels(logical_w, logical_h)
+    }
+    expected_size <- helper_env$bioszen_pptx_size_from_pixels(
+      expected_page$width_px,
+      expected_page$height_px
+    )
+    expect_equal(slide_dims$width, expected_size$width, tolerance = 1e-5)
+    expect_equal(slide_dims$height, expected_size$height, tolerance = 1e-5)
+
+    objects <- officer::pptx_summary(deck)
+    expect_true(nrow(objects) > 1, info = paste("PPTX lacks editable objects for type", tp))
+    expect_false(
+      nrow(objects) == 1 && identical(objects$content_type[[1]], "image"),
+      info = paste("PPTX unexpectedly contains only a raster image for type", tp)
+    )
+
+    listing <- utils::unzip(out, list = TRUE)
+    expect_false(
+      any(grepl("^ppt/media/.*\\.(?:png|jpe?g|svg)$", listing$Name, perl = TRUE)),
+      info = paste("PPTX contains a flattened chart image for type", tp)
+    )
+
+    unpacked <- tempfile(paste0("bioszen-pptx-", tp, "-"))
+    dir.create(unpacked, recursive = TRUE)
+    utils::unzip(out, exdir = unpacked)
+    slide <- xml2::read_xml(file.path(unpacked, "ppt", "slides", "slide1.xml"))
+    shape_count <- length(xml2::xml_find_all(slide, ".//p:sp", xml2::xml_ns(slide)))
+    unlink(unpacked, recursive = TRUE, force = TRUE)
+    expect_true(shape_count > 5, info = paste("PPTX lacks independent DrawingML shapes for type", tp))
   }
 })

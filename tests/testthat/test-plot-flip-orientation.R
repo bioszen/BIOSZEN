@@ -233,6 +233,39 @@ test_that("distribution plot builders toggle CoordFlip only when requested", {
   expect_error(ggplot2::ggplot_build(p_box_v), NA)
   expect_error(plotly::ggplotly(p_box_v, originalData = TRUE), NA)
 
+  # Wrapped tick labels must only change display text. Both layers need the
+  # same post-wrap factor levels or ggplot creates extra X categories for
+  # points that still carry the unwrapped label.
+  wrapped_points_ctx <- make_dist_ctx(flip = FALSE)
+  wrapped_points_ctx$scope <- "PorCepa"
+  wrapped_points_ctx$scope_df <- data.frame(
+    Label = rep("Unused", 6),
+    Strain = rep("S1", 6),
+    Media = rep(c("Ampicillin 1uM", "Ampicillin 2uM"), each = 3),
+    ParamA = c(1.2, 1.5, 1.8, 2.1, 2.4, 2.7),
+    stringsAsFactors = FALSE
+  )
+  wrapped_points_ctx$input$x_wrap <- TRUE
+  wrapped_points_ctx$input$x_wrap_lines <- 2
+  wrapped_points_ctx$input$pt_jit <- 0
+  wrapped_points_ctx$wrap_label <- function(x, lines = 2) {
+    sub(" ", intToUtf8(10L), as.character(x), fixed = TRUE)
+  }
+  p_box_wrapped <- build_boxplot_plot_impl(wrapped_points_ctx)
+  wrapped_build <- ggplot2::ggplot_build(p_box_wrapped)
+  wrapped_box_layer <- which(vapply(p_box_wrapped$layers, function(layer) {
+    inherits(layer$geom, "GeomBoxplot")
+  }, logical(1)))[[1]]
+  wrapped_point_layer <- which(vapply(p_box_wrapped$layers, function(layer) {
+    inherits(layer$geom, "GeomPoint")
+  }, logical(1)))[[1]]
+  expect_identical(
+    sort(unique(wrapped_build$data[[wrapped_point_layer]]$x)),
+    sort(unique(wrapped_build$data[[wrapped_box_layer]]$x)),
+    info = "Wrapping X labels must not create separate discrete positions for points."
+  )
+  expect_equal(length(unique(wrapped_build$data[[wrapped_box_layer]]$x)), 2L)
+
   minmax_stats <- NULL
   minmax_ctx <- make_dist_ctx(flip = FALSE, errbar_stat = "MINMAX")
   minmax_ctx$add_whisker_caps <- function(p, stats_df, ...) {

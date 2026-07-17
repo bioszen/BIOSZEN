@@ -81,13 +81,8 @@ prepare_corr_matrix_payload <- function(df_m,
     dplyr::mutate(
       param_x = factor(param_x, levels = params_plot),
       param_y = factor(param_y, levels = rev(params_plot)),
-      sig = !is.na(p.adj) & p.adj < 0.05,
-      stars = dplyr::case_when(
-        p.adj < 0.001 ~ "***",
-        p.adj < 0.01  ~ "**",
-        p.adj < 0.05  ~ "*",
-        TRUE ~ ""
-      )
+      sig = bioszen_is_significant(p.adj),
+      stars = bioszen_significance_stars(p.adj)
     )
 
   mat_df <- if (isTRUE(show_sig_only)) {

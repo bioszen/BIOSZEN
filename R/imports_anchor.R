@@ -7,6 +7,7 @@
 .bioszen_imports_anchor <- function() {
   if (FALSE) {
     shiny::runApp
+    shinyFiles::shinyDirButton
     httpuv::service
     shiny.i18n::Translator
     ggplot2::ggplot

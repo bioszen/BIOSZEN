@@ -1,9 +1,10 @@
 ^inst/app/www/.*\.(docx)$
-^app\.R$
 ^tests/testthat$ # include tests but not the results
 ^\.github$
 ^\.git
 ^BIOSZEN_.*\.tar\.gz$
+^BIOSZEN-v.*-bundle\.zip$
+^\.codex-tmp$
 ^utils$
 ^R_libs$
 ^\.env.*$
@@ -12,7 +13,7 @@
 ^LICENSE$
 ^inst/app/rsconnect$
 ^inst/app/manifest\.json$
-^inst/app/Rplots\.pdf$
+^.*Rplots\.pdf$
 ^\.Rhistory$
 ^\.RData$
 ^\.Ruserdata$

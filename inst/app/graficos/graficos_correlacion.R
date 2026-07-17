@@ -198,7 +198,13 @@ build_correlation_plot_impl <- function(scope,
     stats_lines <- c(stats_lines, sprintf("r = %.3f", as.numeric(cor_res$estimate)[1]))
   }
   if (isTRUE(input$corr_show_p) && !is.null(cor_res)) {
-    stats_lines <- c(stats_lines, sprintf("p = %.3g", cor_res$p.value))
+    stats_lines <- c(
+      stats_lines,
+      paste0(
+        "p = ",
+        bioszen_format_p_value(cor_res$p.value, digits = 3L, scientific_below = 1e-3)
+      )
+    )
   }
   if (isTRUE(input$corr_show_r2) && !is.null(r2_val) && is.finite(r2_val)) {
     stats_lines <- c(stats_lines, sprintf("R^2 = %.3f", r2_val))

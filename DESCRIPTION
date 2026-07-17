@@ -17,6 +17,7 @@ ByteCompile: true
 Depends: R (>= 4.1.0)
 Imports:
     shiny,
+    shinyFiles,
     later,
     httpuv,
     shiny.i18n,

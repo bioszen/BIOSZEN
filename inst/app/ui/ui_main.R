@@ -1,5 +1,16 @@
 # --- Main UI ---
 # --- UI ----------------------------------------------------------------------
+bioszen_dir_button <- function(id, label, title, icon_name = "folder-open") {
+  button <- shinyFiles::shinyDirButton(
+    id = id,
+    label = "",
+    title = title,
+    icon = icon(icon_name)
+  )
+  button[[2]]$children <- list(icon(icon_name), label)
+  button
+}
+
 ui <- fluidPage(
   theme = theme_light,          # por defecto; el server lo cambia a oscuro/claro
   useShinyjs(),
@@ -255,6 +266,82 @@ ui <- fluidPage(
         margin-left: 6px;
       }
 
+      /* Sidebar tables need their controls stacked at every desktop width. */
+      .bioszen-sidebar-content .dataTables_wrapper {
+        box-sizing: border-box;
+        width: 100% !important;
+        max-width: 100%;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_length,
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_filter,
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_info,
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_paginate {
+        float: none !important;
+        clear: both;
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
+        text-align: left !important;
+      }
+
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_length,
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_filter {
+        margin-bottom: 10px;
+      }
+
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_length label,
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_filter label {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        margin: 0;
+        white-space: normal;
+      }
+
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_filter input {
+        box-sizing: border-box;
+        width: min(240px, 100%);
+        max-width: 100%;
+        margin-left: 0;
+      }
+
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_scroll,
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_scrollHead,
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_scrollBody {
+        box-sizing: border-box;
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_scrollBody {
+        overflow-x: auto !important;
+      }
+
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_info {
+        padding-top: 10px;
+        white-space: normal;
+      }
+
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_paginate,
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_paginate > span {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 4px;
+        white-space: normal;
+      }
+
+      .bioszen-sidebar-content .dataTables_wrapper .dataTables_paginate .paginate_button {
+        box-sizing: border-box;
+        margin: 0 !important;
+      }
+
       /*
        * Shiny adds the `recalculating` class while an output is updating and
        * its default CSS fades that output. For BIOSZEN plots and filter panels
@@ -506,6 +593,83 @@ ui <- fluidPage(
     })();
   ")),
   tags$script(HTML("
+    (function(){
+      function selectCurrentShinyFilesDirectory(modal){
+        if (!modal || !window.jQuery) return false;
+        var $modal = window.jQuery(modal);
+        if ($modal.find('.sF-dirList .selected').length === 1) return true;
+        var data = $modal.data('currentData') || {};
+        var path = Array.isArray(data.contentPath) ? data.contentPath.slice() : [''];
+        var $node = $modal.find('.sF-dirList > .sF-directory').first();
+        if (!$node.length) return false;
+        for (var i = 1; i < path.length; i++) {
+          var part = String(path[i] || '');
+          if (!part) continue;
+          var $next = $node.children('.sF-content').children('.sF-directory').filter(function(){
+            return window.jQuery(this).children('.sF-file-name').children().text() === part;
+          }).first();
+          if (!$next.length) break;
+          $node = $next;
+        }
+        $modal.find('.sF-dirList .selected').removeClass('selected');
+        $node.addClass('selected');
+        return true;
+      }
+
+      function submitGrowthFolder(modal){
+        if (!modal || modal.id !== 'browseGrowthOutputDir-modal' || !window.jQuery) return false;
+        var $modal = window.jQuery(modal);
+        var name = String($modal.find('.sF-newDir input').val() || '').trim();
+        if (!name) return false;
+        var data = $modal.data('currentData') || {};
+        var path = Array.isArray(data.contentPath) ? data.contentPath.slice() : [''];
+        if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+          Shiny.setInputValue('browseGrowthOutputDir-newDir', {
+            name: name,
+            path: path,
+            root: data.selectedRoot || '',
+            id: Date.now()
+          }, {priority:'event'});
+        }
+        $modal.find('.sF-newDir').removeClass('open').find('#sF-btn-newDir').removeClass('active');
+        return true;
+      }
+
+      document.addEventListener('click', function(event){
+        var button = event.target && event.target.closest ?
+          event.target.closest('.sF-newDir ul button') : null;
+        if (!button) return;
+        var modal = button.closest('.sF-modalContainer');
+        selectCurrentShinyFilesDirectory(modal);
+        if (submitGrowthFolder(modal)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
+      }, true);
+
+      document.addEventListener('keydown', function(event){
+        var input = event.target;
+        if (!input || event.key !== 'Enter' || !input.closest('.sF-newDir')) return;
+        var modal = input.closest('.sF-modalContainer');
+        selectCurrentShinyFilesDirectory(modal);
+        if (submitGrowthFolder(modal)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
+      }, true);
+
+      Shiny.addCustomMessageHandler('bioszenGrowthFolderCreated', function(msg){
+        var modal = document.getElementById('browseGrowthOutputDir-modal');
+        if (modal) {
+          var menu = modal.querySelector('.sF-newDir');
+          if (menu) menu.classList.remove('open');
+          var refresh = modal.querySelector('#sF-btn-refresh');
+          if (refresh) refresh.click();
+        }
+      });
+    })();
+  ")),
+  tags$script(HTML("
     (function () {
       function ensureI18nTranslations() {
         if (typeof window.i18n_translations === 'undefined' || window.i18n_translations === null) {
@@ -735,6 +899,90 @@ ui <- fluidPage(
         }
       }
 
+      function setTextAfterIcons(node, value) {
+        if (!node || value === null || value === undefined) return;
+        var textNodes = [];
+        for (var i = 0; i < node.childNodes.length; i++) {
+          if (node.childNodes[i].nodeType === 3) textNodes.push(node.childNodes[i]);
+        }
+        var next = ' ' + String(value);
+        if (textNodes.length) {
+          if (textNodes[0].nodeValue !== next) textNodes[0].nodeValue = next;
+          for (var j = 1; j < textNodes.length; j++) textNodes[j].nodeValue = '';
+        } else {
+          node.appendChild(document.createTextNode(next));
+        }
+      }
+
+      function translateShinyFiles(lang) {
+        var modals = document.querySelectorAll('.sF-modalContainer');
+        for (var i = 0; i < modals.length; i++) {
+          var modal = modals[i];
+          var isGrowth = modal.id === 'browseGrowthOutputDir-modal';
+          var title = modal.querySelector('.sF-title');
+          if (isGrowth && title) {
+            var titleText = lookupTranslation('growth_browse_dir_caption', lang);
+            if (titleText !== null && title.textContent !== titleText) title.textContent = titleText;
+          }
+
+          setTextAfterIcons(
+            modal.querySelector('#sF-btn-newDir'),
+            lookupTranslation('shinyfiles_create_folder', lang) || 'Create new folder'
+          );
+          setTextAfterIcons(
+            modal.querySelector('#sF-btn-sort'),
+            lookupTranslation('shinyfiles_sort_content', lang) || 'Sort content'
+          );
+
+          var folderInput = modal.querySelector('.sF-newDir input');
+          if (folderInput) {
+            folderInput.placeholder = lookupTranslation('shinyfiles_folder_name', lang) || 'Folder name';
+          }
+          var pathInput = modal.querySelector('.sF-textChoice input');
+          if (pathInput) pathInput.placeholder = lookupTranslation('shinyfiles_enter_path', lang) || 'Enter path';
+
+          var sortKeys = [
+            'shinyfiles_name', 'shinyfiles_type', 'shinyfiles_size',
+            'shinyfiles_created', 'shinyfiles_modified', 'shinyfiles_sort_direction'
+          ];
+          var sortItems = modal.querySelectorAll('.sF-sort li a');
+          for (var s = 0; s < sortItems.length && s < sortKeys.length; s++) {
+            setTextAfterIcons(sortItems[s], lookupTranslation(sortKeys[s], lang));
+          }
+
+          var headings = modal.querySelectorAll('.sF-dirInfo h6');
+          if (headings[0]) headings[0].textContent =
+            lookupTranslation('shinyfiles_directories', lang) || 'Directories';
+          if (headings[1]) headings[1].textContent =
+            lookupTranslation('shinyfiles_content', lang) || 'Content';
+
+          var groups = modal.querySelectorAll('.sF-breadcrumps optgroup');
+          for (var g = 0; g < groups.length; g++) {
+            groups[g].label = lookupTranslation('shinyfiles_volumes', lang) || 'Volumes';
+          }
+          var cancel = modal.querySelector('#sF-cancelButton');
+          var select = modal.querySelector('#sF-selectButton');
+          if (cancel) cancel.textContent = lookupTranslation('shinyfiles_cancel', lang) || 'Cancel';
+          if (select) select.textContent = lookupTranslation('shinyfiles_select', lang) || 'Select';
+
+          var content = modal.querySelector('.sF-dirContent');
+          if (content) {
+            var contentTarget = content;
+            if (content.children.length === 1 && content.children[0].children.length === 0) {
+              contentTarget = content.children[0];
+            }
+            var current = (contentTarget.textContent || '').trim();
+            if (/^(No folder selected|Ninguna carpeta seleccionada)$/i.test(current)) {
+              contentTarget.textContent = lookupTranslation('shinyfiles_no_selection', lang) || 'No folder selected';
+            } else if (/^(No folders|No directories|Sin carpetas)$/i.test(current)) {
+              contentTarget.textContent = lookupTranslation('shinyfiles_no_folder', lang) || 'No folders';
+            } else if (/^(Empty folder|Carpeta vacía)$/i.test(current)) {
+              contentTarget.textContent = lookupTranslation('shinyfiles_empty_folder', lang) || 'Empty folder';
+            }
+          }
+        }
+      }
+
       var translationObserverStarted = false;
       var translationPending = false;
 
@@ -775,10 +1023,12 @@ ui <- fluidPage(
         translateChoiceLabels(lang);
         translateDynamicHeadings(lang);
         translateDataTables(lang);
+        translateShinyFiles(lang);
         startTranslationObserver();
       }
 
       window.BIOSZEN_translateStatic = translateStatic;
+      window.BIOSZEN_lookupTranslation = lookupTranslation;
 
       ensureI18nTranslations();
       document.addEventListener('bioszen:lang-changed', function () {
@@ -1778,18 +2028,192 @@ ui <- fluidPage(
       }, true);
     })();
   ")),
-  # ------ Handler de descarga Plotly ----------------------------------------
+  # ------ Explicit save-location handling ----------------------------------
   tags$script(HTML("
-    Shiny.addCustomMessageHandler('downloadPlotlyImage', function(msg){
-      var gd = document.getElementById('plotInteractivo');
-      Plotly.downloadImage(gd, {
-        format:  msg.format || 'png',
-        filename: msg.filename,
-        width:    msg.width,
-        height:   msg.height,
-        scale:    msg.scale || 1
-      });
-    });
+    (function(){
+      function cleanName(value){
+        value = String(value || '').trim().replace(/[\\/:*?\"<>|]+/g, '_');
+        return value || 'BIOSZEN_download';
+      }
+
+      function extensionFor(link){
+        var id = String(link.id || '').toLowerCase();
+        var text = String(link.textContent || '').toLowerCase();
+        if (/pptx|ppt/.test(id + ' ' + text)) return '.pptx';
+        if (/pdf|manual/.test(id + ' ' + text)) return '.pdf';
+        if (/png/.test(id + ' ' + text)) return '.png';
+        if (/zip|bundle|refs|growth/.test(id + ' ' + text)) return '.zip';
+        if (/csv/.test(id + ' ' + text)) return '.csv';
+        return '.xlsx';
+      }
+
+      function plotSuggestedName(link, ext){
+        if (!/^downloadPlot/i.test(link.id || '')) return null;
+        var scope = document.getElementById('scope');
+        var strain = document.getElementById('strain');
+        var type = document.getElementById('tipo');
+        var prefix = scope && scope.value === 'Combinado' ? 'Combinado' :
+          (strain && strain.value ? strain.value : 'Grafico');
+        return cleanName(prefix + '_' + (type && type.value ? type.value : 'plot')) + ext;
+      }
+
+      function suggestedName(link){
+        var ext = extensionFor(link);
+        var plotName = plotSuggestedName(link, ext);
+        if (plotName) return plotName;
+        var names = {
+          downloadExcel: 'BIOSZEN_data.xlsx',
+          downloadMetadata: 'BIOSZEN_metadata.xlsx',
+          downloadStats: 'BIOSZEN_statistics.xlsx',
+          downloadBundleZip: 'BIOSZEN_bundle.zip',
+          downloadGrowthZip: 'BIOSZEN_growth_results.zip',
+          download_refs: 'BIOSZEN_reference_files.zip',
+          downloadHeatClusters: 'BIOSZEN_heatmap_clusters.xlsx',
+          download_corr_adv: 'BIOSZEN_correlations.xlsx',
+          downloadMergedPlatemap: 'BIOSZEN_merged_platemap.xlsx',
+          downloadMergedPlatemapLatest: 'BIOSZEN_merged_platemap.xlsx',
+          downloadMergedCurves: 'BIOSZEN_merged_curves.xlsx',
+          downloadMergedCurvesLatest: 'BIOSZEN_merged_curves.xlsx',
+          dl_combo_png: 'BIOSZEN_composition.png',
+          dl_combo_pdf: 'BIOSZEN_composition.pdf',
+          dl_combo_pptx: 'BIOSZEN_composition.pptx',
+          dl_combo_meta: 'BIOSZEN_composition_metadata.xlsx'
+        };
+        if (names[link.id]) return names[link.id];
+        return cleanName(link.textContent || link.id || 'BIOSZEN_download') + ext;
+      }
+
+      function pickerOptions(link){
+        var name = suggestedName(link);
+        var ext = name.slice(name.lastIndexOf('.')).toLowerCase();
+        var mime = {
+          '.png':'image/png', '.pdf':'application/pdf',
+          '.pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          '.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          '.zip':'application/zip', '.csv':'text/csv'
+        }[ext] || 'application/octet-stream';
+        var accept = {};
+        accept[mime] = [ext];
+        var lang = window.BIOSZEN_LANG || 'en';
+        var description = window.BIOSZEN_lookupTranslation &&
+          window.BIOSZEN_lookupTranslation('download_file_description', lang);
+        return {suggestedName:name, types:[{description:description || 'BIOSZEN file', accept:accept}]};
+      }
+
+      function triggerNativeDownload(link){
+        link.dataset.bioszenDownloadBypass = '1';
+        link.click();
+        setTimeout(function(){ delete link.dataset.bioszenDownloadBypass; }, 0);
+      }
+
+      function canUseSaveFilePicker(){
+        if (typeof window.showSaveFilePicker !== 'function' || !window.isSecureContext) {
+          return false;
+        }
+        try {
+          // The File System Access API is forbidden from cross-origin frames,
+          // including the embedded RStudio Viewer on Windows and macOS.
+          return window.self === window.top;
+        } catch (error) {
+          return false;
+        }
+      }
+
+      function shouldUseNativeDownload(error){
+        if (!error) return false;
+        var name = String(error.name || '');
+        var message = String(error.message || '').toLowerCase();
+        return name === 'SecurityError' || name === 'NotAllowedError' ||
+          message.indexOf('cross origin') >= 0 ||
+          message.indexOf('cross-origin') >= 0 ||
+          message.indexOf('not allowed to show a file picker') >= 0;
+      }
+
+      function fetchDownloadBlob(link, attempts){
+        attempts = Math.max(1, Number(attempts || 1));
+        function fetchOnce(){
+          var href = String(link.getAttribute('href') || '').trim();
+          if (!href || href === '#') {
+            return Promise.reject(new Error('Download link is not ready.'));
+          }
+          return fetch(href, {credentials:'same-origin', cache:'no-store'}).then(function(response){
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.blob();
+          }).then(function(blob){
+            if (!blob || !Number.isFinite(blob.size) || blob.size <= 0) {
+              throw new Error('The generated file is empty.');
+            }
+            return blob;
+          });
+        }
+        function attempt(remaining){
+          return fetchOnce().catch(function(error){
+            if (remaining <= 1) throw error;
+            return new Promise(function(resolve){ setTimeout(resolve, 500); })
+              .then(function(){ return attempt(remaining - 1); });
+          });
+        }
+        return attempt(attempts);
+      }
+
+      function saveDownloadLink(link, pickerPromise){
+        var blobPromise = fetchDownloadBlob(link, 3).then(
+          function(blob){ return {blob:blob, error:null}; },
+          function(error){ return {blob:null, error:error}; }
+        );
+        return pickerPromise.then(function(handle){
+          if (!handle) return false;
+          return blobPromise.then(function(result){
+            if (result.error) throw result.error;
+            var blob = result.blob;
+            return handle.createWritable().then(function(writer){
+              return writer.write(blob)
+                .then(function(){ return writer.close(); })
+                .catch(function(error){
+                  var abortResult = typeof writer.abort === 'function' ? writer.abort() : null;
+                  return Promise.resolve(abortResult)
+                    .catch(function(){ return null; })
+                    .then(function(){ throw error; });
+                });
+            });
+          }).then(function(){ return true; });
+        });
+      }
+
+      document.addEventListener('click', function(event){
+        var link = event.target && event.target.closest ?
+          event.target.closest('a.shiny-download-link') : null;
+        if (!link || link.dataset.bioszenDownloadBypass === '1' || !event.isTrusted) return;
+        var canPick = canUseSaveFilePicker();
+        if (!canPick) return;
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
+        var pickerPromise;
+        try {
+          pickerPromise = window.showSaveFilePicker(pickerOptions(link))
+            .catch(function(error){
+              if (error && error.name === 'AbortError') return null;
+              if (shouldUseNativeDownload(error)) {
+                triggerNativeDownload(link);
+                return null;
+              }
+              throw error;
+            });
+        } catch (error) {
+          triggerNativeDownload(link);
+          return;
+        }
+
+        saveDownloadLink(link, pickerPromise).catch(function(error){
+          var lang = window.BIOSZEN_LANG || 'en';
+          var message = window.BIOSZEN_lookupTranslation &&
+            window.BIOSZEN_lookupTranslation('download_save_failed', lang);
+          window.alert((message || 'The file could not be saved.') + '\\n' + error.message);
+        });
+      }, true);
+    })();
   ")),
   tags$script(HTML("
     Shiny.addCustomMessageHandler('copyPlotToClipboard', function(msg){
@@ -2049,8 +2473,8 @@ ui <- fluidPage(
                         label = NULL,
                         icon = icon("chevron-right"),
                         class = "btn btn-outline-secondary",
-                        title = tr("merge_open"),
-                        `aria-label` = as.character(tr("merge_open"))
+                        title = label_to_text(tr("merge_open")),
+                        `aria-label` = label_to_text(tr("merge_open"))
                       )
                     )
                   ),
@@ -2397,6 +2821,7 @@ ui <- fluidPage(
                      column(6, textInput('cur_ylab', tr("curves_ylab"), ''))
                    ),
                   numericInput('curve_lwd', tr("curves_linewidth"), value = 1.5, min = 0.5, step = 0.1),
+                  numericInput('curve_pt_size', tr("curves_point_size"), value = 3.3, min = 0.1, step = 0.1),
                   checkboxInput("cur_show_ci", tr("curves_show_ci"), FALSE),
                   radioButtons(
                     "cur_ci_style", tr("curves_ci_style"),
@@ -3138,7 +3563,7 @@ ui <- fluidPage(
                   fluidRow(
                     column(6,
                            numericInput('sig_linewidth', tr("sig_linewidth"),
-                                        .8,  min = .2, step = .2)),
+                                        .4,  min = .2, step = .2)),
                     column(6,
                             numericInput('sig_offset',    tr("sig_offset"),
                                          .05, min = .0,  step = .01))
@@ -3188,8 +3613,9 @@ ui <- fluidPage(
                      ),
                      tags$ul(
                        class = "dropdown-menu",
-                       tags$li(actionLink("downloadPlotly_png", "PNG", class="dropdown-item")),
-                       tags$li(actionLink("downloadPlotly_pdf", "PDF", class="dropdown-item"))
+                       tags$li(downloadLink("downloadPlotly_png", "PNG", class="dropdown-item")),
+                       tags$li(downloadLink("downloadPlotly_pdf", "PDF", class="dropdown-item")),
+                       tags$li(downloadLink("downloadPlotly_pptx", "PPT", class="dropdown-item"))
                      )
                    )
                  ),
@@ -3207,7 +3633,8 @@ ui <- fluidPage(
                      tags$ul(
                        class = "dropdown-menu",
                        tags$li(downloadLink("downloadPlot_png", "PNG", class="dropdown-item")),
-                       tags$li(downloadLink("downloadPlot_pdf", "PDF", class="dropdown-item"))
+                       tags$li(downloadLink("downloadPlot_pdf", "PDF", class="dropdown-item")),
+                       tags$li(downloadLink("downloadPlot_pptx", "PPT", class="dropdown-item"))
                      )
                    )
                  ),
@@ -3313,10 +3740,10 @@ ui <- fluidPage(
                     value = "",
                     placeholder = tr_text("growth_output_dir_placeholder", i18n_lang)
                   ),
-                  actionButton(
+                  bioszen_dir_button(
                     "browseGrowthOutputDir",
-                    label = tagList(icon("folder-open"), tr("growth_browse_dir")),
-                    class = "btn btn-default"
+                    label = tr("growth_browse_dir"),
+                    title = tr_text("growth_browse_dir_caption", i18n_lang)
                   ),
                   helpText(tr("growth_output_dir_help")),
                   br(),

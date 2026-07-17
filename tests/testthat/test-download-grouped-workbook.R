@@ -60,6 +60,23 @@ read_strain_detail_block <- function(path, sheet, strain) {
   block
 }
 
+read_biological_summary_block <- function(path, sheet) {
+  raw <- readxl::read_excel(path, sheet = sheet, col_names = FALSE)
+  c1 <- trimws(as.character(raw[[1]]))
+  c1[is.na(c1)] <- ""
+  title_row <- which(c1 == "Resumen por réplica biológica")
+  if (!length(title_row) || title_row[[1]] >= nrow(raw)) return(tibble::tibble())
+  header_row <- title_row[[1]] + 1L
+  headers <- trimws(as.character(unlist(raw[header_row, ], use.names = FALSE)))
+  headers[is.na(headers) | !nzchar(headers)] <- paste0("V", which(is.na(headers) | !nzchar(headers)))
+  data_start <- header_row + 1L
+  if (data_start > nrow(raw)) return(tibble::tibble())
+  block <- raw[data_start:nrow(raw), seq_along(headers), drop = FALSE]
+  block <- tibble::as_tibble(block, .name_repair = "minimal")
+  names(block) <- make.unique(headers, sep = "_")
+  block[!is.na(block[[1]]) & nzchar(trimws(as.character(block[[1]]))), , drop = FALSE]
+}
+
 expect_grouped_workbook_sheets <- function(
     path,
     required = character(0),
@@ -627,6 +644,16 @@ test_that("technical outlier deselection creates filtered parameter workbook tab
   expect_true(any(as.character(raw_detail$RepBiol) == "1" & as.character(raw_detail$RepTec) == "T4"))
   expect_false(any(as.character(filt_detail$RepBiol) == "1" & as.character(filt_detail$RepTec) == "T4"))
   expect_true(any(as.character(filt_detail$RepBiol) == "2" & as.character(filt_detail$RepTec) == "T4"))
+
+  raw_summary <- read_biological_summary_block(out_path, "uMax")
+  filt_summary <- read_biological_summary_block(out_path, "uMax_filt")
+  value_col <- setdiff(names(raw_summary), c("Strain", "RepBiol"))[[1]]
+  raw_rep1 <- as.numeric(raw_summary[[value_col]][as.character(raw_summary$RepBiol) == "1"])
+  filt_rep1 <- as.numeric(filt_summary[[value_col]][as.character(filt_summary$RepBiol) == "1"])
+  expect_length(raw_rep1, 1L)
+  expect_length(filt_rep1, 1L)
+  expect_false(isTRUE(all.equal(raw_rep1, filt_rep1)))
+  expect_equal(filt_rep1, mean(c(10.0, 10.1, 10.2)), tolerance = 1e-10)
 })
 
 test_that("technical replicate filt sheets use the stored map for each parameter", {

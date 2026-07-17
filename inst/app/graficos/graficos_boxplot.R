@@ -374,12 +374,6 @@ build_boxplot_plot_impl <- function(ctx) {
 
     data_max <- suppressWarnings(max(df[[param_sel]], na.rm = TRUE))
     ymax_plot <- if (is.finite(data_max) && data_max > ymax) data_max else ymax
-    df_points <- if (isTRUE(for_interactive)) {
-      downsample_points_by_group(df, "Media", cap_total = 7000L)
-    } else {
-      df
-    }
-
     if (isTRUE(input$x_wrap)) {
       df$Media <- wrap_label(df$Media, lines = input$x_wrap_lines)
     }
@@ -387,6 +381,13 @@ build_boxplot_plot_impl <- function(ctx) {
       df$Media <- droplevels(df$Media)
     } else {
       df$Media <- factor(df$Media, levels = unique(df$Media))
+    }
+    # Build the point layer after wrapping/factoring Media so it shares the
+    # exact same discrete X scale as the box-statistics layer.
+    df_points <- if (isTRUE(for_interactive)) {
+      downsample_points_by_group(df, "Media", cap_total = 7000L)
+    } else {
+      df
     }
     box_stats <- df %>%
       group_by(Media) %>%

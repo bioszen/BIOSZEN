@@ -162,6 +162,27 @@ test_that("standalone launcher resolves fresh Rscript paths on Windows and macOS
   )
 })
 
+test_that("standalone launcher honors an explicit source-wrapper path", {
+  env <- load_launcher_functions("get_script_path")
+  launcher <- tempfile("BIOSZEN launcher ", fileext = ".R")
+  file.create(launcher)
+
+  old_value <- Sys.getenv("BIOSZEN_LAUNCHER_SCRIPT", unset = NA_character_)
+  on.exit({
+    if (is.na(old_value)) {
+      Sys.unsetenv("BIOSZEN_LAUNCHER_SCRIPT")
+    } else {
+      Sys.setenv(BIOSZEN_LAUNCHER_SCRIPT = old_value)
+    }
+  }, add = TRUE)
+  Sys.setenv(BIOSZEN_LAUNCHER_SCRIPT = launcher)
+
+  expect_equal(
+    env$get_script_path(),
+    normalizePath(launcher, winslash = "/", mustWork = TRUE)
+  )
+})
+
 test_that("standalone launcher starts a one-time vanilla child process", {
   env <- load_launcher_functions("launch_fresh_launcher_process")
   env$launcher_fresh_process_env <- "BIOSZEN_LAUNCHER_FRESH_PROCESS"
@@ -207,12 +228,70 @@ test_that("standalone launcher detects namespaces loaded outside its local libra
   expect_true(env$same_launcher_path("C:/Temp/BIOSZEN", "c:/temp/bioszen", "windows"))
 })
 
+test_that("standalone launcher defers missing packages locked by the current session", {
+  env <- load_launcher_functions("ensure_dependencies")
+  state <- new.env(parent = emptyenv())
+  state$missing_calls <- 0L
+  state$installed <- character(0)
+
+  env$launcher_is_fresh_process <- FALSE
+  env$launcher_library_changed <- FALSE
+  env$launcher_deferred_packages <- character(0)
+  env$resolve_dependency_closure <- identity
+  env$loadedNamespaces <- function() "shiny"
+  env$packages_missing_from_local_library <- function(packages, lib_dir) {
+    state$missing_calls <- state$missing_calls + 1L
+    if (state$missing_calls == 1L) c("shiny", "later") else "shiny"
+  }
+  env$install_dependency_packages <- function(packages, lib_dir) {
+    state$installed <- packages
+    invisible(TRUE)
+  }
+
+  output <- capture.output(env$ensure_dependencies(c("shiny", "later"), tempdir()))
+
+  expect_identical(state$installed, "later")
+  expect_identical(env$launcher_deferred_packages, "shiny")
+  expect_true(any(grepl("Deferring packages already loaded", output, fixed = TRUE)))
+  expect_true(any(grepl("Clean-process installation still required for: shiny", output, fixed = TRUE)))
+})
+
+test_that("standalone launcher installs missing packages normally in its fresh process", {
+  env <- load_launcher_functions("ensure_dependencies")
+  state <- new.env(parent = emptyenv())
+  state$missing_calls <- 0L
+  state$installed <- character(0)
+
+  env$launcher_is_fresh_process <- TRUE
+  env$launcher_library_changed <- FALSE
+  env$launcher_deferred_packages <- character(0)
+  env$resolve_dependency_closure <- identity
+  env$loadedNamespaces <- function() "shiny"
+  env$packages_missing_from_local_library <- function(packages, lib_dir) {
+    state$missing_calls <- state$missing_calls + 1L
+    if (state$missing_calls == 1L) "shiny" else character(0)
+  }
+  env$install_dependency_packages <- function(packages, lib_dir) {
+    state$installed <- packages
+    invisible(TRUE)
+  }
+  env$loaded_namespace_conflicts <- function(packages, lib_dir) character(0)
+  env$loadable_with_local_library <- function(package, lib_dir) TRUE
+
+  capture.output(env$ensure_dependencies("shiny", tempdir()))
+
+  expect_identical(state$installed, "shiny")
+  expect_length(env$launcher_deferred_packages, 0L)
+})
+
 test_that("standalone launcher defers app loading after local library changes", {
   launcher <- launcher_source_path()
   txt <- paste(readLines(launcher, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
 
   expect_match(txt, "launcher_library_changed <<- TRUE", fixed = TRUE)
   expect_match(txt, "launcher_library_changed <- TRUE", fixed = TRUE)
+  expect_match(txt, "launcher_deferred_packages <- character(0)", fixed = TRUE)
+  expect_match(txt, "length(launcher_deferred_packages)", fixed = TRUE)
   expect_match(txt, "loaded_namespace_conflicts(unique(c(deps, pkg)), local_lib)", fixed = TRUE)
   expect_match(txt, "restart_in_clean_process <- !isTRUE(launcher_is_fresh_process)", fixed = TRUE)
   expect_true(grepl(
@@ -232,6 +311,50 @@ test_that("root App.R launchers resolve paths from the script location", {
     expect_match(txt, "frame\\$ofile", perl = TRUE)
     expect_match(txt, "startup_file <- file.path\\(app_root, \"R\", \"app_startup.R\"\\)", perl = TRUE)
     expect_match(txt, "file.path\\(app_root, \"inst\", \"app\"\\)", perl = TRUE)
+    expect_match(txt, "file.path\\(app_root, \"inst\", \"launchers\", \"App.R\"\\)", perl = TRUE)
+    expect_match(txt, "BIOSZEN_LAUNCHER_SCRIPT", fixed = TRUE)
+    expect_match(txt, "keep App.R beside BIOSZEN-v\\*\\.tar\\.gz", perl = TRUE)
     expect_false(grepl('file.path\\("inst", "app"\\)', txt, perl = TRUE))
   }
+})
+
+test_that("root app launcher delegates missing app folders to the standalone launcher", {
+  root_launcher <- file.path(app_test_root(), "app.R")
+  skip_if_not(
+    file.exists(root_launcher),
+    "The root app.R launcher is a repository file and is not installed in the package."
+  )
+
+  root <- tempfile("bioszen-root-launcher-")
+  launcher_dir <- file.path(root, "inst", "launchers")
+  dir.create(launcher_dir, recursive = TRUE)
+  expect_true(file.copy(root_launcher, file.path(root, "app.R")))
+
+  capture_path <- tempfile("bioszen-launcher-script-", fileext = ".rds")
+  standalone_launcher <- file.path(launcher_dir, "App.R")
+  writeLines(
+    "saveRDS(Sys.getenv('BIOSZEN_LAUNCHER_SCRIPT'), Sys.getenv('BIOSZEN_TEST_CAPTURE'))",
+    standalone_launcher,
+    useBytes = TRUE
+  )
+
+  old_capture <- Sys.getenv("BIOSZEN_TEST_CAPTURE", unset = NA_character_)
+  old_launcher <- Sys.getenv("BIOSZEN_LAUNCHER_SCRIPT", unset = NA_character_)
+  on.exit({
+    if (is.na(old_capture)) Sys.unsetenv("BIOSZEN_TEST_CAPTURE") else Sys.setenv(BIOSZEN_TEST_CAPTURE = old_capture)
+    if (is.na(old_launcher)) Sys.unsetenv("BIOSZEN_LAUNCHER_SCRIPT") else Sys.setenv(BIOSZEN_LAUNCHER_SCRIPT = old_launcher)
+  }, add = TRUE)
+  Sys.setenv(BIOSZEN_TEST_CAPTURE = capture_path)
+  Sys.unsetenv("BIOSZEN_LAUNCHER_SCRIPT")
+
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(root)
+  sys.source(file.path(root, "app.R"), envir = new.env(parent = globalenv()))
+
+  expect_true(file.exists(capture_path))
+  expect_equal(
+    readRDS(capture_path),
+    normalizePath(standalone_launcher, winslash = "/", mustWork = TRUE)
+  )
 })

@@ -54,6 +54,70 @@ test_that("apply_multitest_preset adds adjusted column", {
   expect_true(all(out$p.holm[1:3] >= out$p.value[1:3], na.rm = TRUE))
 })
 
+test_that("multiple-testing presets match stats::p.adjust exactly", {
+  raw <- c(0.01, 0.02, 0.04)
+  df <- data.frame(P_valor = raw)
+
+  for (method in c("holm", "fdr", "bonferroni", "none")) {
+    out <- apply_multitest_preset(
+      df,
+      p_col = "P_valor",
+      method = method,
+      out_col = "P_ajustado"
+    )
+    expected <- if (identical(method, "none")) raw else stats::p.adjust(raw, method = method)
+    expect_equal(out$P_ajustado, expected, tolerance = 1e-15, info = method)
+    if (!identical(method, "none")) {
+      expect_true(
+        any(abs(out$P_ajustado - raw) > 1e-15),
+        info = paste(method, "must modify at least one of several comparisons")
+      )
+    }
+  }
+
+  single <- data.frame(P_valor = 0.0035)
+  for (method in c("holm", "fdr", "bonferroni")) {
+    out <- apply_multitest_preset(
+      single,
+      p_col = "P_valor",
+      method = method,
+      out_col = "p.adjusted"
+    )
+    expect_equal(out$p.adjusted, single$P_valor, info = paste(method, "single comparison"))
+  }
+})
+
+test_that("pairwise t and Wilcoxon helpers apply the selected correction family", {
+  df <- data.frame(
+    Label = factor(rep(c("A", "B", "C"), each = 6), levels = c("A", "B", "C")),
+    Valor = c(
+      1.0, 2.0, 2.8, 4.1, 5.2, 5.9,
+      1.4, 2.3, 3.7, 4.4, 6.0, 6.5,
+      2.7, 3.2, 4.9, 6.1, 7.2, 8.4
+    )
+  )
+
+  for (runner in list(safe_pairwise_t, safe_pairwise_wilcox)) {
+    raw <- runner(df, "none")
+    expect_equal(nrow(raw), 3L)
+
+    for (method in c("holm", "fdr", "bonferroni")) {
+      corrected <- runner(df, method)
+      expect_equal(corrected$p, raw$p, tolerance = 1e-15, info = method)
+      expect_equal(
+        corrected$p.adj,
+        stats::p.adjust(raw$p, method = method),
+        tolerance = 1e-15,
+        info = method
+      )
+      expect_true(
+        any(abs(corrected$p.adj - corrected$p) > 1e-15),
+        info = paste(method, "must visibly differ with three comparisons")
+      )
+    }
+  }
+})
+
 test_that("mixed_model_summary returns a one-row summary table", {
   df <- make_upgrade_df()
   res <- mixed_model_summary(df)

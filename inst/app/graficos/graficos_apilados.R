@@ -163,7 +163,7 @@ build_apiladas_plot_impl <- function(ctx) {
             data = err_df,
             inherit.aes = FALSE,
             aes(x = xnum, xend = xnum, y = ystart, yend = yend, color = err_color),
-            size = input$errbar_size,
+            linewidth = input$errbar_size,
             show.legend = FALSE
           ) +
           geom_segment(
@@ -176,7 +176,7 @@ build_apiladas_plot_impl <- function(ctx) {
               yend = yend,
               color = err_color
             ),
-            size = input$errbar_size,
+            linewidth = input$errbar_size,
             show.legend = FALSE
           ) +
           scale_color_identity()
@@ -186,7 +186,7 @@ build_apiladas_plot_impl <- function(ctx) {
             data = err_df,
             inherit.aes = FALSE,
             aes(x = xnum, xend = xnum, y = ystart, yend = yend),
-            size = input$errbar_size,
+            linewidth = input$errbar_size,
             colour = "black",
             show.legend = FALSE
           ) +
@@ -199,7 +199,7 @@ build_apiladas_plot_impl <- function(ctx) {
               y = yend,
               yend = yend
             ),
-            size = input$errbar_size,
+            linewidth = input$errbar_size,
             colour = "black",
             show.legend = FALSE
           )

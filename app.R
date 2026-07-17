@@ -26,16 +26,50 @@ find_bioszen_app_file <- function(default_name = "app.R") {
 }
 
 app_root <- dirname(find_bioszen_app_file("app.R"))
-if (!dir.exists(file.path(app_root, "inst", "app"))) {
-  app_root <- getwd()
+app_dir <- file.path(app_root, "inst", "app")
+if (!dir.exists(app_dir)) {
+  working_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+  working_app_dir <- file.path(working_root, "inst", "app")
+  if (dir.exists(working_app_dir)) {
+    app_root <- working_root
+    app_dir <- working_app_dir
+  }
 }
-app_root <- normalizePath(app_root, winslash = "/", mustWork = TRUE)
 
-startup_file <- file.path(app_root, "R", "app_startup.R")
-if (file.exists(startup_file)) {
-  sys.source(startup_file, envir = globalenv())
-  bioszen_prepare_direct_run()
+if (!dir.exists(app_dir)) {
+  standalone_launcher <- file.path(app_root, "inst", "launchers", "App.R")
+  if (!file.exists(standalone_launcher)) {
+    stop(
+      "Could not find the BIOSZEN app or standalone launcher. ",
+      "For a release bundle, keep App.R beside BIOSZEN-v*.tar.gz and run App.R.",
+      call. = FALSE
+    )
+  }
+
+  source_standalone_launcher <- function(path) {
+    previous_launcher_script <- Sys.getenv("BIOSZEN_LAUNCHER_SCRIPT", unset = NA_character_)
+    on.exit({
+      if (is.na(previous_launcher_script)) {
+        Sys.unsetenv("BIOSZEN_LAUNCHER_SCRIPT")
+      } else {
+        Sys.setenv(BIOSZEN_LAUNCHER_SCRIPT = previous_launcher_script)
+      }
+    }, add = TRUE)
+
+    Sys.setenv(BIOSZEN_LAUNCHER_SCRIPT = normalizePath(path, winslash = "/", mustWork = TRUE))
+    sys.source(path, envir = globalenv())
+  }
+
+  source_standalone_launcher(standalone_launcher)
+} else {
+  app_root <- normalizePath(app_root, winslash = "/", mustWork = TRUE)
+  app_dir <- normalizePath(app_dir, winslash = "/", mustWork = TRUE)
+
+  startup_file <- file.path(app_root, "R", "app_startup.R")
+  if (file.exists(startup_file)) {
+    sys.source(startup_file, envir = globalenv())
+    bioszen_prepare_direct_run()
+  }
+
+  shiny::shinyAppDir(app_dir)
 }
-
-app_dir <- normalizePath(file.path(app_root, "inst", "app"), winslash = "/", mustWork = TRUE)
-shiny::shinyAppDir(app_dir)

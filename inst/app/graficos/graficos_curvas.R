@@ -264,7 +264,7 @@ build_curvas_plot_impl <- function(ctx) {
         plt <- plt +
           geom_point(
             aes(fill = Label),
-            size = input$curve_lwd * 2.2,
+            size = input$curve_pt_size %||% (input$curve_lwd * 2.2),
             shape = 21,
             colour = "black",
             stroke = 0.4
@@ -273,7 +273,7 @@ build_curvas_plot_impl <- function(ctx) {
         plt <- plt +
           geom_point(
             fill = single_col,
-            size = input$curve_lwd * 2.2,
+            size = input$curve_pt_size %||% (input$curve_lwd * 2.2),
             shape = 21,
             colour = "black",
             stroke = 0.4
@@ -329,18 +329,18 @@ build_curvas_plot_impl <- function(ctx) {
       coord_cartesian(clip = "off") +
       theme(
         plot.margin = margin_adj(15, 160, b_mar, 28),
-        plot.title = element_text(size = input$fs_title, face = "bold", colour = "black"),
-        axis.title = element_text(size = input$fs_axis, face = "bold", colour = "black"),
-        axis.text = element_text(size = input$fs_axis, colour = "black"),
-        axis.line = element_line(linewidth = input$axis_line_size, colour = "black"),
-        axis.ticks = element_line(linewidth = input$axis_line_size, colour = "black"),
+        plot.title = element_text(size = fs_title, face = "bold", colour = "black"),
+        axis.title = element_text(size = fs_axis, face = "bold", colour = "black"),
+        axis.text = element_text(size = fs_axis, colour = "black"),
+        axis.line = element_line(linewidth = axis_size, colour = "black"),
+        axis.ticks = element_line(linewidth = axis_size, colour = "black"),
         axis.ticks.length = unit(4, "pt"),
         panel.grid = element_blank(),
         panel.background = element_rect(fill = "white", colour = NA),
         legend.position = "right",
         legend.box.spacing = unit(18, "pt"),
         legend.margin = margin(t = 0, r = 0, b = 0, l = 20, unit = "pt"),
-        legend.text = element_text(size = input$fs_legend, colour = "black"),
+        legend.text = element_text(size = fs_legend, colour = "black"),
         legend.key = element_blank(),
         legend.key.size = unit(1.5, "lines")
       )

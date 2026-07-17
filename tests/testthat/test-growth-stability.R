@@ -18,6 +18,36 @@ make_growth_input_file <- function(path, n_points = 24, n_wells = 3) {
   invisible(path)
 }
 
+test_that("growth output folders can be created safely under the selected directory", {
+  root_dir <- tempfile("bioszen_growth_root_")
+  dir.create(root_dir)
+  dir.create(file.path(root_dir, "existing"))
+  on.exit(unlink(root_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  roots <- c(Home = normalizePath(root_dir, winslash = "/", mustWork = TRUE))
+  created <- .bioszen_create_growth_output_dir(
+    list(root = "Home", path = c("", "existing"), name = "new-results"),
+    roots = roots
+  )
+
+  expect_true(dir.exists(created))
+  expect_equal(basename(created), "new-results")
+  expect_error(
+    .bioszen_create_growth_output_dir(
+      list(root = "Home", path = c("", ".."), name = "outside"),
+      roots = roots
+    ),
+    "invalid"
+  )
+  expect_error(
+    .bioszen_create_growth_output_dir(
+      list(root = "Home", path = c("", "existing"), name = "../outside"),
+      roots = roots
+    ),
+    "valid folder name"
+  )
+})
+
 test_that("growth module async execution completes without hanging", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("later")
@@ -361,11 +391,14 @@ test_that("growth backgrounding is not wired as cancellation", {
   expect_match(ui_txt, "runButton.disabled = running", fixed = TRUE)
   expect_match(ui_txt, "stopButton.disabled = !running", fixed = TRUE)
   expect_match(ui_txt, "browseGrowthOutputDir", fixed = TRUE)
+  expect_match(ui_txt, "shinyFiles::shinyDirButton", fixed = TRUE)
   expect_match(ui_txt, "placeholder = tr_text\\(\"growth_output_dir_placeholder\"", perl = TRUE)
   expect_false(grepl('placeholder = tr\\("growth_output_dir_placeholder"', ui_txt, fixed = TRUE))
   expect_match(module_txt, "safe_show_growth_notification", fixed = TRUE)
   expect_match(module_txt, "with_growth_progress", fixed = TRUE)
-  expect_match(module_txt, "\\.bioszen_choose_growth_output_dir", fixed = FALSE)
+  expect_match(module_txt, "shinyFiles::shinyDirChoose", fixed = TRUE)
+  expect_match(module_txt, "\\.bioszen_parse_growth_output_dir", perl = TRUE)
+  expect_match(module_txt, "growth_output_roots <- .bioszen_growth_output_roots()", fixed = TRUE)
   expect_match(module_txt, "updateTextInput\\(session, \"growthOutputDir\"", perl = TRUE)
   expect_match(module_txt, "shiny::incProgress\\(amount, detail = detail, session = progress_session\\)", perl = TRUE)
   expect_false(grepl("(^|[^:])\\bwithProgress\\(", module_txt, perl = TRUE))
@@ -641,6 +674,25 @@ test_that("growth output directory is optional and missing paths are user-correc
     res <- readxl::read_excel(params[[1]])
     expect_identical(tail(names(res), 1), "OD0")
   })
+})
+
+test_that("growth folder browser exposes valid roots and parses the final selection", {
+  skip_if_not_installed("shinyFiles")
+
+  roots <- .bioszen_growth_output_roots()
+  expect_true(length(roots) >= 1L)
+  expect_true(all(nzchar(names(roots))))
+  expect_true(all(dir.exists(roots)))
+
+  selected_dir <- tempfile("bioszen_growth_browser_")
+  dir.create(selected_dir, recursive = TRUE)
+  on.exit(unlink(selected_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  selection <- list(root = "Test", path = basename(selected_dir))
+
+  expect_equal(
+    .bioszen_parse_growth_output_dir(selection, roots = c(Test = dirname(selected_dir))),
+    normalizePath(selected_dir, winslash = "/", mustWork = TRUE)
+  )
 })
 
 test_that("growth file selection appends uploads and selected subset drives processing", {

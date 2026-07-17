@@ -151,6 +151,84 @@ test_that("PowerPoint fitting preserves composition aspect ratio and slide bound
   expect_lte(tiny$top + tiny$height, 2 - tiny$margin + 1e-8)
 })
 
+test_that("single-chart PowerPoint sizing preserves the current plot aspect ratio", {
+  env <- load_publication_helpers()
+
+  standard <- env$bioszen_pptx_size_from_pixels(1000, 700)
+  portrait <- env$bioszen_pptx_size_from_pixels(700, 1000)
+  oversized <- env$bioszen_pptx_size_from_pixels(10000, 7000)
+
+  expect_equal(standard$width / standard$height, 1000 / 700, tolerance = 1e-10)
+  expect_equal(portrait$width / portrait$height, 700 / 1000, tolerance = 1e-10)
+  expect_equal(oversized$width / oversized$height, 10000 / 7000, tolerance = 1e-10)
+  expect_equal(standard$orientation, "landscape")
+  expect_equal(portrait$orientation, "portrait")
+  expect_lte(max(oversized$width, oversized$height), 56)
+})
+
+test_that("individual chart menus expose editable PowerPoint downloads", {
+  ui_txt <- read_publication_app_file("ui", "ui_main.R")
+  server_txt <- read_publication_app_file("server", "server_main.R")
+  helpers_txt <- read_publication_app_file("helpers.R")
+
+  expect_equal(length(gregexpr("downloadPlot_pptx", ui_txt, fixed = TRUE)[[1]]), 1)
+  expect_equal(length(gregexpr("downloadPlotly_pptx", ui_txt, fixed = TRUE)[[1]]), 1)
+  expect_match(server_txt, "output$downloadPlot_pptx <- editable_plot_pptx_download()", fixed = TRUE)
+  expect_match(server_txt, "output$downloadPlotly_pptx <- editable_plot_pptx_download()", fixed = TRUE)
+  expect_match(server_txt, "slot = \"plot_pptx\"", fixed = TRUE)
+  expect_match(server_txt, "bioszen_write_editable_plot_pptx(", fixed = TRUE)
+  expect_match(server_txt, "build_plot(scope_sel, strain_sel, input$tipo, for_interactive = TRUE)", fixed = TRUE)
+  expect_match(
+    helpers_txt,
+    "ppt_plot <- bioszen_prepare_named_pptx_strokes(plot, linewidth_pt = 1)",
+    fixed = TRUE
+  )
+  expect_match(helpers_txt, "rvg::dml(ggobj = ppt_plot, editable = TRUE)", fixed = TRUE)
+  expect_false(grepl("bioszen_write_plotly_svg_pptx", server_txt, fixed = TRUE))
+  expect_false(grepl("bioszen_plot_svg", server_txt, fixed = TRUE))
+})
+
+test_that("single-chart PowerPoint writer creates editable vector objects", {
+  skip_if_not_installed("officer")
+  skip_if_not_installed("rvg")
+  skip_if_not_installed("xml2")
+  skip_if_not_installed("ggplot2")
+
+  env <- load_publication_helpers()
+  plot_obj <- ggplot2::ggplot(
+    data.frame(group = c("A", "B", "C"), value = c(2, 4, 3)),
+    ggplot2::aes(group, value, fill = group)
+  ) +
+    ggplot2::geom_col() +
+    ggplot2::labs(title = "Editable chart", x = "Group", y = "Value") +
+    ggplot2::theme_classic()
+
+  out <- tempfile(fileext = ".pptx")
+  unpacked <- tempfile("bioszen-pptx-")
+  on.exit(unlink(c(out, unpacked), recursive = TRUE, force = TRUE), add = TRUE)
+  dims <- env$bioszen_write_editable_plot_pptx(out, plot_obj, 1200, 800)
+
+  expect_true(file.exists(out))
+  expect_gt(file.info(out)$size, 1000)
+  deck <- officer::read_pptx(out)
+  expect_length(deck, 1)
+  expect_equal(officer::slide_size(deck)$width, dims$width, tolerance = 1e-5)
+  expect_equal(officer::slide_size(deck)$height, dims$height, tolerance = 1e-5)
+  objects <- officer::pptx_summary(deck)
+  expect_gt(nrow(objects), 1)
+  expect_false(nrow(objects) == 1 && identical(objects$content_type[[1]], "image"))
+  expect_true(any(grepl("Editable chart", objects$text, fixed = TRUE)))
+
+  listing <- utils::unzip(out, list = TRUE)
+  expect_false(any(grepl("^ppt/media/.*\\.(?:png|jpe?g|svg)$", listing$Name, perl = TRUE)))
+  dir.create(unpacked, recursive = TRUE)
+  utils::unzip(out, exdir = unpacked)
+  slide <- xml2::read_xml(file.path(unpacked, "ppt", "slides", "slide1.xml"))
+  slide_ns <- xml2::xml_ns(slide)
+  expect_gt(length(xml2::xml_find_all(slide, ".//p:sp", slide_ns)), 5)
+  expect_equal(length(xml2::xml_find_all(slide, ".//p:pic", slide_ns)), 0)
+})
+
 test_that("PowerPoint export helpers create one readable vector slide at custom size", {
   skip_if_not_installed("officer")
   skip_if_not_installed("rvg")

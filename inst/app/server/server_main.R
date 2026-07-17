@@ -496,7 +496,7 @@ server <- function(input, output, session) {
   cur_cfg_box   <- reactiveVal(NULL)   # curvas Sheet2
   cur_meta_box  <- reactiveVal(NULL)   # metadata curvas (summary mode)
   cur_sum_box   <- reactiveVal(NULL)   # curvas summary (mean/sd/n)
-  sig_list      <- reactiveVal(list()) # guardarÃƒÂ¡ comparaciones
+  sig_store     <- reactiveVal(list()) # comparaciones por contexto de datos/parametro
   sig_preselect <- reactiveVal(NULL)   # selecciÃƒÂ³n pendiente en el manejador de barras
   meta_store    <- reactiveValues()    # metadata por tipo de grÃƒÂ¡fico
   is_group_data <- reactiveVal(FALSE)
@@ -506,6 +506,7 @@ server <- function(input, output, session) {
   export_cache  <- reactiveValues(
     plot_png = list(),
     plot_pdf = list(),
+    plot_pptx = list(),
     params = list(),
     stats = list(),
     metadata = list(),
@@ -524,6 +525,28 @@ server <- function(input, output, session) {
   last_adv_palette_name <- reactiveVal("BuGn")
   last_param_selection <- reactiveVal("")
   last_stats_scope_snapshot <- reactiveVal(NULL)
+
+  significance_context_key <- function() {
+    bioszen_significance_context_key(
+      dataset_key = current_dataset_key() %||% input$dataFile$name %||% "",
+      scope = input$scope %||% "",
+      strain = input$strain %||% "",
+      plot_type = input$tipo %||% "",
+      parameter = input$param %||% "",
+      stacked_parameters = input$stackParams %||% character(0),
+      normalized = isTRUE(input$doNorm),
+      normalization_control = input$ctrlMedium %||% ""
+    )
+  }
+
+  sig_list <- function(value) {
+    key <- significance_context_key()
+    store <- sig_store()
+    if (missing(value)) return(store[[key]] %||% list())
+    store[[key]] <- value
+    sig_store(store)
+    invisible(value)
+  }
 
   observeEvent(input$tipo, {
     current_type <- trimws(as.character(input$tipo %||% ""))
@@ -1609,8 +1632,8 @@ server <- function(input, output, session) {
       label = NULL,
       icon = icon("chevron-right"),
       class = "btn btn-outline-secondary",
-      title = tr("curve_merge_open"),
-      `aria-label` = as.character(tr("curve_merge_open"))
+      title = label_to_text(tr("curve_merge_open")),
+      `aria-label` = label_to_text(tr("curve_merge_open"))
     )
   })
 
@@ -1982,7 +2005,9 @@ server <- function(input, output, session) {
     }
     if (input$tipo == "Curvas") {
       meta <- add_row(meta,
-                      Campo = "curve_lwd", Valor = as.character(input$curve_lwd))
+                      Campo = c("curve_lwd", "curve_pt_size"),
+                      Valor = c(as.character(input$curve_lwd),
+                                as.character(input$curve_pt_size %||% 3.3)))
     }
     if (input$tipo %in% c("Boxplot", "Barras", "Apiladas", "Violin")) {
       meta <- add_row(meta,
@@ -2402,6 +2427,44 @@ server <- function(input, output, session) {
     }
 
     stop("Plot export failed.")
+  }
+
+  write_current_plot_pptx <- function(file, width = NULL, height = NULL) {
+    width <- width %||% input$plot_w
+    height <- height %||% input$plot_h
+    eff_width <- effective_plot_width(width)
+    eff_height <- effective_plot_height(height)
+    scope_sel <- if (input$scope == "Combinado") "Combinado" else "Por Cepa"
+    strain_sel <- if (scope_sel == "Por Cepa") input$strain else NULL
+
+    plot_obj <- build_plot(scope_sel, strain_sel, input$tipo, for_interactive = TRUE)
+    if (!inherits(plot_obj, "ggplot")) {
+      stop("The current chart cannot be converted to an editable PowerPoint object.", call. = FALSE)
+    }
+
+    page_size <- if (identical(input$tipo %||% "", "Curvas")) {
+      list(width_px = eff_width, height_px = eff_height)
+    } else {
+      bioszen_pdf_page_size_from_pixels(eff_width, eff_height)
+    }
+    ppt_plot <- bioszen_prepare_editable_plotly_plot(
+      plot = plot_obj,
+      plot_type = input$tipo,
+      content_width_px = eff_width,
+      content_height_px = eff_height,
+      slide_width_px = page_size$width_px,
+      slide_height_px = page_size$height_px
+    )
+
+    bioszen_write_editable_plot_pptx(
+      file = file,
+      plot = ppt_plot,
+      width_px = eff_width,
+      height_px = eff_height,
+      slide_width_px = page_size$width_px,
+      slide_height_px = page_size$height_px
+    )
+    invisible(TRUE)
   }
 
   observeEvent(input$btn_dark, {
@@ -3803,14 +3866,14 @@ server <- function(input, output, session) {
   }
 
   format_sig_p_value <- function(p, digits = 3L) {
-    p <- suppressWarnings(as.numeric(p))
-    if (!is.finite(p)) return("NA")
     digits <- suppressWarnings(as.integer(digits))
     if (!is.finite(digits) || digits < 1) digits <- 3L
     if (digits > 6) digits <- 6L
-    thr <- 10^(-digits)
-    if (p < thr) return(paste0("<", formatC(thr, format = "f", digits = digits)))
-    formatC(p, format = "f", digits = digits)
+    bioszen_format_p_value(
+      p,
+      digits = digits,
+      scientific_below = 10^(-digits)
+    )
   }
 
   prepare_sig_results_tbl <- function(df, adjust_method = "none", lang = i18n_lang) {
@@ -3857,23 +3920,24 @@ server <- function(input, output, session) {
       method = adjust_method,
       out_col = "P_ajustado"
     )
+    if ("p.signif" %in% names(tbl2)) {
+      tbl2$p.signif <- bioszen_significance_stars(tbl2$P_valor, nonsignificant = "ns")
+    }
+    if ("p.adj.signif" %in% names(tbl2)) {
+      tbl2$p.adj.signif <- bioszen_significance_stars(tbl2$P_ajustado, nonsignificant = "ns")
+    }
     p_ref <- if (identical(adjust_method, "none")) "P_valor" else "P_ajustado"
 
     tbl2 %>%
       dplyr::mutate(
         P_referencia = .data[[p_ref]],
-        is_significant = !is.na(P_referencia) & P_referencia < 0.05,
+        is_significant = bioszen_is_significant(P_referencia),
         Significativo = dplyr::if_else(
           is_significant,
           tr_text("yes_label", lang),
           tr_text("no_label", lang)
         ),
-        Estrellas = dplyr::case_when(
-          P_referencia < 0.001 ~ "***",
-          P_referencia < 0.01  ~ "**",
-          P_referencia < 0.05  ~ "*",
-          TRUE ~ ""
-        )
+        Estrellas = bioszen_significance_stars(P_referencia)
       )
   }
 
@@ -8034,7 +8098,13 @@ server <- function(input, output, session) {
                     Label,
                     shapiro.stat, shapiro.p, Shapiro,
                     ks.stat,      ks.p,      KS,  
-                    ad.stat,      ad.p,      AD)  
+                    ad.stat,      ad.p,      AD) %>%
+      dplyr::mutate(
+        dplyr::across(
+          dplyr::any_of(c("shapiro.p", "ks.p", "ad.p")),
+          ~ bioszen_format_p_value(.x)
+        )
+      )
     validate(need(nrow(df2) > 0, tr_text("no_data_normality", lang)))  
     datatable(df2, options = list(pageLength = 10, scrollX = TRUE))  
   }, server = FALSE)  
@@ -8047,7 +8117,30 @@ server <- function(input, output, session) {
     lang <- input$app_lang %||% i18n_lang
     df2 <- sig_table_processed()
     validate(need(nrow(df2) > 0, tr_text("no_valid_comparisons", lang)))
-    tbl_view <- df2 %>% dplyr::select(-dplyr::any_of(c("is_significant", ".pair_key")))
+    adjust_method <- input$multitest_method %||% "none"
+    source_p_cols <- c("p", "p.value", "p.adj", "adj.p.value", "p_val", "p.value.adj")
+    drop_p_cols <- c("P_referencia", source_p_cols)
+    if (identical(adjust_method, "none")) {
+      # With no correction P_ajustado is intentionally identical to the raw
+      # value, so show it once. Corrected analyses retain raw and adjusted p.
+      drop_p_cols <- c(drop_p_cols, "P_valor")
+    }
+    tbl_view <- df2 %>%
+      dplyr::select(-dplyr::any_of(c("is_significant", ".pair_key", drop_p_cols)))
+    p_display_cols <- intersect(
+      c("p", "p.value", "p.adj", "adj.p.value", "p_val", "p.value.adj",
+        "P_valor", "P_ajustado", "P_referencia"),
+      names(tbl_view)
+    )
+    if (length(p_display_cols)) {
+      tbl_view <- tbl_view %>%
+        dplyr::mutate(
+          dplyr::across(
+            dplyr::all_of(p_display_cols),
+            ~ bioszen_format_p_value(.x)
+          )
+        )
+    }
     datatable(tbl_view, options = list(pageLength = 10, scrollX = TRUE))
   }, server = FALSE)  
   outputOptions(output, "normTable", suspendWhenHidden = FALSE)
@@ -8224,14 +8317,7 @@ server <- function(input, output, session) {
   })
 
   curve_signif_stars <- function(p) {
-    p <- suppressWarnings(as.numeric(p))
-    dplyr::case_when(
-      !is.finite(p) ~ "",
-      p < 0.001 ~ "***",
-      p < 0.01 ~ "**",
-      p < 0.05 ~ "*",
-      TRUE ~ "ns"
-    )
+    bioszen_significance_stars(p, nonsignificant = "ns")
   }
 
   curve_stats_res <- eventReactive(input$runCurveStats, {
@@ -8609,15 +8695,6 @@ server <- function(input, output, session) {
     lang <- input$app_lang %||% i18n_lang
     tbl <- curve_stats_res()
     validate(need(nrow(tbl) > 0, tr_text("no_data_selection", lang)))
-    format_p <- function(p) {
-      p <- suppressWarnings(as.numeric(p))
-      out <- rep(NA_character_, length(p))
-      ok <- is.finite(p)
-      if (any(ok)) {
-        out[ok] <- ifelse(p[ok] < 1e-4, "<1e-4", formatC(p[ok], format = "f", digits = 4))
-      }
-      out
-    }
     method_map <- c(
       S1 = tr_text("curves_stats_s1", lang),
       S2 = tr_text("curves_stats_s2", lang),
@@ -8632,8 +8709,8 @@ server <- function(input, output, session) {
           ifelse(is.na(mapped), code, mapped)
         },
         Estimate = ifelse(is.finite(Estimate), round(Estimate, 5), NA_real_),
-        P_value = format_p(P_value),
-        P_adjusted = format_p(P_adjusted)
+        P_value = bioszen_format_p_value(P_value),
+        P_adjusted = bioszen_format_p_value(P_adjusted)
       )
     datatable(tbl, options = list(pageLength = 8, scrollX = TRUE), rownames = FALSE)
   }, server = FALSE)
@@ -8815,7 +8892,7 @@ server <- function(input, output, session) {
         y_col = unname(col_map[param_other]),
         x_is_norm = grepl("_Norm$", x_col),
         y_is_norm = grepl("_Norm$", y_col),
-        significant = is.finite(p.value) & p.value < 0.05,
+        significant = bioszen_is_significant(p.value),
         direction = dplyr::case_when(
           !is.finite(r) ~ "zero",
           r > 0 ~ "positive",
@@ -9078,7 +9155,7 @@ server <- function(input, output, session) {
     view_tbl <- filtered_tbl %>%
       dplyr::mutate(
         r = ifelse(is.finite(r), round(r, 4), NA_real_),
-        p_view = ifelse(is.finite(p.value), signif(p.value, 4), NA_real_),
+        p_view = bioszen_format_p_value(p.value),
         n = suppressWarnings(as.integer(n)),
         significant_view = ifelse(significant, tr_text("yes_label", lang), tr_text("no_label", lang)),
         direction_view = direction_txt
@@ -13310,6 +13387,10 @@ server <- function(input, output, session) {
             palette_for_labels = palette_for_labels,
             palette_for_levels = palette_for_levels,
             margin_adj = margin_adj,
+            fs_title = fs_title,
+            fs_axis = fs_axis,
+            fs_legend = fs_legend,
+            axis_size = axis_size,
             tr_text = tr_text
           ))
         )
@@ -14186,8 +14267,20 @@ server <- function(input, output, session) {
   outputOptions(output, "plotInteractivo", suspendWhenHidden = FALSE)
   
   
+  write_validated_download_raw <- function(raw, file, label = "download") {
+    if (!is.raw(raw) || !length(raw)) {
+      stop(label, " generated an empty payload.", call. = FALSE)
+    }
+    writeBin(raw, file)
+    size <- suppressWarnings(file.info(file)$size)
+    if (!length(size) || is.na(size[[1]]) || size[[1]] <= 0) {
+      stop(label, " could not be written to disk.", call. = FALSE)
+    }
+    invisible(size[[1]])
+  }
+
   # --- Descarga individual PNG -----------------------------------------------
-  output$downloadPlot_png <- downloadHandler(
+  individual_plot_png_download <- function() downloadHandler(
     filename = function(){
       paste0(
         if (input$scope == "Combinado") "Combinado" else sanitize(input$strain),
@@ -14207,13 +14300,15 @@ server <- function(input, output, session) {
         writer = function(tmp) write_current_plot_png(tmp, width = width, height = height),
         max_entries = 8L
       )
-      writeBin(raw, file)
+      write_validated_download_raw(raw, file, "PNG export")
     },
     contentType = "image/png"
   )
+  output$downloadPlot_png <- individual_plot_png_download()
+  output$downloadPlotly_png <- individual_plot_png_download()
 
   # --- Descarga individual PDF ----------------------------------------------
-  output$downloadPlot_pdf <- downloadHandler(
+  individual_plot_pdf_download <- function() downloadHandler(
     filename = function(){
       paste0(
         if (input$scope == "Combinado") "Combinado" else sanitize(input$strain),
@@ -14233,12 +14328,48 @@ server <- function(input, output, session) {
         writer = function(tmp) write_current_plot_pdf(tmp, width = width, height = height),
         max_entries = 8L
       )
-      writeBin(raw, file)
+      write_validated_download_raw(raw, file, "PDF export")
     },
     contentType = "application/pdf"
   )
+  output$downloadPlot_pdf <- individual_plot_pdf_download()
+  output$downloadPlotly_pdf <- individual_plot_pdf_download()
+
+  # --- Editable single-chart PowerPoint -------------------------------------
+  editable_plot_pptx_download <- function() {
+    downloadHandler(
+      filename = function(){
+        paste0(
+          if (input$scope == "Combinado") "Combinado" else sanitize(input$strain),
+          "_", input$tipo, ".pptx"
+        )
+      },
+      content = function(file){
+        width <- input$plot_w %||% 900
+        height <- input$plot_h %||% 700
+        eff_width <- effective_plot_width(width)
+        eff_height <- effective_plot_height(height)
+        key <- plot_export_key("pptx", eff_width, eff_height)
+        raw <- cache_capture_raw(
+          slot = "plot_pptx",
+          key = key,
+          ext = ".pptx",
+          writer = function(tmp) write_current_plot_pptx(tmp, width = width, height = height),
+          max_entries = 8L
+        )
+        write_validated_download_raw(raw, file, "PPTX export")
+      },
+      contentType = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    )
+  }
+  output$downloadPlot_pptx <- editable_plot_pptx_download()
+  output$downloadPlotly_pptx <- editable_plot_pptx_download()
   outputOptions(output, "downloadPlot_png", suspendWhenHidden = FALSE)
   outputOptions(output, "downloadPlot_pdf", suspendWhenHidden = FALSE)
+  outputOptions(output, "downloadPlotly_png", suspendWhenHidden = FALSE)
+  outputOptions(output, "downloadPlotly_pdf", suspendWhenHidden = FALSE)
+  outputOptions(output, "downloadPlot_pptx", suspendWhenHidden = FALSE)
+  outputOptions(output, "downloadPlotly_pptx", suspendWhenHidden = FALSE)
 
   observeEvent(input$copy_plot_clipboard, {
     session$sendCustomMessage(
@@ -14273,35 +14404,6 @@ server <- function(input, output, session) {
     )
   }, ignoreNULL = TRUE)
 
-  observeEvent(input$downloadPlotly_png, {
-    req(input$tipo == "Apiladas")
-    fname <- paste0(
-      if (input$scope == "Combinado") "Combinado" else sanitize(input$strain),
-      "_", input$tipo
-    )
-    session$sendCustomMessage("downloadPlotlyImage", list(
-      filename = fname,
-      width    = effective_plot_width(),
-      height   = effective_plot_height(),
-      scale    = bioszen_effective_dpi(input$export_dpi) / BIOSZEN_CSS_DPI,
-      format   = "png"
-    ))
-  })
-
-  observeEvent(input$downloadPlotly_pdf, {
-    req(input$tipo == "Apiladas")
-    fname <- paste0(
-      if (input$scope == "Combinado") "Combinado" else sanitize(input$strain),
-      "_", input$tipo
-    )
-    session$sendCustomMessage("downloadPlotlyImage", list(
-      filename = fname,
-      width    = effective_plot_width(),
-      height   = effective_plot_height(),
-      format   = "pdf"
-    ))
-  })
-
   output$downloadHeatClusters <- downloadHandler(
     filename = function() {
       paste0("heatmap_clusters_", format(Sys.time(), "%Y%m%d-%H%M%S"), ".xlsx")
@@ -14332,11 +14434,95 @@ server <- function(input, output, session) {
   )
   
   
-  download_param_content <- function(file) {
+  current_export_selection_snapshot <- function() {
+    map_strain <- isolate(reps_strain_selected())
+    map_group <- isolate(reps_group_selected())
+    if (!is.list(map_strain)) map_strain <- list()
+    if (!is.list(map_group)) map_group <- list()
+
+    source_df <- isolate(datos_combinados())
+    bio_state <- tryCatch(
+      isolate(qc_replicate_selectors(source_df)),
+      error = function(e) list()
+    )
+    if (length(bio_state)) {
+      for (info in bio_state) {
+        strain_name <- as.character(info$strain %||% "")
+        media_name <- as.character(info$media %||% "")
+        stored <- get_synced_media_selection(
+          strain_map = map_strain,
+          group_map = map_group,
+          strain = strain_name,
+          media = media_name
+        )
+        selected <- selector_committed_or_input(
+          info$id,
+          isolate(input[[info$id]]),
+          cached = stored
+        )
+        if (is.null(selected)) selected <- info$selected %||% info$choices
+        selected <- normalize_rep_selection(intersect(as.character(selected), info$choices))
+        synced <- set_synced_media_selection(
+          strain_map = map_strain,
+          group_map = map_group,
+          strain = strain_name,
+          media = media_name,
+          selected = selected
+        )
+        map_strain <- synced$reps_strain_map
+        map_group <- synced$reps_group_map
+      }
+    }
+
+    tech_map <- isolate(qc_tech_selected())
+    tech_by_param <- isolate(qc_tech_selected_by_param())
+    if (!is.list(tech_map)) tech_map <- list()
+    if (!is.list(tech_by_param)) tech_by_param <- list()
+    tech_state <- tryCatch(
+      isolate(qc_tech_selector_state()),
+      error = function(e) list()
+    )
+    if (length(tech_state)) {
+      for (info in tech_state) {
+        selected <- selector_committed_or_input(
+          info$id,
+          isolate(input[[info$id]]),
+          cached = tech_map[[info$key]]
+        )
+        if (is.null(selected)) selected <- info$selected %||% info$choices
+        tech_map[[info$key]] <- normalize_rep_selection(
+          intersect(as.character(selected), info$choices)
+        )
+      }
+    }
+    active_tech_param <- isolate(qc_tech_param_key())
+    if (length(active_tech_param) && !is.na(active_tech_param[[1]]) && nzchar(active_tech_param[[1]])) {
+      tech_by_param <- qc_tech_set_param_map(tech_by_param, active_tech_param[[1]], tech_map)
+    }
+
+    drop_all <- selector_committed_or_input(
+      "rm_reps_all",
+      isolate(input$rm_reps_all),
+      cached = isolate(rm_reps_all_override())
+    )
+    if (is.null(drop_all)) drop_all <- isolate(input$rm_reps_all %||% character(0))
+
+    list(
+      reps_strain_map = map_strain,
+      reps_group_map = map_group,
+      drop_all = normalize_rep_selection(drop_all),
+      tech_selection_map = tech_map,
+      tech_selection_by_param = tech_by_param,
+      active_tech_param = as.character(active_tech_param %||% "")
+    )
+  }
+
+  download_param_content <- function(file, selection_snapshot = NULL) {
     datos  <- datos_combinados()
     params <- plot_settings()$Parameter
     params <- intersect(as.character(params), names(datos))
     wb_sum <- generate_summary_wb(datos, params)
+    selection_snapshot <- selection_snapshot %||% current_export_selection_snapshot()
     
     cur_wide <- curve_data()
     if (!is.null(cur_wide)) {
@@ -14361,13 +14547,13 @@ server <- function(input, output, session) {
     filtered_param_data <- build_filtered_param_export_data(
       df = datos,
       params = params,
-      reps_strain_map = strain_map_export,
-      reps_group_map = group_map_export,
-      drop_all = as.character(isolate(input$rm_reps_all %||% character(0))),
+      reps_strain_map = selection_snapshot$reps_strain_map %||% strain_map_export,
+      reps_group_map = selection_snapshot$reps_group_map %||% group_map_export,
+      drop_all = selection_snapshot$drop_all %||% character(0),
       active_strain = active_strain,
-      tech_selection_map = isolate(qc_tech_selected()),
-      tech_selection_by_param = isolate(qc_tech_selected_by_param()),
-      active_tech_param = isolate(qc_tech_param_key())
+      tech_selection_map = selection_snapshot$tech_selection_map %||% list(),
+      tech_selection_by_param = selection_snapshot$tech_selection_by_param %||% list(),
+      active_tech_param = selection_snapshot$active_tech_param %||% ""
     )
 
     if (length(filtered_param_data)) {
@@ -14402,13 +14588,14 @@ server <- function(input, output, session) {
     contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  
     content     = function(file){
       lang <- input$app_lang %||% i18n_lang
-      key <- params_export_key()
+      selection_snapshot <- current_export_selection_snapshot()
+      key <- params_export_key(selection_snapshot)
       raw <- tryCatch(
         cache_capture_raw(
           slot = "params",
           key = key,
           ext = ".xlsx",
-          writer = download_param_content,
+          writer = function(tmp) download_param_content(tmp, selection_snapshot),
           max_entries = 6L
         ),
         error = function(e) {
@@ -14430,7 +14617,7 @@ server <- function(input, output, session) {
         showNotification(msg, type = "error", duration = 8)
         stop(msg, call. = FALSE)
       }
-      writeBin(raw, file)
+      write_validated_download_raw(raw, file, "Data workbook export")
     }
   )
   
@@ -14553,19 +14740,20 @@ server <- function(input, output, session) {
     )
   }
 
-  params_export_key <- function() {
+  params_export_key <- function(selection_snapshot = NULL) {
     params <- as.character(plot_settings()$Parameter %||% character(0))
+    selection_snapshot <- selection_snapshot %||% current_export_selection_snapshot()
     paste(
       "params",
       input_file_stamp(),
       as.character(input$scope %||% ""),
       as.character(input$strain %||% ""),
       stable_key_value(params),
-      stable_key_value(reps_strain_selected()),
-      stable_key_value(reps_group_selected()),
-      stable_key_value(as.character(input$rm_reps_all %||% character(0))),
-      stable_key_value(qc_tech_selected()),
-      stable_key_value(qc_tech_selected_by_param()),
+      stable_key_value(selection_snapshot$reps_strain_map),
+      stable_key_value(selection_snapshot$reps_group_map),
+      stable_key_value(selection_snapshot$drop_all),
+      stable_key_value(selection_snapshot$tech_selection_map),
+      stable_key_value(selection_snapshot$tech_selection_by_param),
       as.character(isTRUE(input$doNorm)),
       as.character(input$ctrlMedium %||% ""),
       sep = "||"
@@ -14619,6 +14807,7 @@ server <- function(input, output, session) {
         as.character(v$stats_hash %||% ""),
         as.character(length(v$plot_raw %||% raw(0))),
         as.character(length(v$plot_pdf_raw %||% raw(0))),
+        as.character(length(v$plot_pptx_raw %||% raw(0))),
         as.character(length(v$metadata_raw %||% raw(0))),
         as.character(v$created %||% ""),
         sep = "~"
@@ -14676,11 +14865,12 @@ server <- function(input, output, session) {
       )
     }
     if (is.null(record$files$parametros)) {
+      selection_snapshot <- current_export_selection_snapshot()
       raw_params <- params_raw %||% cache_capture_raw(
         slot = "params",
-        key = params_export_key(),
+        key = params_export_key(selection_snapshot),
         ext = ".xlsx",
-        writer = download_param_content,
+        writer = function(tmp) download_param_content(tmp, selection_snapshot),
         max_entries = 6L
       )
       record$files$parametros <- list(
@@ -14759,7 +14949,7 @@ server <- function(input, output, session) {
       ## helper interno (idÃƒÂ©ntico al usado arriba)
       split_comparison <- function(x) stringr::str_split_fixed(x, "-", 2)
       
-      sheet_names <- make.unique(vapply(params, safe_sheet, character(1)), sep = "_")
+      sheet_names <- safe_sheet_names(params)
       for (idx in seq_along(params)){
         param <- params[[idx]]
         sheet <- sheet_names[[idx]]
@@ -14913,23 +15103,12 @@ server <- function(input, output, session) {
                           }
         )
         
-        # armoniza columnas de comparaciÃƒÂ³n
-        if ("comparison" %in% names(sig_raw) || "contrast" %in% names(sig_raw)){
-          cmp_src <- if ("comparison" %in% names(sig_raw)) sig_raw$comparison else sig_raw$contrast
-          cmp <- split_comparison(cmp_src)
-          sig_raw$group1 <- cmp[,1]; sig_raw$group2 <- cmp[,2]
-        }
-        if (all(c("grupo1","grupo2") %in% names(sig_raw))){
-          sig_raw$group1 <- sig_raw$grupo1
-          sig_raw$group2 <- sig_raw$grupo2
-        }
-        
-        # identifica la columna de p-value
-        p_candidates <- intersect(
-          c("p","p.value","p.adj","adj.p.value","p_val","p.value.adj"),
-          names(sig_raw)
+        sig_tbl <- prepare_sig_results_tbl(
+          sig_raw,
+          adjust_method = multitest_sel,
+          lang = lang
         )
-        if (!length(p_candidates)) {
+        if (!nrow(sig_tbl)) {
           writeData(
             wb_tests, sheet,
             tr_text("no_sig_results", lang),
@@ -14937,22 +15116,12 @@ server <- function(input, output, session) {
           )
           next
         }
-        pcol <- p_candidates[1]
-        
-        sig_tbl <- sig_raw |>
+
+        sig_tbl <- sig_tbl |>
           dplyr::mutate(
-            P_valor       = .data[[pcol]],
-            Significativo = dplyr::if_else(
-              P_valor < 0.05,
-              tr_text("yes_label", input$app_lang %||% i18n_lang),
-              tr_text("no_label",  input$app_lang %||% i18n_lang)
-            ),
-            Estrellas     = dplyr::case_when(
-              P_valor < 0.001 ~ "***",
-              P_valor < 0.01  ~ "**",
-              P_valor < 0.05  ~ "*",
-              TRUE            ~ ""
-            )
+            P_valor_mostrado = bioszen_format_p_value(P_valor),
+            P_ajustado_mostrado = bioszen_format_p_value(P_ajustado),
+            P_referencia_mostrado = bioszen_format_p_value(P_referencia)
           )
         
         # ------------------- ESCRITURA EN LA HOJA ------------------------------
@@ -15016,7 +15185,7 @@ server <- function(input, output, session) {
         showNotification(msg, type = "error", duration = 8)
         stop(msg, call. = FALSE)
       }
-      writeBin(raw, file)
+      write_validated_download_raw(raw, file, "Statistics workbook export")
     },
     contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   )
@@ -15074,6 +15243,28 @@ server <- function(input, output, session) {
       showNotification(tr_text("plot_pdf_failed", lang), type = "error", duration = 5)
       return()
     }
+    plot_pptx_raw <- tryCatch(
+      cache_capture_raw(
+        slot = "plot_pptx",
+        key = plot_export_key("pptx", eff_width, eff_height),
+        ext = ".pptx",
+        writer = function(tmp) write_current_plot_pptx(tmp, width = width, height = height),
+        max_entries = 8L
+      ),
+      error = function(e) {
+        msg <- sprintf(
+          tr_text("global_error_template", lang),
+          tr_text("download_plot", lang),
+          conditionMessage(e)
+        )
+        showNotification(msg, type = "error", duration = 8)
+        raw(0)
+      }
+    )
+    if (length(plot_pptx_raw) == 0) {
+      showNotification(tr_text("plot_capture_failed", lang), type = "error", duration = 5)
+      return()
+    }
     metadata_raw <- tryCatch(
       cache_capture_raw(
         slot = "metadata",
@@ -15108,12 +15299,13 @@ server <- function(input, output, session) {
     }
     current_dataset_key(dataset_key)
 
+    selection_snapshot <- current_export_selection_snapshot()
     params_try <- try(
       cache_capture_raw(
         slot = "params",
-        key = params_export_key(),
+        key = params_export_key(selection_snapshot),
         ext = ".xlsx",
-        writer = download_param_content,
+        writer = function(tmp) download_param_content(tmp, selection_snapshot),
         max_entries = 6L
       ),
       silent = TRUE
@@ -15162,6 +15354,7 @@ server <- function(input, output, session) {
     version_suffix <- paste0("_", version_idx)
     plot_png_name <- paste0("grafico_", type_label, version_suffix, ".png")
     plot_pdf_name <- paste0("grafico_", type_label, version_suffix, ".pdf")
+    plot_pptx_name <- paste0("grafico_", type_label, version_suffix, ".pptx")
     metadata_name <- paste0("metadata_", type_label, version_suffix, ".xlsx")
 
     version_record <- list(
@@ -15180,6 +15373,8 @@ server <- function(input, output, session) {
       plot_png_name = plot_png_name,
       plot_pdf_raw  = plot_pdf_raw,
       plot_pdf_name = plot_pdf_name,
+      plot_pptx_raw = plot_pptx_raw,
+      plot_pptx_name = plot_pptx_name,
       metadata_raw  = metadata_raw,
       metadata_name = metadata_name,
       stats_hash    = stats_hash
@@ -15265,6 +15460,11 @@ server <- function(input, output, session) {
         writeBin(v$plot_pdf_raw, file.path(ver_dir, pdf_name))
       }
 
+      if (!is.null(v$plot_pptx_raw) && length(v$plot_pptx_raw) > 0) {
+        pptx_name <- v$plot_pptx_name %||% sub("\\.png$", ".pptx", png_name)
+        writeBin(v$plot_pptx_raw, file.path(ver_dir, pptx_name))
+      }
+
       meta_name <- v$metadata_name %||% "metadata.xlsx"
       writeBin(v$metadata_raw, file.path(ver_dir, meta_name))
 
@@ -15303,7 +15503,13 @@ server <- function(input, output, session) {
     }, add = TRUE)
 
     setwd(tmpdir)
-    zip::zipr(zipfile = file, files = list.files(".", recursive = TRUE))
+    # Preserve dataset/version directories. The default cherry-pick mode flattens
+    # paths and can overwrite repeated names such as INFO.txt on extraction.
+    zip::zipr(
+      zipfile = file,
+      files = list.files(".", recursive = TRUE),
+      mode = "mirror"
+    )
   }
 
   output$downloadBundleZip <- downloadHandler(
@@ -15340,7 +15546,7 @@ server <- function(input, output, session) {
         showNotification(msg, type = "error", duration = 8)
         stop(msg, call. = FALSE)
       }
-      writeBin(raw, file)
+      write_validated_download_raw(raw, file, "Bundle ZIP export")
     },
     contentType = "application/zip"
   )
@@ -15550,7 +15756,8 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("violin_inner"))) {
       update_radio_metadata("violin_inner", v, c("box", "points"))
     }
-    if (!is.null(v <- get_val("curve_lwd")))   updateNumericInput(session, "curve_lwd",   value = as.numeric(v))
+    if (!is.null(v <- get_val("curve_lwd")))     updateNumericInput(session, "curve_lwd",     value = as.numeric(v))
+    if (!is.null(v <- get_val("curve_pt_size"))) updateNumericInput(session, "curve_pt_size", value = as.numeric(v))
     if (!is.null(v <- get_val("curve_geom"))) update_radio_metadata("curve_geom", v, c("line_points", "line_only"))
     if (!is.null(v <- get_val("curve_color_mode"))) update_radio_metadata("curve_color_mode", v, c("by_group", "single"))
     if (!is.null(v <- get_val("curve_single_color"))) {
@@ -15742,7 +15949,7 @@ server <- function(input, output, session) {
         showNotification(msg, type = "error", duration = 8)
         stop(msg, call. = FALSE)
       }
-      writeBin(raw, file)
+      write_validated_download_raw(raw, file, "Metadata workbook export")
     },
     contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   )
@@ -15947,7 +16154,7 @@ server <- function(input, output, session) {
           units = "in",
           dpi = raster_dpi,
           limitsize = FALSE,
-          bg = "white"
+          bg = "transparent"
         )
         doc <- officer::ph_with(
           doc,
@@ -15964,7 +16171,13 @@ server <- function(input, output, session) {
           duration = 7
         )
       } else {
-        doc <- vector_doc
+        doc <- bioszen_remove_pptx_plot_background(
+          vector_doc,
+          left = fit$left,
+          top = fit$top,
+          width = fit$width,
+          height = fit$height
+        )
       }
       print(doc, target = file)
     },

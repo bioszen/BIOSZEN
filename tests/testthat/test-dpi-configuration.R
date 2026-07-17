@@ -73,7 +73,7 @@ test_that("all raster export paths use effective DPI while vectors remain indepe
   expect_match(server_txt, "export_dpi <- bioszen_effective_dpi(input$export_dpi)", fixed = TRUE)
   expect_match(server_txt, "export_scale <- export_dpi / BIOSZEN_CSS_DPI", fixed = TRUE)
   expect_match(server_txt, "scale   = bioszen_effective_dpi(input$export_dpi) / BIOSZEN_CSS_DPI", fixed = TRUE)
-  expect_match(server_txt, "scale    = bioszen_effective_dpi(input$export_dpi) / BIOSZEN_CSS_DPI", fixed = TRUE)
+  expect_match(server_txt, "output$downloadPlotly_png <- individual_plot_png_download()", fixed = TRUE)
   expect_match(server_txt, "export_dpi     = bioszen_effective_dpi(input$export_dpi)", fixed = TRUE)
   expect_match(server_txt, "export_dpi <- bioszen_effective_dpi(input$combo_export_dpi)", fixed = TRUE)
   expect_match(server_txt, "raster_dpi <- bioszen_effective_dpi(input$combo_export_dpi)", fixed = TRUE)

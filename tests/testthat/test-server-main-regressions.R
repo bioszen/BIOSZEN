@@ -118,8 +118,13 @@ test_that("automatic technical QC selections persist while browser inputs catch 
   )
   expect_match(
     server_txt,
-    "active_tech_param = isolate\\(qc_tech_param_key\\(\\)\\)",
-    info = "Parameter workbook exports must fall back to the current technical selection for the active parameter."
+    "active_tech_param <- isolate\\(qc_tech_param_key\\(\\)\\)",
+    info = "The final export snapshot must retain the active technical parameter."
+  )
+  expect_match(
+    server_txt,
+    "selection_snapshot <- selection_snapshot %\\|\\|% current_export_selection_snapshot\\(\\)",
+    info = "Parameter workbook exports must use one final biological and technical selection snapshot."
   )
 })
 
@@ -1115,10 +1120,20 @@ test_that("statistics builders resolve scoped data and tolerate transient blank 
     "output\\$downloadStats <- downloadHandler"
   )
   expect_match(export_section, "get_scope_df", fixed = TRUE)
+  expect_match(export_section, "sheet_names <- safe_sheet_names\\(params\\)", perl = TRUE)
+  expect_false(grepl("make.unique\\(vapply\\(params, safe_sheet", export_section, perl = TRUE))
   expect_false(
     grepl("datos_agrupados\\(\\) \\|>", export_section, fixed = TRUE),
     info = "Statistics downloads should not rebuild a separate filter path from raw grouped data."
   )
+
+  bundle_section <- extract_section(
+    server_txt,
+    "write_bundle_zip <- function",
+    "output\\$downloadBundleZip <- downloadHandler"
+  )
+  expect_match(bundle_section, "zip::zipr", fixed = TRUE)
+  expect_match(bundle_section, "mode = \"mirror\"", fixed = TRUE)
 })
 
 test_that("normalized parameter switching does not preserve stale unavailable parameters", {

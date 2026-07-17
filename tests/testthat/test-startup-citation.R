@@ -1,3 +1,8 @@
+normalize_captured_console <- function(x) {
+  x <- gsub("\033\\[[0-9;?]*[ -/]*[@-~]", "", x, perl = TRUE)
+  gsub("\033G[0-9]+;|\033g", "", x, perl = TRUE)
+}
+
 test_that("BIOSZEN startup citation includes the Zenodo DOI", {
   run_app_file <- file.path(app_test_root(), "R", "run_app.R")
   if (file.exists(run_app_file)) {
@@ -25,7 +30,7 @@ test_that("BIOSZEN startup citation includes the Zenodo DOI", {
 
   options(BIOSZEN.show_startup_citation = TRUE)
   options(BIOSZEN.startup_citation_shown = FALSE)
-  msg <- capture.output(startup_citation(), type = "message")
+  msg <- normalize_captured_console(capture.output(startup_citation(), type = "message"))
   expected <- c(
     "##",
     "## BIOSZEN",
@@ -39,7 +44,9 @@ test_that("BIOSZEN startup citation includes the Zenodo DOI", {
   repeated <- capture.output(startup_citation(), type = "message")
   expect_length(repeated, 0)
 
-  forced <- capture.output(startup_citation(force = TRUE), type = "message")
+  forced <- normalize_captured_console(
+    capture.output(startup_citation(force = TRUE), type = "message")
+  )
   expect_equal(forced, expected)
 
   options(BIOSZEN.startup_citation_shown = FALSE)
@@ -73,9 +80,11 @@ test_that("standalone launcher emits the approved citation block", {
 
   options(BIOSZEN.show_startup_citation = TRUE)
   options(BIOSZEN.startup_citation_shown = FALSE)
-  msg <- capture.output(
-    get("bioszen_startup_citation", envir = launcher_env)(),
-    type = "message"
+  msg <- normalize_captured_console(
+    capture.output(
+      get("bioszen_startup_citation", envir = launcher_env)(),
+      type = "message"
+    )
   )
 
   expect_equal(msg, c(
@@ -133,7 +142,9 @@ test_that("embedded app schedules the citation after Shiny starts listening", {
   expect_true(is.function(scheduled$callback))
   expect_true(isTRUE(getOption("BIOSZEN.startup_citation_shown")))
 
-  emitted_after_start <- capture.output(scheduled$callback(), type = "message")
+  emitted_after_start <- normalize_captured_console(
+    capture.output(scheduled$callback(), type = "message")
+  )
   expect_equal(emitted_after_start, c(
     "##",
     "## BIOSZEN",

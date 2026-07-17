@@ -11,6 +11,53 @@ bioszen_clamp_number <- function(value, default, minimum = -Inf, maximum = Inf) 
   max(minimum, min(maximum, out))
 }
 
+bioszen_significance_context_key <- function(dataset_key = NULL,
+                                              scope = NULL,
+                                              strain = NULL,
+                                              plot_type = NULL,
+                                              parameter = NULL,
+                                              stacked_parameters = NULL,
+                                              normalized = FALSE,
+                                              normalization_control = NULL) {
+  scalar_text <- function(value) {
+    value <- as.character(value)
+    value <- value[!is.na(value)]
+    if (!length(value)) "" else trimws(value[[1]])
+  }
+  encode_part <- function(value) {
+    value <- scalar_text(value)
+    paste0(nchar(value, type = "bytes"), ":", value)
+  }
+
+  scope <- scalar_text(scope)
+  plot_type <- scalar_text(plot_type)
+  family <- if (identical(plot_type, "Apiladas")) "stacked" else "single"
+  target <- if (identical(family, "stacked")) {
+    params <- trimws(as.character(stacked_parameters))
+    params <- sort(unique(params[!is.na(params) & nzchar(params)]))
+    paste(params, collapse = "\r")
+  } else {
+    scalar_text(parameter)
+  }
+  strain <- if (identical(scope, "Por Cepa")) scalar_text(strain) else ""
+  norm_flag <- if (isTRUE(normalized)) "normalized" else "raw"
+  norm_control <- if (isTRUE(normalized)) scalar_text(normalization_control) else ""
+
+  paste(vapply(
+    c(
+      dataset = scalar_text(dataset_key),
+      scope = scope,
+      strain = strain,
+      family = family,
+      target = target,
+      normalization = norm_flag,
+      control = norm_control
+    ),
+    encode_part,
+    character(1)
+  ), collapse = "|")
+}
+
 bioszen_plot_dimension_scale <- function(width, height,
                                          reference_width = 1000,
                                          reference_height = 700,
@@ -182,6 +229,237 @@ bioszen_scale_plot_layers <- function(plot, scale) {
   plot
 }
 
+bioszen_pdf_page_size_from_pixels <- function(width_px, height_px,
+                                               ppi = BIOSZEN_CSS_DPI) {
+  width_px <- bioszen_clamp_number(width_px, 1000, minimum = 1)
+  height_px <- bioszen_clamp_number(height_px, 700, minimum = 1)
+  ppi <- bioszen_clamp_number(ppi, 96, minimum = 1)
+
+  letter_width <- 11 * ppi
+  letter_height <- 8.5 * ppi
+  if (width_px >= height_px) {
+    page_width <- max(width_px, letter_width)
+    page_height <- max(height_px, letter_height)
+  } else {
+    page_width <- max(width_px, letter_height)
+    page_height <- max(height_px, letter_width)
+  }
+
+  list(
+    width_px = page_width,
+    height_px = page_height,
+    content_width_px = width_px,
+    content_height_px = height_px,
+    orientation = if (page_width >= page_height) "landscape" else "portrait"
+  )
+}
+
+bioszen_plot_margin_points <- function(plot) {
+  if (!inherits(plot, "ggplot")) return(c(0, 0, 0, 0))
+  complete_theme <- ggplot2::theme_get() + plot$theme
+  plot_margin <- tryCatch(
+    ggplot2::calc_element("plot.margin", complete_theme),
+    error = function(e) NULL
+  )
+  values <- tryCatch(
+    grid::convertUnit(plot_margin, "pt", valueOnly = TRUE),
+    error = function(e) numeric(0)
+  )
+  if (length(values) != 4 || any(!is.finite(values))) c(0, 0, 0, 0) else values
+}
+
+bioszen_measure_plot_panel <- function(plot, width_in, height_in) {
+  if (!inherits(plot, "ggplot")) return(NULL)
+  width_in <- bioszen_clamp_number(width_in, 11, minimum = 1, maximum = 56)
+  height_in <- bioszen_clamp_number(height_in, 8.5, minimum = 1, maximum = 56)
+
+  device_open <- FALSE
+  tryCatch({
+    grDevices::pdf(NULL, width = width_in, height = height_in)
+    device_open <- TRUE
+    grid::grid.newpage()
+    grid::grid.draw(ggplot2::ggplotGrob(plot))
+    grid::grid.force()
+    listing <- grid::grid.ls(viewports = TRUE, grobs = FALSE, print = FALSE)
+    panel_names <- unique(listing$name[grepl("^panel(?:[.:-]|$)", listing$name)])
+    panel_names <- panel_names[nzchar(panel_names)]
+    if (!length(panel_names)) return(NULL)
+
+    bounds <- lapply(panel_names, function(panel_name) {
+      grid::upViewport(0)
+      grid::seekViewport(panel_name)
+      lower_left <- grid::deviceLoc(
+        grid::unit(0, "npc"), grid::unit(0, "npc"), valueOnly = TRUE
+      )
+      upper_right <- grid::deviceLoc(
+        grid::unit(1, "npc"), grid::unit(1, "npc"), valueOnly = TRUE
+      )
+      c(
+        left = lower_left$x,
+        bottom = lower_left$y,
+        right = upper_right$x,
+        top = upper_right$y
+      )
+    })
+    grid::upViewport(0)
+    bounds <- do.call(rbind, bounds)
+    c(
+      left = min(bounds[, "left"], na.rm = TRUE),
+      bottom = min(bounds[, "bottom"], na.rm = TRUE),
+      right = max(bounds[, "right"], na.rm = TRUE),
+      top = max(bounds[, "top"], na.rm = TRUE)
+    )
+  }, error = function(e) NULL, finally = {
+    if (isTRUE(device_open)) grDevices::dev.off()
+  })
+}
+
+bioszen_align_editable_plot_panel <- function(plot,
+                                               content_width_px,
+                                               content_height_px,
+                                               slide_width_px,
+                                               slide_height_px,
+                                               ppi = BIOSZEN_CSS_DPI,
+                                               iterations = 2L) {
+  if (!inherits(plot, "ggplot")) return(plot)
+  ppi <- bioszen_clamp_number(ppi, 96, minimum = 1)
+  width_in <- bioszen_clamp_number(slide_width_px / ppi, 11, minimum = 1, maximum = 56)
+  height_in <- bioszen_clamp_number(slide_height_px / ppi, 8.5, minimum = 1, maximum = 56)
+  content_width_in <- min(width_in, bioszen_clamp_number(content_width_px / ppi, width_in, minimum = 1))
+  content_height_in <- min(height_in, bioszen_clamp_number(content_height_px / ppi, height_in, minimum = 1))
+
+  # Plotly's browser renderer uses automargins measured in CSS pixels. These
+  # targets reproduce its single-panel publication layout while leaving the
+  # extra printable PDF page area blank.
+  target <- c(
+    left = min(content_width_in * 0.35, 125 / ppi),
+    right = max(1, content_width_in - 117 / ppi),
+    top = min(content_height_in * 0.35, 112 / ppi),
+    bottom = max(1, content_height_in - 9 / ppi)
+  )
+  if (target[["right"]] <= target[["left"]] ||
+      target[["bottom"]] <= target[["top"]]) return(plot)
+
+  iterations <- max(1L, min(3L, suppressWarnings(as.integer(iterations %||% 2L))))
+  out <- plot
+  for (index in seq_len(iterations)) {
+    bounds <- bioszen_measure_plot_panel(out, width_in, height_in)
+    if (is.null(bounds) || any(!is.finite(bounds))) break
+    current_top <- height_in - bounds[["top"]]
+    current_bottom <- height_in - bounds[["bottom"]]
+    margins <- bioszen_plot_margin_points(out)
+    margins <- pmax(
+      0,
+      margins + c(
+        (target[["top"]] - current_top) * 72,
+        (bounds[["right"]] - target[["right"]]) * 72,
+        (current_bottom - target[["bottom"]]) * 72,
+        (target[["left"]] - bounds[["left"]]) * 72
+      )
+    )
+    out <- out + ggplot2::theme(
+      plot.margin = ggplot2::margin(
+        margins[[1]], margins[[2]], margins[[3]], margins[[4]], unit = "pt"
+      )
+    )
+  }
+  out
+}
+
+bioszen_prepare_editable_plotly_plot <- function(plot,
+                                                 plot_type,
+                                                 content_width_px,
+                                                 content_height_px,
+                                                 slide_width_px,
+                                                 slide_height_px,
+                                                 ppi = BIOSZEN_CSS_DPI) {
+  if (!inherits(plot, "ggplot")) return(plot)
+  plot_type <- as.character(plot_type %||% "")
+  if (identical(plot_type, "Curvas")) return(plot)
+
+  out <- bioszen_clone_plot(plot)
+  complete_theme <- ggplot2::theme_get() + out$theme
+  css_text_scale <- 72 / bioszen_clamp_number(ppi, 96, minimum = 1)
+  ggplot_line_to_plotly <- 1 / 2.834646
+  plotly_point_scale <- 1.2
+
+  if (plot_type %in% c("Heatmap", "MatrizCorrelacion")) {
+    # rvg rasterizes the default continuous colour bar. Dense vector
+    # rectangles preserve its appearance while keeping the PPT editable.
+    out <- out + ggplot2::guides(
+      fill = ggplot2::guide_colorbar(nbin = 256, display = "rectangles")
+    )
+  }
+
+  scaled_element <- function(name, scale) {
+    element <- tryCatch(
+      ggplot2::calc_element(name, complete_theme),
+      error = function(e) NULL
+    )
+    bioszen_scale_theme_element(element, scale)
+  }
+
+  theme_updates <- list()
+  text_elements <- c(
+    "plot.title", "plot.subtitle", "plot.caption", "plot.tag",
+    "axis.title", "axis.title.x", "axis.title.y",
+    "axis.text", "axis.text.x", "axis.text.y",
+    "legend.title", "legend.text", "strip.text", "strip.text.x", "strip.text.y"
+  )
+  for (name in text_elements) theme_updates[[name]] <- scaled_element(name, css_text_scale)
+  line_elements <- c(
+    "axis.line", "axis.line.x", "axis.line.y",
+    "axis.ticks", "axis.ticks.x", "axis.ticks.y"
+  )
+  for (name in line_elements) theme_updates[[name]] <- scaled_element(name, ggplot_line_to_plotly)
+  out <- out + do.call(ggplot2::theme, theme_updates)
+
+  for (index in seq_along(out$layers)) {
+    layer <- out$layers[[index]]
+    geom_classes <- class(layer$geom)
+    line_geom_classes <- c(
+      "GeomAbline", "GeomCrossbar", "GeomErrorbar", "GeomHline",
+      "GeomLine", "GeomLinerange", "GeomPath", "GeomPointrange",
+      "GeomSegment", "GeomVline"
+    )
+    if (any(geom_classes %in% line_geom_classes) &&
+        !is.null(layer$aes_params$size) && is.null(layer$aes_params$linewidth)) {
+      layer$aes_params$linewidth <- layer$aes_params$size
+      layer$aes_params$size <- NULL
+    }
+    if (identical(plot_type, "Boxplot") && "GeomBoxplot" %in% geom_classes) {
+      layer$geom_params$width <- 0.5
+      if (!is.null(layer$aes_params$width)) layer$aes_params$width <- 0.5
+    }
+    if (any(geom_classes %in% c("GeomText", "GeomLabel", "GeomTextRepel", "GeomLabelRepel"))) {
+      text_size <- suppressWarnings(as.numeric(layer$aes_params$size))
+      if (length(text_size) && is.finite(text_size[[1]])) {
+        layer$aes_params$size <- text_size[[1]] * css_text_scale
+      }
+    }
+    if ("GeomPoint" %in% geom_classes) {
+      point_size <- suppressWarnings(as.numeric(layer$aes_params$size))
+      if (length(point_size) && is.finite(point_size[[1]])) {
+        layer$aes_params$size <- point_size[[1]] * plotly_point_scale
+      }
+    }
+    out$layers[[index]] <- layer
+  }
+
+  align_types <- c("Boxplot", "Barras", "Violin", "Apiladas", "Correlacion")
+  if (plot_type %in% align_types) {
+    out <- bioszen_align_editable_plot_panel(
+      out,
+      content_width_px = content_width_px,
+      content_height_px = content_height_px,
+      slide_width_px = slide_width_px,
+      slide_height_px = slide_height_px,
+      ppi = ppi
+    )
+  }
+  out
+}
+
 bioszen_pptx_preset_size <- function(preset = "standard_4_3") {
   switch(
     as.character(preset %||% "standard_4_3"),
@@ -236,6 +514,47 @@ bioszen_fit_aspect_rect <- function(content_width, content_height,
   )
 }
 
+bioszen_pptx_size_from_pixels <- function(width_px, height_px,
+                                           ppi = BIOSZEN_CSS_DPI,
+                                           min_side = 2,
+                                           max_side = 56) {
+  width_px <- bioszen_clamp_number(width_px, 1000, minimum = 1)
+  height_px <- bioszen_clamp_number(height_px, 700, minimum = 1)
+  ppi <- bioszen_clamp_number(ppi, 96, minimum = 1)
+  min_side <- bioszen_clamp_number(min_side, 2, minimum = 0.1)
+  max_side <- bioszen_clamp_number(max_side, 56, minimum = min_side)
+
+  width <- width_px / ppi
+  height <- height_px / ppi
+  scale <- 1
+  if (min(width, height) < min_side) {
+    scale <- min_side / min(width, height)
+  }
+  if (max(width, height) * scale > max_side) {
+    scale <- max_side / max(width, height)
+  }
+
+  width <- width * scale
+  height <- height * scale
+  if (min(width, height) < min_side) {
+    # PowerPoint limits make extreme aspect ratios impossible to preserve.
+    if (width >= height) {
+      width <- max_side
+      height <- min_side
+    } else {
+      width <- min_side
+      height <- max_side
+    }
+  }
+
+  list(
+    width = width,
+    height = height,
+    orientation = if (width >= height) "landscape" else "portrait",
+    aspect_ratio = width_px / height_px
+  )
+}
+
 bioszen_set_pptx_slide_size <- function(doc, width, height) {
   if (!inherits(doc, "rpptx")) stop("Expected an officer rpptx object.", call. = FALSE)
   dims <- bioszen_pptx_oriented_size(width, height, orientation = if (width >= height) "landscape" else "portrait")
@@ -255,6 +574,165 @@ bioszen_set_pptx_slide_size <- function(doc, width, height) {
   xml2::xml_set_attr(slide_node, "cx", as.character(round(dims$width * emu_per_inch)))
   xml2::xml_set_attr(slide_node, "cy", as.character(round(dims$height * emu_per_inch)))
   doc
+}
+
+bioszen_pptx_linewidth_mm <- function(points = 1) {
+  points <- bioszen_clamp_number(points, 1, minimum = 0.01, maximum = 20)
+  # Office stores 1 pt as 12,700 EMU; rvg emits 27,100 EMU per ggplot linewidth unit.
+  points * 12700 / 27100
+}
+
+bioszen_prepare_named_pptx_strokes <- function(plot, linewidth_pt = 1) {
+  if (!inherits(plot, "ggplot")) return(plot)
+
+  out <- bioszen_clone_plot(plot)
+  linewidth_mm <- bioszen_pptx_linewidth_mm(linewidth_pt)
+  complete_theme <- ggplot2::theme_get() + out$theme
+  theme_updates <- list()
+  axis_elements <- c(
+    "axis.line", "axis.line.x", "axis.line.x.top", "axis.line.x.bottom",
+    "axis.line.y", "axis.line.y.left", "axis.line.y.right",
+    "axis.ticks", "axis.ticks.x", "axis.ticks.x.top", "axis.ticks.x.bottom",
+    "axis.ticks.y", "axis.ticks.y.left", "axis.ticks.y.right"
+  )
+
+  for (name in axis_elements) {
+    element <- tryCatch(
+      ggplot2::calc_element(name, complete_theme),
+      error = function(e) NULL
+    )
+    if (!inherits(element, "element_line")) next
+    element$linewidth <- linewidth_mm
+    if (!is.null(element$size)) element$size <- NULL
+    theme_updates[[name]] <- element
+  }
+  if (length(theme_updates)) {
+    out <- out + do.call(ggplot2::theme, theme_updates)
+  }
+
+  line_geom_classes <- c(
+    "GeomAbline", "GeomCrossbar", "GeomErrorbar", "GeomHline",
+    "GeomLine", "GeomLinerange", "GeomPath", "GeomPointrange",
+    "GeomSegment", "GeomVline"
+  )
+  for (index in seq_along(out$layers)) {
+    layer <- out$layers[[index]]
+    layer_data <- layer$data
+    is_significance_line <- is.data.frame(layer_data) &&
+      ".sig_layer" %in% names(layer_data) &&
+      any(suppressWarnings(as.logical(layer_data$.sig_layer)), na.rm = TRUE) &&
+      any(class(layer$geom) %in% line_geom_classes)
+    if (!isTRUE(is_significance_line)) next
+
+    layer$aes_params$linewidth <- linewidth_mm
+    if (!is.null(layer$aes_params$size)) layer$aes_params$size <- NULL
+    if (!is.null(layer$geom_params$linewidth)) {
+      layer$geom_params$linewidth <- linewidth_mm
+    }
+    out$layers[[index]] <- layer
+  }
+
+  out
+}
+
+bioszen_remove_pptx_plot_background <- function(doc, left, top, width, height,
+                                                 slide_index = 1L) {
+  if (!inherits(doc, "rpptx")) return(doc)
+
+  slide_index <- suppressWarnings(as.integer(slide_index)[1])
+  if (!is.finite(slide_index) || slide_index < 1L) return(doc)
+  slide <- tryCatch(doc$slide$get_slide(slide_index), error = function(e) NULL)
+  if (is.null(slide)) return(doc)
+  slide_xml <- tryCatch(slide$get(), error = function(e) NULL)
+  if (is.null(slide_xml)) return(doc)
+
+  ns <- xml2::xml_ns(slide_xml)
+  candidates <- xml2::xml_find_all(
+    slide_xml,
+    paste0(
+      ".//p:sp[",
+      "p:spPr/a:prstGeom[@prst='rect'] and ",
+      "p:spPr/a:solidFill/a:srgbClr[translate(@val, 'abcdef', 'ABCDEF')='FFFFFF'] and ",
+      "not(.//a:t)",
+      "]"
+    ),
+    ns
+  )
+  if (!length(candidates)) return(doc)
+
+  emu_per_inch <- 914400
+  expected <- round(c(
+    x = left,
+    y = top,
+    cx = width,
+    cy = height
+  ) * emu_per_inch)
+  matching <- vapply(candidates, function(node) {
+    off <- xml2::xml_find_first(node, "./p:spPr/a:xfrm/a:off", ns)
+    ext <- xml2::xml_find_first(node, "./p:spPr/a:xfrm/a:ext", ns)
+    actual <- c(
+      x = xml2::xml_attr(off, "x"),
+      y = xml2::xml_attr(off, "y"),
+      cx = xml2::xml_attr(ext, "cx"),
+      cy = xml2::xml_attr(ext, "cy")
+    )
+    actual <- stats::setNames(
+      suppressWarnings(as.numeric(actual)),
+      names(actual)
+    )
+    if (length(actual) != 4L || any(!is.finite(actual))) return(FALSE)
+
+    exact_plot_rect <- all(abs(actual - expected) <= 2)
+    large_panel_rect <-
+      actual[["cx"]] >= expected[["cx"]] * 0.5 &&
+      actual[["cy"]] >= expected[["cy"]] * 0.5 &&
+      actual[["x"]] >= expected[["x"]] - 2 &&
+      actual[["y"]] >= expected[["y"]] - 2 &&
+      actual[["x"]] + actual[["cx"]] <= expected[["x"]] + expected[["cx"]] + 2 &&
+      actual[["y"]] + actual[["cy"]] <= expected[["y"]] + expected[["cy"]] + 2
+    exact_plot_rect || large_panel_rect
+  }, logical(1))
+  if (any(matching)) xml2::xml_remove(candidates[matching])
+  doc
+}
+
+bioszen_write_editable_plot_pptx <- function(file, plot, width_px, height_px,
+                                               slide_width_px = width_px,
+                                              slide_height_px = height_px) {
+  if (!inherits(plot, "ggplot")) {
+    stop("Expected a ggplot object for editable PowerPoint export.", call. = FALSE)
+  }
+  if (!nzchar(as.character(file %||% ""))) {
+    stop("A PowerPoint output path is required.", call. = FALSE)
+  }
+
+  content_dims <- bioszen_pptx_size_from_pixels(width_px, height_px)
+  slide_dims <- bioszen_pptx_size_from_pixels(slide_width_px, slide_height_px)
+  ppt_plot <- bioszen_prepare_named_pptx_strokes(plot, linewidth_pt = 1)
+  doc <- officer::read_pptx()
+  doc <- bioszen_set_pptx_slide_size(doc, slide_dims$width, slide_dims$height)
+  doc <- officer::add_slide(doc, layout = "Blank", master = "Office Theme")
+  doc <- suppressWarnings(
+    officer::ph_with(
+      doc,
+      rvg::dml(ggobj = ppt_plot, editable = TRUE),
+      location = officer::ph_location(
+        left = 0,
+        top = 0,
+        width = slide_dims$width,
+        height = slide_dims$height
+      )
+    )
+  )
+  doc <- bioszen_remove_pptx_plot_background(
+    doc,
+    left = 0,
+    top = 0,
+    width = slide_dims$width,
+    height = slide_dims$height
+  )
+  print(doc, target = file)
+  invisible(c(slide_dims, list(content_aspect_ratio = content_dims$aspect_ratio)))
 }
 
 # Generic helpers to convert matrices to tidy tibbles
@@ -305,13 +783,58 @@ filter_min_obs <- function(df, min_n = 2) {
     dplyr::ungroup()
 }
 
+bioszen_is_significant <- function(p) {
+  p <- suppressWarnings(as.numeric(p))
+  is.finite(p) & p >= 0 & p <= 0.05
+}
+
+bioszen_significance_stars <- function(p, nonsignificant = "") {
+  p <- suppressWarnings(as.numeric(p))
+  out <- rep(as.character(nonsignificant %||% ""), length(p))
+  valid <- is.finite(p) & p >= 0 & p <= 1
+  out[!valid] <- ""
+  out[valid & p <= 0.05] <- "*"
+  out[valid & p < 0.01] <- "**"
+  out[valid & p < 0.001] <- "***"
+  out[valid & p < 0.0001] <- "****"
+  out
+}
+
+bioszen_format_p_value <- function(p, digits = 4L, scientific_below = 1e-4) {
+  values <- suppressWarnings(as.numeric(p))
+  digits <- suppressWarnings(as.integer(digits)[1])
+  if (!is.finite(digits) || digits < 1L) digits <- 4L
+  digits <- min(digits, 10L)
+  scientific_below <- suppressWarnings(as.numeric(scientific_below)[1])
+  if (!is.finite(scientific_below) || scientific_below <= 0) scientific_below <- 1e-4
+
+  out <- rep("NA", length(values))
+  finite <- is.finite(values)
+  zero <- finite & values == 0
+  scientific <- finite & values > 0 & values < scientific_below
+  fixed <- finite & values > 0 & !scientific
+
+  out[zero] <- paste0(
+    "<",
+    formatC(.Machine$double.eps, format = "e", digits = max(2L, digits - 2L))
+  )
+  out[scientific] <- formatC(
+    values[scientific],
+    format = "e",
+    digits = max(1L, digits - 1L)
+  )
+  out[fixed] <- formatC(values[fixed], format = "f", digits = digits)
+  out
+}
+
 safe_pairwise_t <- function(df, method = "none") {
   df <- filter_min_obs(df) |> droplevels()
   grupos <- levels(df$Label)
   if (length(grupos) < 2) return(tibble::tibble())
   combinaciones <- utils::combn(grupos, 2, simplify = FALSE)
   resultados <- lapply(combinaciones, function(g) {
-    sub <- dplyr::filter(df, Label %in% g)
+    sub <- dplyr::filter(df, Label %in% g) |>
+      droplevels()
     tryCatch(
       rstatix::t_test(sub, Valor ~ Label, paired = can_paired(sub)),
       error = function(e) NULL
@@ -321,7 +844,9 @@ safe_pairwise_t <- function(df, method = "none") {
   if (length(resultados) == 0) return(tibble::tibble())
   dplyr::bind_rows(resultados) %>%
     rstatix::adjust_pvalue(method = method) %>%
-    rstatix::add_significance("p.adj")
+    dplyr::mutate(
+      p.adj.signif = bioszen_significance_stars(p.adj, nonsignificant = "ns")
+    )
 }
 
 safe_pairwise_wilcox <- function(df, method = "none") {
@@ -330,7 +855,8 @@ safe_pairwise_wilcox <- function(df, method = "none") {
   if (length(grupos) < 2) return(tibble::tibble())
   combinaciones <- utils::combn(grupos, 2, simplify = FALSE)
   resultados <- lapply(combinaciones, function(g) {
-    sub <- dplyr::filter(df, Label %in% g)
+    sub <- dplyr::filter(df, Label %in% g) |>
+      droplevels()
     tryCatch(
       rstatix::wilcox_test(sub, Valor ~ Label, paired = can_paired(sub)),
       error = function(e) NULL
@@ -340,7 +866,9 @@ safe_pairwise_wilcox <- function(df, method = "none") {
   if (length(resultados) == 0) return(tibble::tibble())
   dplyr::bind_rows(resultados) %>%
     rstatix::adjust_pvalue(method = method) %>%
-    rstatix::add_significance("p.adj")
+    dplyr::mutate(
+      p.adj.signif = bioszen_significance_stars(p.adj, nonsignificant = "ns")
+    )
 }
 
 # Combina diferencias punto-a-punto de curvas con Fisher, manteniendo
@@ -404,6 +932,30 @@ safe_sheet <- function(x) {
   out <- sub("_+$", "", out)
   if (!nzchar(out)) out <- "Sheet"
   substr(out, 1, 31)
+}
+
+# Excel worksheet names must be both unique and no longer than 31 characters.
+# `make.unique()` alone can append a suffix after truncation and exceed that limit.
+safe_sheet_names <- function(x) {
+  base_names <- vapply(x, safe_sheet, character(1))
+  used <- character(0)
+  out <- character(length(base_names))
+
+  for (i in seq_along(base_names)) {
+    base <- base_names[[i]]
+    candidate <- base
+    counter <- 1L
+    while (candidate %in% used) {
+      suffix <- paste0("_", counter)
+      prefix_length <- max(1L, 31L - nchar(suffix, type = "chars"))
+      candidate <- paste0(substr(base, 1L, prefix_length), suffix)
+      counter <- counter + 1L
+    }
+    out[[i]] <- candidate
+    used <- c(used, candidate)
+  }
+
+  out
 }
 
 metadata_data_keys <- function() {

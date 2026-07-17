@@ -962,6 +962,20 @@ expect_grouped_download_accepts_filtered_tabs <- function(path, require_filtered
     )
   }
 
+  if (isTRUE(require_filtered) && length(filtered)) {
+    differs_from_base <- vapply(filtered, function(sheet) {
+      base_sheet <- sub("_filt$", "", sheet)
+      if (!base_sheet %in% tabs) return(FALSE)
+      base_data <- suppressMessages(readxl::read_excel(path, sheet = base_sheet, col_names = FALSE))
+      filt_data <- suppressMessages(readxl::read_excel(path, sheet = sheet, col_names = FALSE))
+      !identical(base_data, filt_data)
+    }, logical(1))
+    expect_true(
+      any(differs_from_base),
+      info = "At least one _filt sheet must contain data different from its unfiltered counterpart."
+    )
+  }
+
   non_filtered <- tabs[!grepl("_filt$", tabs)]
   check_tabs <- unique(c(utils::head(non_filtered, 3L), filtered))
   check_tabs <- check_tabs[!is.na(check_tabs) & nzchar(check_tabs)]
@@ -1265,7 +1279,8 @@ test_that("core user processes settle without reload loops", {
     metadata = "downloadMetadata",
     statistics = "downloadStats",
     plot_png = "downloadPlot_png",
-    plot_pdf = "downloadPlot_pdf"
+    plot_pdf = "downloadPlot_pdf",
+    plot_pptx = "downloadPlot_pptx"
   )
   for (label in names(download_specs)) {
     output_id <- download_specs[[label]]
@@ -1704,6 +1719,11 @@ test_that("rapid checkbox clicks do not replay stale group or replicate selectio
       "rapid Por Cepa biological replicate clicks"
     )
     expect_app_idle_without_loop(app, "rapid Por Cepa biological replicate clicks", idle_timeout = 45)
+
+    filtered_out <- app$get_download(output = "downloadExcel")
+    expect_nonempty_download(filtered_out, "filtered data after biological replicate deselection")
+    expect_grouped_download_accepts_filtered_tabs(filtered_out, require_filtered = TRUE)
+    expect_app_idle_without_loop(app, "filtered data download", idle_timeout = 45)
   }
 
   app$set_inputs(scope = "Combinado", wait_ = TRUE, timeout_ = 90000)

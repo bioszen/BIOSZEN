@@ -221,6 +221,7 @@ corr_ylab,Y axis label:
 corr_ymax,Y max:
 corr_ymin,Y min:
 curves_linewidth,Curve line width:
+curves_point_size,Curve point size:
 curves_settings,Curve Settings
 curves_xbreak,X interval:
 curves_xlab,X axis label:
@@ -572,7 +573,7 @@ sig_auto_include,Include comparisons:
 sig_auto_significant,Only significant
 sig_auto_all,All comparisons
 sig_auto_label_mode,Auto label mode:
-sig_auto_label_stars,Stars (*, **, ***)
+sig_auto_label_stars,"Stars (*, **, ***, ****)"
 sig_auto_label_p,P-value (3 decimals)
 sig_auto_replace,Replace current bars
 sig_auto_apply,Auto-add bars
@@ -687,3 +688,25 @@ combo_axis_align_auto,Automatic
 combo_axis_align_left,Left
 combo_axis_align_center,Center
 combo_axis_align_right,Right
+download_save_failed,The file could not be saved in the selected location.
+download_file_description,BIOSZEN file
+shinyfiles_create_folder,Create new folder
+shinyfiles_folder_name,Folder name
+shinyfiles_sort_content,Sort content
+shinyfiles_name,Name
+shinyfiles_type,Type
+shinyfiles_size,Size
+shinyfiles_created,Created
+shinyfiles_modified,Modified
+shinyfiles_sort_direction,Sort direction
+shinyfiles_enter_path,Enter path
+shinyfiles_volumes,Volumes
+shinyfiles_directories,Directories
+shinyfiles_content,Content
+shinyfiles_no_folder,No folders
+shinyfiles_no_selection,No folder selected
+shinyfiles_empty_folder,Empty folder
+shinyfiles_cancel,Cancel
+shinyfiles_select,Select
+growth_folder_created,Folder created: %s
+growth_folder_create_error,Could not create folder: %s

@@ -12,6 +12,11 @@ options(
 
 # -------- paths --------
 get_script_path <- function() {
+  launcher_script <- Sys.getenv("BIOSZEN_LAUNCHER_SCRIPT", unset = "")
+  if (nzchar(launcher_script) && file.exists(launcher_script)) {
+    return(normalizePath(launcher_script, winslash = "/", mustWork = TRUE))
+  }
+
   args0 <- commandArgs(trailingOnly = FALSE)
   file_arg <- grep("^--file=", args0, value = TRUE)
   script_path <- if (length(file_arg)) sub("^--file=", "", file_arg[1]) else ""
@@ -135,6 +140,7 @@ launcher_fresh_process_env <- "BIOSZEN_LAUNCHER_FRESH_PROCESS"
 launcher_citation_shown_env <- "BIOSZEN_LAUNCHER_CITATION_SHOWN"
 launcher_is_fresh_process <- identical(Sys.getenv(launcher_fresh_process_env, unset = ""), "1")
 launcher_library_changed <- FALSE
+launcher_deferred_packages <- character(0)
 
 same_launcher_path <- function(left, right, os_type = .Platform$OS.type) {
   left <- normalizePath(left, winslash = "/", mustWork = FALSE)
@@ -749,15 +755,41 @@ ensure_dependencies <- function(deps, lib_dir) {
 
   all_deps <- resolve_dependency_closure(deps)
   missing <- packages_missing_from_local_library(all_deps, lib_dir)
-  if (length(missing)) {
-    install_dependency_packages(missing, lib_dir)
-  } else {
+  install_now <- missing
+  if (!isTRUE(launcher_is_fresh_process) && length(missing)) {
+    loaded_missing <- intersect(missing, loadedNamespaces())
+    if (length(loaded_missing)) {
+      launcher_deferred_packages <<- unique(c(launcher_deferred_packages, loaded_missing))
+      install_now <- setdiff(missing, loaded_missing)
+      cat(
+        "[deps] Deferring packages already loaded by the current R session to a clean process: ",
+        paste(loaded_missing, collapse = ", "), "\n",
+        sep = ""
+      )
+    }
+  }
+
+  if (length(install_now)) {
+    install_dependency_packages(install_now, lib_dir)
+  } else if (!length(missing)) {
     cat("[deps] All dependency packages are present in the local library.\n")
+  } else {
+    cat("[deps] Remaining missing packages will be installed by the clean R process.\n")
   }
 
   missing_after <- packages_missing_from_local_library(all_deps, lib_dir)
   if (length(missing_after)) {
-    stop("Missing packages after install: ", paste(missing_after, collapse = ", "))
+    deferred_after <- intersect(missing_after, launcher_deferred_packages)
+    failed_after <- setdiff(missing_after, deferred_after)
+    if (length(failed_after)) {
+      stop("Missing packages after install: ", paste(failed_after, collapse = ", "))
+    }
+    cat(
+      "[deps] Clean-process installation still required for: ",
+      paste(deferred_after, collapse = ", "), "\n",
+      sep = ""
+    )
+    return(invisible(TRUE))
   }
 
   namespace_conflicts <- loaded_namespace_conflicts(all_deps, lib_dir)
@@ -1183,13 +1215,19 @@ if (install_needed) {
 
 namespace_conflicts <- loaded_namespace_conflicts(unique(c(deps, pkg)), local_lib)
 restart_in_clean_process <- !isTRUE(launcher_is_fresh_process) &&
-  (isTRUE(launcher_library_changed) || length(namespace_conflicts))
+  (isTRUE(launcher_library_changed) || length(namespace_conflicts) || length(launcher_deferred_packages))
 
 if (restart_in_clean_process) {
   reasons <- character(0)
   if (isTRUE(launcher_library_changed)) reasons <- c(reasons, "the local library was updated")
   if (length(namespace_conflicts)) {
     reasons <- c(reasons, paste0("loaded namespaces came from another library: ", paste(namespace_conflicts, collapse = ", ")))
+  }
+  if (length(launcher_deferred_packages)) {
+    reasons <- c(
+      reasons,
+      paste0("packages already loaded must be installed in the clean process: ", paste(launcher_deferred_packages, collapse = ", "))
+    )
   }
   cat("\n[launcher] Starting BIOSZEN in a clean R process because ", paste(reasons, collapse = "; "), ".\n", sep = "")
   cat("[launcher] This prevents package namespace conflicts in RStudio on Windows and macOS.\n")
