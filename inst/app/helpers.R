@@ -431,7 +431,12 @@ bioszen_prepare_editable_plotly_plot <- function(plot,
       layer$geom_params$width <- 0.5
       if (!is.null(layer$aes_params$width)) layer$aes_params$width <- 0.5
     }
-    if (any(geom_classes %in% c("GeomText", "GeomLabel", "GeomTextRepel", "GeomLabelRepel"))) {
+    layer_data <- layer$data
+    is_significance_text <- is.data.frame(layer_data) &&
+      ".sig_layer" %in% names(layer_data) &&
+      any(suppressWarnings(as.logical(layer_data$.sig_layer)), na.rm = TRUE)
+    if (any(geom_classes %in% c("GeomText", "GeomLabel", "GeomTextRepel", "GeomLabelRepel")) &&
+        !isTRUE(is_significance_text)) {
       text_size <- suppressWarnings(as.numeric(layer$aes_params$size))
       if (length(text_size) && is.finite(text_size[[1]])) {
         layer$aes_params$size <- text_size[[1]] * css_text_scale
@@ -2178,10 +2183,16 @@ filter_export_replicates_for_download <- function(
   } else {
     as.character(active_strain[[1]])
   }
+  if (is.na(strain_sel) || !nzchar(trimws(strain_sel))) strain_sel <- ""
 
   rep_chr <- as.character(df$BiologicalReplicate)
   grp_chr <- paste(as.character(df$Strain), as.character(df$Media), sep = "-")
   keep <- rep(TRUE, nrow(df))
+  safe_index <- function(idx) {
+    idx <- as.logical(idx)
+    idx[is.na(idx)] <- FALSE
+    idx
+  }
 
   if (length(drop_all)) {
     keep <- keep & !(rep_chr %in% drop_all)
@@ -2189,7 +2200,7 @@ filter_export_replicates_for_download <- function(
 
   if (length(reps_group_map)) {
     for (g in names(reps_group_map)) {
-      idx <- grp_chr == as.character(g)
+      idx <- safe_index(grp_chr == as.character(g))
       if (!any(idx)) next
       sel <- normalize_replicate_selection(reps_group_map[[g]])
       keep[idx] <- keep[idx] & (rep_chr[idx] %in% sel)
@@ -2206,7 +2217,9 @@ filter_export_replicates_for_download <- function(
         strain_submap <- reps_strain_map[[strain_name]]
         if (!is.list(strain_submap) || !length(strain_submap)) next
         for (m in names(strain_submap)) {
-          idx <- strain_chr == as.character(strain_name) & media_chr == as.character(m)
+          idx <- safe_index(
+            strain_chr == as.character(strain_name) & media_chr == as.character(m)
+          )
           if (!any(idx)) next
           sel <- normalize_replicate_selection(strain_submap[[m]])
           keep[idx] <- keep[idx] & (rep_chr[idx] %in% sel)
@@ -2214,7 +2227,7 @@ filter_export_replicates_for_download <- function(
       }
     } else if (nzchar(strain_sel)) {
       for (m in names(reps_strain_map)) {
-        idx <- strain_chr == strain_sel & media_chr == as.character(m)
+        idx <- safe_index(strain_chr == strain_sel & media_chr == as.character(m))
         if (!any(idx)) next
         sel <- normalize_replicate_selection(reps_strain_map[[m]])
         keep[idx] <- keep[idx] & (rep_chr[idx] %in% sel)

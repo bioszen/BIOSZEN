@@ -1,6 +1,7 @@
 normalize_captured_console <- function(x) {
   x <- gsub("\033\\[[0-9;?]*[ -/]*[@-~]", "", x, perl = TRUE)
-  gsub("\033G[0-9]+;|\033g", "", x, perl = TRUE)
+  x <- gsub("\033G[0-9]+;|\033g", "", x, perl = TRUE)
+  x[nzchar(x)]
 }
 
 test_that("BIOSZEN startup citation includes the Zenodo DOI", {

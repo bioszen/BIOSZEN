@@ -204,6 +204,45 @@ test_that("editable PPT fixes only axes, ticks, and significance bars at one poi
   expect_true(12700L %in% line_widths)
 })
 
+test_that("editable PPT preserves configured significance text size", {
+  skip_if_not_installed("ggplot2")
+
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
+  env$BIOSZEN_CSS_DPI <- 96
+  sys.source(app_test_path("helpers.R"), envir = env)
+
+  regular_text <- data.frame(x = 1, y = 2, label = "regular")
+  significance_text <- data.frame(
+    x = 1.5, y = 3, label = "****", .sig_layer = TRUE
+  )
+  source_plot <- ggplot2::ggplot() +
+    ggplot2::geom_text(
+      data = regular_text,
+      ggplot2::aes(x, y, label = label),
+      size = 8
+    ) +
+    ggplot2::geom_text(
+      data = significance_text,
+      ggplot2::aes(x, y, label = label),
+      size = 8
+    )
+  page <- env$bioszen_pdf_page_size_from_pixels(1000, 700)
+
+  prepared <- env$bioszen_prepare_editable_plotly_plot(
+    source_plot,
+    plot_type = "Boxplot",
+    content_width_px = 1000,
+    content_height_px = 700,
+    slide_width_px = page$width_px,
+    slide_height_px = page$height_px
+  )
+
+  expect_equal(prepared$layers[[1]]$aes_params$size, 8 * 72 / 96)
+  expect_equal(prepared$layers[[2]]$aes_params$size, 8)
+  expect_equal(source_plot$layers[[2]]$aes_params$size, 8)
+})
+
 test_that("editable PPT point proportions are consistent across Plotly chart families", {
   skip_if_not_installed("ggplot2")
 

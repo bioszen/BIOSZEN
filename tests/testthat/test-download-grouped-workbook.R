@@ -356,6 +356,54 @@ test_that("same replicate ID can be filtered in one group and kept in another", 
   ))
 })
 
+test_that("sparse grouping rows do not break filtered parameter exports", {
+  skip_if_not_installed("dplyr")
+  skip_if_not_installed("tidyr")
+
+  fixture <- build_download_fixture()
+  sparse_rows <- fixture$datos[seq_len(2), , drop = FALSE]
+  sparse_rows$Well <- c("G12", "H12")
+  sparse_rows$Strain <- NA_character_
+  sparse_rows$Media <- NA_character_
+  sparse_rows$BiologicalReplicate <- NA_character_
+  sparse_rows$TechnicalReplicate <- NA_character_
+  sparse <- rbind(fixture$datos, sparse_rows)
+
+  expect_no_error(
+    filtered <- filter_export_replicates_for_download(
+      df = sparse,
+      reps_strain_map = list(
+        S1 = list(M1 = c("R1", "R2"), M2 = c("R1", "R2", "R3")),
+        S2 = list(M1 = c("R1", "R2", "R3"), M2 = c("R1", "R2", "R3"))
+      ),
+      active_strain = "S1"
+    )
+  )
+
+  expect_true(isTRUE(filtered$has_changes))
+  expect_setequal(filtered$df$Well[is.na(filtered$df$Strain)], c("G12", "H12"))
+  expect_false(any(
+    filtered$df$Strain == "S1" &
+      filtered$df$Media == "M1" &
+      filtered$df$BiologicalReplicate == "R3",
+    na.rm = TRUE
+  ))
+
+  expect_no_error(
+    param_exports <- build_filtered_param_export_data(
+      df = sparse,
+      params = fixture$params,
+      reps_group_map = list(
+        "S1-M1" = c("R1", "R2"),
+        "S1-M2" = c("R1", "R2", "R3"),
+        "S2-M1" = c("R1", "R2", "R3"),
+        "S2-M2" = c("R1", "R2", "R3")
+      )
+    )
+  )
+  expect_true(length(param_exports) >= 1L)
+})
+
 test_that("strain-level filtering applies only to the active strain", {
   skip_if_not_installed("dplyr")
   skip_if_not_installed("tidyr")
