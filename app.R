@@ -9,8 +9,26 @@ find_bioszen_app_file <- function(default_name = "app.R") {
     }
   }, character(1))
   frame_paths <- frame_paths[nzchar(frame_paths) & file.exists(frame_paths)]
+
   if (length(frame_paths)) {
-    return(normalizePath(frame_paths[[length(frame_paths)]], winslash = "/", mustWork = TRUE))
+    expected_name <- tolower(basename(default_name))
+    matching_paths <- frame_paths[
+      tolower(basename(frame_paths)) == expected_name
+    ]
+
+    if (length(matching_paths)) {
+      return(normalizePath(
+        matching_paths[[length(matching_paths)]],
+        winslash = "/",
+        mustWork = TRUE
+      ))
+    }
+
+    return(normalizePath(
+      frame_paths[[length(frame_paths)]],
+      winslash = "/",
+      mustWork = TRUE
+    ))
   }
 
   cmd_args <- commandArgs(FALSE)
