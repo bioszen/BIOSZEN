@@ -13,12 +13,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: r-tests
+  group: r-tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
-    name: Test BIOSZEN
+    name: test (${{ matrix.os }}, R-release)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
 
@@ -37,7 +37,7 @@ jobs:
       SHINYTEST2_LOAD_TIMEOUT: "120000"
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up R
@@ -46,7 +46,7 @@ jobs:
           r-version: release
           use-public-rspm: true
 
-      - name: Install R dependencies
+      - name: Install dependencies
         uses: r-lib/actions/setup-r-dependencies@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590
         with:
           extra-packages: |
@@ -57,28 +57,10 @@ jobs:
           pak-version: stable
 
       - name: Check test environment
-        shell: Rscript {0}
-        run: |
-          cat("Operating system:", Sys.info()[["sysname"]], "\n")
-          cat("Architecture:", Sys.info()[["machine"]], "\n")
-          cat("R version:", R.version.string, "\n")
-          cat("Chrome executable:", chromote::find_chrome(), "\n")
+        run: Rscript -e "cat('Operating system:', Sys.info()[['sysname']], '\n'); cat('Architecture:', Sys.info()[['machine']], '\n'); cat('R version:', R.version.string, '\n'); cat('Chrome executable:', chromote::find_chrome(), '\n')"
 
-      - name: Run complete test suite
-        shell: Rscript {0}
-        run: |
-          options(
-            shinytest2.timeout = 120000,
-            shinytest2.load_timeout = 120000,
-            testthat.progress.max_fails = Inf
-          )
-
-          testthat::test_dir(
-            path = "tests/testthat",
-            reporter = "summary",
-            stop_on_failure = TRUE,
-            stop_on_warning = FALSE
-          )
+      - name: Run full testthat suite including shiny e2e
+        run: Rscript -e "options(shinytest2.timeout = 120000, shinytest2.load_timeout = 120000, testthat.progress.max_fails = Inf); testthat::test_dir('tests/testthat', reporter = 'summary', stop_on_failure = TRUE, stop_on_warning = FALSE)"
 
   build:
     name: Build BIOSZEN_2.0.4
@@ -87,7 +69,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up R
@@ -97,22 +79,14 @@ jobs:
           use-public-rspm: true
 
       - name: Verify package version
-        shell: Rscript {0}
-        run: |
-          description <- read.dcf("DESCRIPTION")
-          version <- unname(description[1, "Version"])
-          if (!identical(version, "2.0.4")) {
-            stop("Expected BIOSZEN version 2.0.4, found ", version)
-          }
+        run: Rscript -e "description <- read.dcf('DESCRIPTION'); version <- unname(description[1, 'Version']); if (!identical(version, '2.0.4')) stop('Expected BIOSZEN version 2.0.4, found ', version)"
 
       - name: Build BIOSZEN source package
-        shell: bash
         run: |
           R CMD build .
           test -f BIOSZEN_2.0.4.tar.gz
 
       - name: Prepare universal bundle
-        shell: bash
         run: |
           mkdir -p dist/BIOSZEN_2.0.4
           cp BIOSZEN_2.0.4.tar.gz dist/BIOSZEN_2.0.4/
@@ -121,7 +95,6 @@ jobs:
           cp README.md dist/BIOSZEN_2.0.4/
 
       - name: Validate bundle contents
-        shell: bash
         run: |
           test -f dist/BIOSZEN_2.0.4/App.R
           test -f dist/BIOSZEN_2.0.4/BIOSZEN_2.0.4.tar.gz
