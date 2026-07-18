@@ -27,11 +27,9 @@ jobs:
       matrix:
         include:
           - platform: windows
-            artifact-name: BIOSZEN_windows
             os: windows-latest
             r-version: release
           - platform: macos
-            artifact-name: BIOSZEN_mac
             os: macos-15
             r-version: release
 
@@ -41,6 +39,7 @@ jobs:
       RGL_USE_NULL: "true"
       SHINYTEST2_TIMEOUT: "120000"
       SHINYTEST2_LOAD_TIMEOUT: "120000"
+      BIOSZEN_TEST_PLATFORM: ${{ matrix.platform }}
 
     steps:
       - name: Checkout repository
@@ -92,12 +91,61 @@ jobs:
             stop_on_warning = FALSE
           )
 
-      - name: Upload platform-specific test snapshots
-        if: always()
+      - name: Prepare platform test results
+        shell: Rscript {0}
+        run: |
+          platform <- Sys.getenv("BIOSZEN_TEST_PLATFORM")
+          output_dir <- file.path("test-artifacts", platform)
+          dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+          writeLines(
+            c(
+              "BIOSZEN 2.0.4 test suite passed.",
+              paste("Platform:", platform),
+              paste("Operating system:", Sys.info()[["sysname"]]),
+              paste("Architecture:", Sys.info()[["machine"]]),
+              paste("R version:", R.version.string),
+              paste("shinytest2 version:", as.character(packageVersion("shinytest2"))),
+              paste("chromote version:", as.character(packageVersion("chromote")))
+            ),
+            file.path(output_dir, "TESTS_PASSED.txt"),
+            useBytes = TRUE
+          )
+
+          snapshot_dir <- file.path("tests", "testthat", "_snaps")
+          if (dir.exists(snapshot_dir)) {
+            snapshot_output <- file.path(output_dir, "snapshots")
+            dir.create(snapshot_output, recursive = TRUE, showWarnings = FALSE)
+            snapshot_files <- list.files(
+              snapshot_dir,
+              all.files = TRUE,
+              no.. = TRUE,
+              full.names = TRUE
+            )
+            if (length(snapshot_files)) {
+              file.copy(snapshot_files, snapshot_output, recursive = TRUE)
+            }
+          }
+
+      - name: Upload temporary platform results
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact-name }}
-          path: |
-            tests/testthat/_snaps/**
-          if-no-files-found: ignore
+          name: BIOSZEN_2.0.4-${{ matrix.platform }}
+          path: test-artifacts/${{ matrix.platform }}/
+          if-no-files-found: error
+          retention-days: 14
+
+  merge-results:
+    name: BIOSZEN_2.0.4
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Merge Windows and macOS results
+        uses: actions/upload-artifact/merge@v4
+        with:
+          name: BIOSZEN_2.0.4
+          pattern: BIOSZEN_2.0.4-*
+          separate-directories: false
+          delete-merged: true
           retention-days: 14
