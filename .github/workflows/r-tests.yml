@@ -19,15 +19,4 @@ concurrency:
 jobs:
   test:
     name: test-${{ matrix.platform }} (${{ matrix.os }}, R-${{ matrix.r-version }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: windows
-            os: windows-latest
-            r-version: release
-          - platform: macos
-            os: mac
+    runs-on: ${{ matrix.os
