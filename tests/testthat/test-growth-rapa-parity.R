@@ -1,104 +1,61 @@
 library(testthat)
 
 root <- app_test_root()
-source(app_test_path( "server", "growth_module.R"))
-source(app_test_path( "params", "params_growth.R"))
+source(app_test_path("server", "growth_module.R"))
+source(app_test_path("params", "params_growth.R"))
 
-infer_time_interval_hours <- function(time_col) {
-  seconds <- suppressWarnings(
-    as.numeric(gsub("[^0-9.+-]", "", as.character(time_col)))
-  )
-  seconds <- seconds[is.finite(seconds)]
-  if (length(seconds) < 2) {
-    return(1)
+growth_parity_fixture <- function(filename) {
+  path <- testthat::test_path("fixtures", "growth", filename)
+  if (!file.exists(path)) {
+    stop(sprintf("Missing committed growth parity fixture: %s", filename))
   }
-  step_seconds <- stats::median(diff(seconds), na.rm = TRUE)
-  if (!is.finite(step_seconds) || step_seconds <= 0) {
-    return(1)
-  }
-  step_seconds / 3600
+  path
 }
 
-extract_time_hours <- function(time_col) {
-  seconds <- suppressWarnings(
-    as.numeric(gsub("[^0-9.+-]", "", as.character(time_col)))
-  )
-  seconds <- seconds[is.finite(seconds)]
-  if (!length(seconds)) {
-    return(numeric(0))
-  }
-  seconds / 3600
-}
-
-full_permissive_batch <- function(tidy_df) {
-  wells <- unique(tidy_df$Well)
-  tidy_df <- tidy_df %>%
-    dplyr::mutate(
-      Well = factor(Well, levels = wells),
-      Time = as.numeric(Time)
-    )
-  robust <- calculate_growth_rates_robust(tidy_df)
-  permissive <- calculate_growth_rates_permissive(tidy_df)
-  combine_growth_results(robust, permissive) %>%
-    dplyr::mutate(Well = factor(Well, levels = wells)) %>%
-    dplyr::arrange(Well) %>%
-    dplyr::select(Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time, OD0)
-}
-
-test_that("Rapa workbook subset keeps exact values and order with selective permissive path", {
+test_that("growth fixture reproduces all parameters for all wells", {
   skip_if_not_installed("readxl")
-  skip_if_not_installed("writexl")
   skip_if_not_installed("gcplyr")
   skip_if_not_installed("dplyr")
   library(dplyr)
 
-  curves_path <- Sys.getenv("BIOSZEN_RAPA_CURVES_XLSX", unset = "")
-  params_path <- Sys.getenv("BIOSZEN_RAPA_PARAMS_XLSX", unset = "")
-  skip_if_not(
-    nzchar(curves_path) && file.exists(curves_path),
-    "Set BIOSZEN_RAPA_CURVES_XLSX to run the optional Rapa workbook parity test."
+  curves_path <- growth_parity_fixture("Curvas_Test.xlsx")
+  params_path <- growth_parity_fixture("Parametros_Test.xlsx")
+
+  expect_identical(readxl::excel_sheets(curves_path), "Sheet1")
+
+  prepared <- .bioszen_build_curves_sheet(
+    curves_path,
+    max_time = 48,
+    time_interval = 0.5
+  )
+  expect_identical(prepared$format, "processed")
+  expect_identical(names(prepared$new_data)[[1]], "Time")
+
+  tidy_df <- gcplyr::trans_wide_to_tidy(prepared$new_data, id_cols = "Time")
+  actual <- compute_growth_results_batch(tidy_df)
+  expected <- readxl::read_excel(
+    params_path,
+    sheet = "Resultados Combinados",
+    .name_repair = "minimal"
   )
 
-  raw <- readxl::read_excel(curves_path, skip = 2, .name_repair = "minimal")
-  time_hours <- extract_time_hours(raw[[1]])
-  if (!length(time_hours)) {
-    interval_hours <- infer_time_interval_hours(raw[[1]])
-    time_hours <- seq(0, by = interval_hours, length.out = nrow(raw))
-  }
-  raw <- raw[seq_len(min(length(time_hours), nrow(raw))), , drop = FALSE]
-  curves_sheet <- data.frame(
-    Time = time_hours[seq_len(nrow(raw))],
-    raw[, -c(1, 2), drop = FALSE],
-    check.names = FALSE
-  )
+  expected_columns <- .bioszen_growth_result_columns
+  expect_identical(names(actual), expected_columns)
+  expect_identical(names(expected), expected_columns)
+  expect_identical(nrow(actual), 43L)
+  expect_identical(nrow(expected), 43L)
+  expect_identical(as.character(actual$Well), as.character(expected$Well))
 
-  tmp_curves <- tempfile("rapa_curves_", fileext = ".xlsx")
-  on.exit(unlink(tmp_curves, recursive = TRUE), add = TRUE)
-  writexl::write_xlsx(list(Sheet1 = curves_sheet), path = tmp_curves)
+  numeric_columns <- setdiff(expected_columns, "Well")
+  expect_true(all(vapply(expected[numeric_columns], is.numeric, logical(1))))
+  expect_true(all(vapply(actual[numeric_columns], function(x) all(is.finite(x)), logical(1))))
 
-  raw_wide <- gcplyr::read_wides(tmp_curves, sheet = "Sheet1", startrow = 1, startcol = 1)
-  tidy_df <- gcplyr::trans_wide_to_tidy(raw_wide[, -1], id_cols = "Time")
-  all_wells <- unique(as.character(tidy_df$Well))
-  selected_wells <- all_wells[seq_len(min(6, length(all_wells)))]
-  tidy_df <- tidy_df %>%
-    dplyr::filter(as.character(Well) %in% selected_wells) %>%
-    dplyr::mutate(Well = factor(as.character(Well), levels = selected_wells))
-
-  baseline <- full_permissive_batch(tidy_df)
-  batch <- compute_growth_results_batch(tidy_df)
-  expect_identical(names(batch), names(baseline))
-  expect_identical(as.character(batch$Well), as.character(baseline$Well))
-
-  numeric_cols <- setdiff(names(batch), "Well")
-  for (col in numeric_cols) {
-    expect_equal(unname(batch[[col]]), unname(baseline[[col]]), tolerance = sqrt(.Machine$double.eps))
-  }
-
-  if (file.exists(params_path)) {
-    expected <- readxl::read_excel(params_path, sheet = "Resultados Combinados")
-    common_names <- intersect(names(batch), names(expected))
-    expect_identical(common_names, names(expected))
-    expected_subset <- expected[expected$Well %in% selected_wells, , drop = FALSE]
-    expect_identical(as.character(batch$Well), as.character(expected_subset$Well))
+  for (column in numeric_columns) {
+    expect_equal(
+      unname(actual[[column]]),
+      unname(expected[[column]]),
+      tolerance = sqrt(.Machine$double.eps),
+      info = sprintf("Growth parameter mismatch in column %s", column)
+    )
   }
 })
