@@ -262,9 +262,10 @@ tipo específico de medición.
 
 ### Curvas
 
-- Configura ejes, etiquetas y grosor.
+- Configura ejes, etiquetas, grosor de línea y tamaño de puntos de curvas.
 - Elige geometría de línea e intervalo de confianza.
 - Opción de mostrar trayectorias crudas de réplicas.
+- **Tamaño de puntos de curvas** controla los marcadores visibles cuando se selecciona la geometría de línea y puntos. Solo cambia el tamaño de los marcadores; no modifica los valores, la geometría de las líneas ni los resultados estadísticos.
 
 ### Controles compartidos de apariencia
 
@@ -424,6 +425,7 @@ Flujo de metadatos:
 - El estado de orientación horizontal se conserva en roundtrip.
 - Las opciones tipográficas se conservan en el roundtrip de metadatos, incluyendo familia de letra, tamaños y estado normal/negrita/cursiva/subrayado para título del gráfico, títulos de eje X/Y, etiquetas de ticks de ejes, texto de leyenda, etiquetas de datos y texto de significancia.
 - La visibilidad/posición de la leyenda, incluyendo la selección de leyenda a la derecha cuando corresponde, se guarda en metadatos y se aplica nuevamente al cargarlos.
+- El tamaño de puntos de curvas se guarda en los metadatos de diseño de curvas y se restaura al cargarlos. Los metadatos de diseño no restauran el orden de grupos/muestras, el ámbito ni la selección de cepa.
 - El estadístico de barras de error y la selección de métodos de estadística de curvas se conservan en el roundtrip de metadatos.
 
 Bundle reproducible:

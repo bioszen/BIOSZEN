@@ -2455,6 +2455,12 @@ server <- function(input, output, session) {
       slide_width_px = page_size$width_px,
       slide_height_px = page_size$height_px
     )
+    if (identical(as.character(input$tipo %||% ""), "Curvas")) {
+      ppt_plot <- ppt_plot + ggplot2::theme(
+        plot.background = ggplot2::element_blank(),
+        panel.background = ggplot2::element_blank()
+      )
+    }
 
     bioszen_write_editable_plot_pptx(
       file = file,

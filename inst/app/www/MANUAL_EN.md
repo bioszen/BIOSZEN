@@ -261,9 +261,10 @@ specific measurement type.
 
 ### Curves
 
-- Configure axes, labels, line width.
+- Configure axes, labels, line width, and curve point size.
 - Choose line geometry and confidence interval style.
 - Optional raw replicate trajectories.
+- **Curve point size** controls the visible markers when the line-and-points geometry is selected. It changes marker size only; curve values, line geometry, and statistical results are not altered.
 
 ### Shared plot appearance controls
 
@@ -423,6 +424,7 @@ Metadata flow:
 - Orientation flip state persists across metadata roundtrip.
 - Plot typography choices persist across metadata roundtrip, including font family, text sizes, and normal/bold/italic/underline state for plot titles, X/Y axis titles, axis tick labels, legend text, data labels, and significance text.
 - Legend visibility/placement, including right-side legend selection where applicable, is stored in metadata and reapplied when metadata are loaded.
+- Curve point size is stored in curve design metadata and restored when that metadata is loaded. Design metadata do not restore group/sample order, scope, or strain selection.
 - Error-bar statistic and curve-statistics method selection persist across metadata roundtrip.
 
 Reproducibility bundle:
