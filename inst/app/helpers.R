@@ -2165,7 +2165,9 @@ filter_export_replicates_for_download <- function(
   reps_group_map = list(),
   drop_all = character(0),
   active_strain = NULL,
-  tech_selection_map = list()
+  tech_selection_map = list(),
+  selected_groups = NULL,
+  selected_medias = NULL
 ) {
   if (is.null(df) || !is.data.frame(df) || !nrow(df)) {
     return(list(df = df, has_changes = FALSE, dropped_rows = 0L))
@@ -2187,6 +2189,7 @@ filter_export_replicates_for_download <- function(
 
   rep_chr <- as.character(df$BiologicalReplicate)
   grp_chr <- paste(as.character(df$Strain), as.character(df$Media), sep = "-")
+  media_chr <- as.character(df$Media)
   keep <- rep(TRUE, nrow(df))
   safe_index <- function(idx) {
     idx <- as.logical(idx)
@@ -2196,6 +2199,18 @@ filter_export_replicates_for_download <- function(
 
   if (length(drop_all)) {
     keep <- keep & !(rep_chr %in% drop_all)
+  }
+
+  if (!is.null(selected_groups)) {
+    selected_groups <- unique(as.character(selected_groups))
+    selected_groups <- selected_groups[!is.na(selected_groups) & nzchar(selected_groups)]
+    keep <- keep & (grp_chr %in% selected_groups)
+  }
+
+  if (!is.null(selected_medias)) {
+    selected_medias <- unique(as.character(selected_medias))
+    selected_medias <- selected_medias[!is.na(selected_medias) & nzchar(selected_medias)]
+    keep <- keep & (media_chr %in% selected_medias)
   }
 
   if (length(reps_group_map)) {
@@ -2208,7 +2223,6 @@ filter_export_replicates_for_download <- function(
   }
 
   if (length(reps_strain_map)) {
-    media_chr <- as.character(df$Media)
     strain_chr <- as.character(df$Strain)
     is_nested_map <- all(vapply(reps_strain_map, is.list, logical(1)))
 
@@ -2260,7 +2274,9 @@ build_filtered_param_export_data <- function(
   active_strain = NULL,
   tech_selection_map = list(),
   tech_selection_by_param = list(),
-  active_tech_param = NULL
+  active_tech_param = NULL,
+  selected_groups = NULL,
+  selected_medias = NULL
 ) {
   out <- list()
   if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(out)
@@ -2289,7 +2305,9 @@ build_filtered_param_export_data <- function(
       reps_group_map = reps_group_map,
       drop_all = drop_all,
       active_strain = active_strain,
-      tech_selection_map = param_tech_map
+      tech_selection_map = param_tech_map,
+      selected_groups = selected_groups,
+      selected_medias = selected_medias
     )
     if (!isTRUE(filtered$has_changes) ||
         !is.data.frame(filtered$df) ||

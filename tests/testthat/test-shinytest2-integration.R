@@ -398,6 +398,25 @@ wait_for_selected_values <- function(app, input_id, expected, timeout_sec = 30) 
   FALSE
 }
 
+wait_for_selector_commit_values <- function(app, input_id, expected, timeout_sec = 30) {
+  expected <- sort(unique(as.character(expected)))
+  expected <- expected[!is.na(expected) & nzchar(expected)]
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  while (Sys.time() < deadline) {
+    payload <- tryCatch(
+      app$get_value(input = "bioszen_selector_commit"),
+      error = function(e) NULL
+    )
+    if (is.list(payload) && identical(as.character(payload$key %||% ""), as.character(input_id))) {
+      observed <- sort(unique(as.character(payload$value %||% character(0))))
+      observed <- observed[!is.na(observed) & nzchar(observed)]
+      if (identical(observed, expected)) return(TRUE)
+    }
+    Sys.sleep(0.2)
+  }
+  FALSE
+}
+
 checkbox_dom_selected_values <- function(app, input_id) {
   skip_if_not_installed("jsonlite")
   input_json <- jsonlite::toJSON(as.character(input_id), auto_unbox = TRUE)
@@ -706,6 +725,45 @@ open_qc_tech_controls <- function(app, timeout_sec = 45) {
     Sys.sleep(1)
   }
   checkbox_group_state(app, name_prefix = "qc_tech_rep_")
+}
+
+set_group_replicate_accordion <- function(app, open = TRUE) {
+  skip_if_not_installed("jsonlite")
+  normalize_js_bool(app$get_js(sprintf(
+    "(function(){
+       var root = document.getElementById('repsGrpPanel');
+       var button = root ? root.querySelector('.accordion-button') : null;
+       if (!button) {
+         button = Array.from(document.querySelectorAll('.accordion-button')).find(function(el){
+           return /replicates by group|réplicas por grupo/i.test(el.textContent || '');
+         });
+       }
+       if (!button) return false;
+       var expanded = button.getAttribute('aria-expanded') === 'true';
+       if (expanded !== %s) button.click();
+       return true;
+     })()",
+    if (isTRUE(open)) "true" else "false"
+  )))
+}
+
+open_group_replicate_controls <- function(app, timeout_sec = 45) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  while (Sys.time() < deadline) {
+    boxes <- checkbox_group_state(app, name_prefix = "reps_grp_")
+    if (is.data.frame(boxes) && nrow(boxes)) return(boxes)
+    try(
+      app$set_inputs(
+        repsGrpPanel = "reps_by_group",
+        wait_ = FALSE,
+        allow_no_input_binding_ = TRUE
+      ),
+      silent = TRUE
+    )
+    try(set_group_replicate_accordion(app, open = TRUE), silent = TRUE)
+    Sys.sleep(0.5)
+  }
+  checkbox_group_state(app, name_prefix = "reps_grp_")
 }
 
 click_stats_button_with_blank_param <- function(app, button_id) {
@@ -1297,7 +1355,10 @@ test_that("core user processes settle without reload loops", {
     expect_app_idle_without_loop(app, "combined group deselection persistence", idle_timeout = 45)
     set_checkbox_group_dom_values(app, "showGroups", character(0))
     expect_true(wait_for_dom_selected_values(app, "showGroups", character(0), timeout_sec = 45))
-    expect_true(wait_for_selected_values(app, "showGroups", character(0), timeout_sec = 45))
+    expect_true(
+      wait_for_selector_commit_values(app, "showGroups", character(0), timeout_sec = 45),
+      info = "The committed combined-group selection should record the intentional empty state."
+    )
     expect_app_idle_without_loop(app, "combined group clear all", idle_timeout = 45)
     send_filter_toggle_user_change(app, "toggleGroups", TRUE)
     expect_true(
@@ -1329,7 +1390,10 @@ test_that("core user processes settle without reload loops", {
     expect_app_idle_without_loop(app, "condition deselection persistence", idle_timeout = 45)
     set_checkbox_group_dom_values(app, "showMedios", character(0))
     expect_true(wait_for_dom_selected_values(app, "showMedios", character(0), timeout_sec = 45))
-    expect_true(wait_for_selected_values(app, "showMedios", character(0), timeout_sec = 45))
+    expect_true(
+      wait_for_selector_commit_values(app, "showMedios", character(0), timeout_sec = 45),
+      info = "The committed condition selection should record the intentional empty state."
+    )
     expect_app_idle_without_loop(app, "condition clear all", idle_timeout = 45)
     send_filter_toggle_user_change(app, "toggleMedios", TRUE)
     expect_true(
@@ -2108,20 +2172,10 @@ test_that("automatic biological and technical outliers export filt tabs and sele
   expect_length(grep("_filt$", tech_restored_tabs, value = TRUE), 0L)
 
   app$set_inputs(qcTabs = "qc_outliers", wait_ = FALSE)
-  app$set_inputs(
-    repsGrpPanel = "reps_by_group",
-    wait_ = FALSE,
-    allow_no_input_binding_ = TRUE
+  bio_choices <- checkbox_values_by_name(
+    open_group_replicate_controls(app, timeout_sec = 60),
+    "reps_grp_"
   )
-  deadline <- Sys.time() + 45
-  bio_choices <- list()
-  while (Sys.time() < deadline && !length(bio_choices)) {
-    bio_choices <- checkbox_values_by_name(
-      checkbox_group_state(app, name_prefix = "reps_grp_"),
-      "reps_grp_"
-    )
-    if (!length(bio_choices)) Sys.sleep(0.5)
-  }
   expect_true(length(bio_choices) > 0)
   expect_true(click_element_by_id(app, "qc_apply_outlier_exclusion"))
   expected_bio <- lapply(bio_choices, setdiff, y = "5")
@@ -2132,17 +2186,10 @@ test_that("automatic biological and technical outliers export filt tabs and sele
   expect_nonempty_download(bio_filtered, "biological-outlier filtered data")
   expect_grouped_download_accepts_filtered_tabs(bio_filtered, require_filtered = TRUE)
 
-  app$set_inputs(
-    repsGrpPanel = character(0),
-    wait_ = FALSE,
-    allow_no_input_binding_ = TRUE
-  )
+  expect_true(set_group_replicate_accordion(app, open = FALSE))
   Sys.sleep(0.5)
-  app$set_inputs(
-    repsGrpPanel = "reps_by_group",
-    wait_ = FALSE,
-    allow_no_input_binding_ = TRUE
-  )
+  reopened_bio <- open_group_replicate_controls(app, timeout_sec = 60)
+  expect_true(is.data.frame(reopened_bio) && nrow(reopened_bio) > 0)
   expect_bulk_checkbox_state(
     app,
     expected_bio,

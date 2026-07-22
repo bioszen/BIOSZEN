@@ -126,6 +126,16 @@ test_that("automatic technical QC selections persist while browser inputs catch 
     "selection_snapshot <- selection_snapshot %\\|\\|% current_export_selection_snapshot\\(\\)",
     info = "Parameter workbook exports must use one final biological and technical selection snapshot."
   )
+  expect_match(
+    server_txt,
+    "selected_groups = selection_snapshot\\$selected_groups",
+    info = "Combined group deselection must be included in filtered parameter exports."
+  )
+  expect_match(
+    server_txt,
+    "selected_medias = selection_snapshot\\$selected_medias",
+    info = "Per-strain condition deselection must be included in filtered parameter exports."
+  )
 })
 
 test_that("upload and filter updates are batched before plot redraws", {
@@ -836,7 +846,7 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   expect_match(ui_txt, "target.id !== 'toggleMedios' && target.id !== 'toggleGroups'", fixed = TRUE)
   expect_match(ui_txt, "ev.isTrusted", fixed = TRUE)
   expect_match(ui_txt, "BIOSZEN_debouncedCheckboxGroups", fixed = TRUE)
-  expect_match(ui_txt, "version: 6", fixed = TRUE)
+  expect_match(ui_txt, "version: 5", fixed = TRUE)
   expect_match(ui_txt, "pendingSelections", fixed = TRUE)
   expect_match(ui_txt, "setFinal: function", fixed = TRUE)
   expect_match(ui_txt, "delete pendingSelections[name]", fixed = TRUE)
@@ -849,8 +859,6 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   expect_match(ui_txt, "data-bioszen-selector-guard", fixed = TRUE)
   expect_match(ui_txt, "data-bioszen-selector-change-count", fixed = TRUE)
   expect_match(ui_txt, "normalizeProtectedValue", fixed = TRUE)
-  expect_match(ui_txt, "shinyValueFor", fixed = TRUE)
-  expect_match(ui_txt, "value.length === 0", fixed = TRUE)
   expect_match(ui_txt, "directEl && directEl.type === 'file'", fixed = TRUE)
   expect_match(ui_txt, "protectedSelectorKeys", fixed = TRUE)
   expect_match(ui_txt, "isProtectedKey", fixed = TRUE)
@@ -873,7 +881,7 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   expect_match(ui_txt, "bioszen_selector_commit", fixed = TRUE)
   expect_match(ui_txt, "bioszen_selector_release", fixed = TRUE)
   expect_match(ui_txt, "shinyInputMatches", fixed = TRUE)
-  expect_match(ui_txt, "Shiny.setInputValue\\(key, shinyValueFor\\(selected, kind\\), \\{priority: 'event'\\}\\)", perl = TRUE)
+  expect_match(ui_txt, "Shiny.setInputValue\\(key, selected, \\{priority: 'event'\\}\\)", perl = TRUE)
   expect_match(ui_txt, "controlKind(target)", fixed = TRUE)
   expect_match(ui_txt, "target.type === 'radio'", fixed = TRUE)
   expect_match(ui_txt, "String\\(target.tagName \\|\\| ''\\)\\.toLowerCase\\(\\) !== 'select'", perl = TRUE)

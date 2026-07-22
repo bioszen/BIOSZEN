@@ -792,6 +792,62 @@ test_that("large platemap automatic biological outliers create filt tabs and ful
   expect_length(restored, 0L)
 })
 
+test_that("group and condition deselection create parameter filt data", {
+  skip_if_not_installed("dplyr")
+  skip_if_not_installed("tidyr")
+
+  old <- setwd(app_dir)
+  on.exit(setwd(old), add = TRUE)
+  load_app_sources()
+
+  fixture <- build_download_fixture()
+  all_groups <- unique(paste(fixture$datos$Strain, fixture$datos$Media, sep = "-"))
+  kept_groups <- setdiff(all_groups, all_groups[[1]])
+  by_group <- build_filtered_param_export_data(
+    df = fixture$datos,
+    params = fixture$params,
+    selected_groups = kept_groups
+  )
+
+  expect_setequal(names(by_group), fixture$params)
+  for (filtered in by_group) {
+    observed <- unique(paste(filtered$Strain, filtered$Media, sep = "-"))
+    expect_setequal(observed, kept_groups)
+    expect_lt(nrow(filtered), nrow(fixture$datos))
+  }
+
+  all_medias <- unique(as.character(fixture$datos$Media))
+  kept_medias <- all_medias[[1]]
+  by_media <- build_filtered_param_export_data(
+    df = fixture$datos,
+    params = fixture$params,
+    selected_medias = kept_medias
+  )
+
+  expect_setequal(names(by_media), fixture$params)
+  for (filtered in by_media) {
+    expect_setequal(unique(as.character(filtered$Media)), kept_medias)
+    expect_lt(nrow(filtered), nrow(fixture$datos))
+  }
+
+  expect_length(
+    build_filtered_param_export_data(
+      df = fixture$datos,
+      params = fixture$params,
+      selected_groups = all_groups
+    ),
+    0L
+  )
+  expect_length(
+    build_filtered_param_export_data(
+      df = fixture$datos,
+      params = fixture$params,
+      selected_medias = all_medias
+    ),
+    0L
+  )
+})
+
 test_that("technical replicate filt sheets use the stored map for each parameter", {
   skip_if_not_installed("openxlsx")
   skip_if_not_installed("readxl")

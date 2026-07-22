@@ -14574,13 +14574,24 @@ server <- function(input, output, session) {
     )
     if (is.null(drop_all)) drop_all <- isolate(input$rm_reps_all %||% character(0))
 
+    scope_sel <- isolate(input$scope %||% "Por Cepa")
+    selected_groups <- NULL
+    selected_medias <- NULL
+    if (identical(scope_sel, "Combinado")) {
+      selected_groups <- isolate(selected_show_groups())
+    } else {
+      selected_medias <- isolate(selected_show_medios())
+    }
+
     list(
       reps_strain_map = map_strain,
       reps_group_map = map_group,
       drop_all = normalize_rep_selection(drop_all),
       tech_selection_map = tech_map,
       tech_selection_by_param = tech_by_param,
-      active_tech_param = as.character(active_tech_param %||% "")
+      active_tech_param = as.character(active_tech_param %||% ""),
+      selected_groups = selected_groups,
+      selected_medias = selected_medias
     )
   }
 
@@ -14620,7 +14631,9 @@ server <- function(input, output, session) {
       active_strain = active_strain,
       tech_selection_map = selection_snapshot$tech_selection_map %||% list(),
       tech_selection_by_param = selection_snapshot$tech_selection_by_param %||% list(),
-      active_tech_param = selection_snapshot$active_tech_param %||% ""
+      active_tech_param = selection_snapshot$active_tech_param %||% "",
+      selected_groups = selection_snapshot$selected_groups,
+      selected_medias = selection_snapshot$selected_medias
     )
 
     if (length(filtered_param_data)) {
@@ -14821,6 +14834,8 @@ server <- function(input, output, session) {
       stable_key_value(selection_snapshot$drop_all),
       stable_key_value(selection_snapshot$tech_selection_map),
       stable_key_value(selection_snapshot$tech_selection_by_param),
+      stable_key_value(selection_snapshot$selected_groups),
+      stable_key_value(selection_snapshot$selected_medias),
       as.character(isTRUE(input$doNorm)),
       as.character(input$ctrlMedium %||% ""),
       sep = "||"
