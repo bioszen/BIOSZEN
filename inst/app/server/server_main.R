@@ -10510,6 +10510,9 @@ server <- function(input, output, session) {
       )
       map_strain <- sync_maps$reps_strain_map
       map_group <- sync_maps$reps_group_map
+      # Automatic QC actions must update the canonical selector state even when
+      # the lazy replicate panel is closed and no browser input is mounted.
+      record_selector_commit(info$id, next_sel)
       current_input <- normalize_rep_selection(
         intersect(as.character(input[[info$id]] %||% character(0)), info$choices)
       )

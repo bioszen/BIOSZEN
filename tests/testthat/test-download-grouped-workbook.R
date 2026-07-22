@@ -704,6 +704,94 @@ test_that("technical outlier deselection creates filtered parameter workbook tab
   expect_equal(filt_rep1, mean(c(10.0, 10.1, 10.2)), tolerance = 1e-10)
 })
 
+test_that("large platemap automatic biological outliers create filt tabs and full selection restores data", {
+  skip_if_not_installed("openxlsx")
+  skip_if_not_installed("readxl")
+  skip_if_not_installed("dplyr")
+  skip_if_not_installed("tidyr")
+
+  fixture_path <- file.path(root, "tests", "testthat", "fixtures", "platemap_BigData_test.xlsx")
+  fixture_path <- normalizePath(fixture_path, winslash = "/", mustWork = FALSE)
+
+  old <- setwd(app_dir)
+  on.exit(setwd(old), add = TRUE)
+  load_app_sources()
+
+  expect_true(file.exists(fixture_path))
+  datos <- as.data.frame(readxl::read_excel(fixture_path, sheet = "Datos"), check.names = FALSE)
+  cfg <- as.data.frame(readxl::read_excel(fixture_path, sheet = "PlotSettings"), check.names = FALSE)
+  params <- intersect(as.character(cfg$Parameter), names(datos))
+  expect_gte(nrow(datos), 5000L)
+  expect_gte(length(params), 1L)
+
+  datos$Label <- paste(datos$Strain, datos$Media, sep = "-")
+  target_group <- unique(datos$Label)[[1]]
+  target_idx <- which(datos$Label == target_group)[[1]]
+  target_rep <- as.character(datos$BiologicalReplicate[[target_idx]])
+  for (param in params) {
+    group_values <- suppressWarnings(as.numeric(datos[[param]][datos$Label == target_group]))
+    finite_values <- group_values[is.finite(group_values)]
+    expect_gte(length(finite_values), 4L)
+    span <- diff(range(finite_values))
+    if (!is.finite(span) || span <= 0) span <- 1
+    datos[[param]][target_idx] <- max(finite_values) + (1000 * span)
+  }
+
+  out_reps <- qc_outlier_replicates(
+    df = datos,
+    params = params,
+    group_col = "Label",
+    rep_col = "BiologicalReplicate",
+    iqr_mult = 1.5
+  )
+  expect_true(any(
+    as.character(out_reps$Group) == target_group &
+      as.character(out_reps$Replicate) == target_rep
+  ))
+
+  full_map <- lapply(
+    split(as.character(datos$BiologicalReplicate), datos$Label),
+    function(values) unique(values[!is.na(values) & nzchar(values)])
+  )
+  selected_map <- full_map
+  for (group in names(selected_map)) {
+    flagged <- unique(as.character(out_reps$Replicate[as.character(out_reps$Group) == group]))
+    selected_map[[group]] <- setdiff(selected_map[[group]], flagged)
+  }
+
+  filtered <- build_filtered_param_export_data(
+    df = datos,
+    params = params,
+    reps_group_map = selected_map
+  )
+  expect_gte(length(filtered), 1L)
+  expect_true(any(vapply(filtered, nrow, integer(1)) < nrow(datos)))
+
+  target_param <- names(filtered)[[1]]
+  out_path <- tempfile("bioszen_large_outlier_filt_", fileext = ".xlsx")
+  on.exit(unlink(out_path), add = TRUE)
+  wb <- generate_summary_wb(datos, target_param)
+  wb <- generate_summary_wb(
+    datos = renumber_replicates_for_export(filtered[[target_param]]),
+    params = target_param,
+    wb = wb,
+    sheet_suffix = "_filt"
+  )
+  openxlsx::saveWorkbook(wb, out_path, overwrite = TRUE)
+  expect_grouped_workbook_sheets(
+    out_path,
+    required = safe_sheet(target_param),
+    expected_filtered = safe_sheet(paste0(target_param, "_filt"))
+  )
+
+  restored <- build_filtered_param_export_data(
+    df = datos,
+    params = params,
+    reps_group_map = full_map
+  )
+  expect_length(restored, 0L)
+})
+
 test_that("technical replicate filt sheets use the stored map for each parameter", {
   skip_if_not_installed("openxlsx")
   skip_if_not_installed("readxl")

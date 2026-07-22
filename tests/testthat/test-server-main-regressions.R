@@ -1062,6 +1062,16 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   expect_match(server_txt, "record_selector_commit(input_id, selected)", fixed = TRUE)
   expect_match(ui_txt, "BIOSZEN_debouncedCheckboxGroups.setFinal", fixed = TRUE)
 
+  qc_bio_apply_helper <- extract_section(
+    server_txt,
+    "qc_apply_replicate_selection <- function",
+    "output\\$qcMissingTable <- renderDT"
+  )
+  expect_match(qc_bio_apply_helper, "record_selector_commit(info$id, next_sel)", fixed = TRUE)
+  expect_match(qc_bio_apply_helper, "set_synced_media_selection", fixed = TRUE)
+  expect_match(qc_bio_apply_helper, "reps_strain_selected(map_strain)", fixed = TRUE)
+  expect_match(qc_bio_apply_helper, "reps_group_selected(map_group)", fixed = TRUE)
+
   expect_match(server_txt, "stable_input_suffix <- function", fixed = TRUE)
   expect_match(server_txt, "strain_rep_input_id <- function", fixed = TRUE)
   expect_match(server_txt, "group_rep_input_id <- function", fixed = TRUE)

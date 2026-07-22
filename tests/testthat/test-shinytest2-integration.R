@@ -771,6 +771,44 @@ make_growth_e2e_workbook <- function(path, n_points = 12, n_wells = 3) {
   invisible(path)
 }
 
+make_qc_outlier_e2e_workbook <- function(path) {
+  tech_values <- list(
+    c(10.0, 10.1, 10.2, 40.0),
+    c(10.2, 10.3, 10.4, 10.5),
+    c(10.4, 10.5, 10.6, 10.7),
+    c(10.6, 10.7, 10.8, 10.9),
+    c(40.0, 40.1, 40.2, 40.3)
+  )
+  dat <- do.call(rbind, lapply(seq_along(tech_values), function(rep_id) {
+    data.frame(
+      Well = sprintf("W%02d", ((rep_id - 1L) * 4L) + seq_len(4L)),
+      Strain = "S1",
+      Media = "M1",
+      Orden = 1L,
+      Replicate = as.character(rep_id),
+      BiologicalReplicate = as.character(rep_id),
+      TechnicalReplicate = paste0("T", seq_len(4L)),
+      Signal = tech_values[[rep_id]],
+      stringsAsFactors = FALSE
+    )
+  }))
+  cfg <- data.frame(
+    Parameter = "Signal",
+    Y_Max = 50,
+    Interval = 5,
+    Y_Title = "Signal",
+    stringsAsFactors = FALSE
+  )
+
+  wb <- openxlsx::createWorkbook()
+  openxlsx::addWorksheet(wb, "Datos")
+  openxlsx::writeData(wb, "Datos", dat)
+  openxlsx::addWorksheet(wb, "PlotSettings")
+  openxlsx::writeData(wb, "PlotSettings", cfg)
+  openxlsx::saveWorkbook(wb, path, overwrite = TRUE)
+  invisible(path)
+}
+
 wait_for_growth_status <- function(app, timeout_sec = 90) {
   deadline <- Sys.time() + as.numeric(timeout_sec)
   last_status <- ""
@@ -1963,6 +2001,112 @@ test_that("technical replicate bulk actions commit empty and restored states", {
   app$set_inputs(qc_tech_select_all = "click", wait_ = TRUE, timeout_ = 90000)
   expect_bulk_checkbox_state(app, tech_choices, "technical select all", timeout_sec = 15)
   expect_app_idle_without_loop(app, "technical select all", idle_timeout = 45)
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("automatic biological and technical outliers export filt tabs and select-all restores them", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("openxlsx")
+  skip_if_not_installed("readxl")
+
+  fixture <- tempfile("bioszen_qc_outliers_", fileext = ".xlsx")
+  on.exit(unlink(fixture, force = TRUE), add = TRUE)
+  make_qc_outlier_e2e_workbook(fixture)
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(dataFile = normalizePath(fixture), wait_ = TRUE, timeout_ = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  app$set_inputs(
+    scope = "Combinado",
+    tipo = "Boxplot",
+    param = "Signal",
+    wait_ = TRUE,
+    timeout_ = 90000
+  )
+  app$wait_for_value(input = "showGroups", timeout = 90000)
+  install_loop_probe(app)
+  expect_app_idle_without_loop(app, "QC outlier fixture upload", idle_timeout = 45)
+
+  tech_state <- open_qc_tech_controls(app, timeout_sec = 60)
+  tech_choices <- checkbox_values_by_name(tech_state, "qc_tech_rep_")
+  expect_true(length(tech_choices) > 0)
+  expect_true(click_element_by_id(app, "qc_apply_tech_outlier_exclusion"))
+  # Only biological replicate 1 contains the deliberately extreme T4 value.
+  expected_tech <- tech_choices
+  first_key <- names(expected_tech)[[1]]
+  expected_tech[[first_key]] <- setdiff(expected_tech[[first_key]], "T4")
+  expect_bulk_checkbox_state(app, expected_tech, "automatic technical outlier exclusion", timeout_sec = 30)
+  expect_app_idle_without_loop(app, "automatic technical outlier exclusion", idle_timeout = 45)
+
+  tech_filtered <- app$get_download(output = "downloadExcel")
+  expect_nonempty_download(tech_filtered, "technical-outlier filtered data")
+  expect_grouped_download_accepts_filtered_tabs(tech_filtered, require_filtered = TRUE)
+
+  expect_true(click_element_by_id(app, "qc_tech_select_all"))
+  expect_bulk_checkbox_state(app, tech_choices, "technical select all after outlier exclusion", timeout_sec = 30)
+  expect_app_idle_without_loop(app, "technical select all after outlier exclusion", idle_timeout = 45)
+  tech_restored <- app$get_download(output = "downloadExcel")
+  tech_restored_tabs <- expect_grouped_download_accepts_filtered_tabs(tech_restored)
+  expect_length(grep("_filt$", tech_restored_tabs, value = TRUE), 0L)
+
+  app$set_inputs(qcTabs = "qc_outliers", wait_ = FALSE)
+  app$set_inputs(
+    repsGrpPanel = "reps_by_group",
+    wait_ = FALSE,
+    allow_no_input_binding_ = TRUE
+  )
+  deadline <- Sys.time() + 45
+  bio_choices <- list()
+  while (Sys.time() < deadline && !length(bio_choices)) {
+    bio_choices <- checkbox_values_by_name(
+      checkbox_group_state(app, name_prefix = "reps_grp_"),
+      "reps_grp_"
+    )
+    if (!length(bio_choices)) Sys.sleep(0.5)
+  }
+  expect_true(length(bio_choices) > 0)
+  expect_true(click_element_by_id(app, "qc_apply_outlier_exclusion"))
+  expected_bio <- lapply(bio_choices, setdiff, y = "5")
+  expect_bulk_checkbox_state(app, expected_bio, "automatic biological outlier exclusion", timeout_sec = 30)
+  expect_app_idle_without_loop(app, "automatic biological outlier exclusion", idle_timeout = 45)
+
+  bio_filtered <- app$get_download(output = "downloadExcel")
+  expect_nonempty_download(bio_filtered, "biological-outlier filtered data")
+  expect_grouped_download_accepts_filtered_tabs(bio_filtered, require_filtered = TRUE)
+
+  app$set_inputs(
+    repsGrpPanel = character(0),
+    wait_ = FALSE,
+    allow_no_input_binding_ = TRUE
+  )
+  Sys.sleep(0.5)
+  app$set_inputs(
+    repsGrpPanel = "reps_by_group",
+    wait_ = FALSE,
+    allow_no_input_binding_ = TRUE
+  )
+  expect_bulk_checkbox_state(
+    app,
+    expected_bio,
+    "biological outlier selection after accordion reopen",
+    timeout_sec = 30
+  )
+
+  expect_true(click_element_by_id(app, "repsGrpSelectAll"))
+  expect_bulk_checkbox_state(app, bio_choices, "biological select all after outlier exclusion", timeout_sec = 30)
+  expect_app_idle_without_loop(app, "biological select all after outlier exclusion", idle_timeout = 45)
+  bio_restored <- app$get_download(output = "downloadExcel")
+  bio_restored_tabs <- expect_grouped_download_accepts_filtered_tabs(bio_restored)
+  expect_length(grep("_filt$", bio_restored_tabs, value = TRUE), 0L)
 
   critical <- find_critical_frontend_logs(app$get_logs())
   expect_equal(
