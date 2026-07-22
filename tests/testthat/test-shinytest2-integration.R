@@ -545,6 +545,47 @@ checkbox_values_by_name <- function(state, prefix) {
   split(as.character(state$value), as.character(state$name))
 }
 
+checked_checkbox_values_by_name <- function(state, prefix) {
+  if (!is.data.frame(state) || !nrow(state) || !"checked" %in% names(state)) return(list())
+  checked <- !is.na(state$checked) & as.logical(state$checked)
+  checkbox_values_by_name(state[checked, , drop = FALSE], prefix)
+}
+
+wait_for_single_checkbox_value_removal <- function(app,
+                                                   original,
+                                                   prefix,
+                                                   removed_value,
+                                                   timeout_sec = 30) {
+  normalize_selection <- function(x) {
+    x <- sort(unique(as.character(x %||% character(0))))
+    x[!is.na(x) & nzchar(x)]
+  }
+  original <- lapply(original, normalize_selection)
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  while (Sys.time() < deadline) {
+    observed <- checked_checkbox_values_by_name(
+      checkbox_group_state(app, name_prefix = prefix),
+      prefix
+    )
+    observed <- lapply(observed, normalize_selection)
+    if (all(names(original) %in% names(observed))) {
+      changed <- names(original)[vapply(names(original), function(name) {
+        !identical(original[[name]], observed[[name]])
+      }, logical(1))]
+      if (length(changed) == 1L) {
+        name <- changed[[1]]
+        removed <- setdiff(original[[name]], observed[[name]])
+        added <- setdiff(observed[[name]], original[[name]])
+        if (identical(removed, as.character(removed_value)) && !length(added)) {
+          return(observed[names(original)])
+        }
+      }
+    }
+    Sys.sleep(0.2)
+  }
+  NULL
+}
+
 expect_bulk_checkbox_state <- function(app, expected, label, timeout_sec = 30) {
   normalize_selection <- function(x) {
     if (is.null(x)) x <- character(0)
@@ -985,9 +1026,8 @@ expect_grouped_download_accepts_filtered_tabs <- function(path, require_filtered
 
   filtered <- grep("_filt$", tabs, value = TRUE)
   if (isTRUE(require_filtered)) {
-    expect_gt(
-      length(filtered),
-      0,
+    expect_true(
+      length(filtered) > 0,
       info = paste("Expected at least one _filt sheet. Available sheets:", paste(tabs, collapse = ", "))
     )
   }
@@ -2041,9 +2081,18 @@ test_that("automatic biological and technical outliers export filt tabs and sele
   expect_true(length(tech_choices) > 0)
   expect_true(click_element_by_id(app, "qc_apply_tech_outlier_exclusion"))
   # Only biological replicate 1 contains the deliberately extreme T4 value.
-  expected_tech <- tech_choices
-  first_key <- names(expected_tech)[[1]]
-  expected_tech[[first_key]] <- setdiff(expected_tech[[first_key]], "T4")
+  expected_tech <- wait_for_single_checkbox_value_removal(
+    app,
+    original = tech_choices,
+    prefix = "qc_tech_rep_",
+    removed_value = "T4",
+    timeout_sec = 30
+  )
+  expect_true(
+    !is.null(expected_tech),
+    info = "Automatic technical outlier exclusion should remove only T4 from exactly one biological replicate."
+  )
+  if (is.null(expected_tech)) expected_tech <- tech_choices
   expect_bulk_checkbox_state(app, expected_tech, "automatic technical outlier exclusion", timeout_sec = 30)
   expect_app_idle_without_loop(app, "automatic technical outlier exclusion", idle_timeout = 45)
 

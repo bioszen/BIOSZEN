@@ -1529,7 +1529,7 @@ ui <- fluidPage(
             }
           });
           if (window.Shiny && typeof Shiny.setInputValue === 'function') {
-            Shiny.setInputValue(id, selected, {priority: 'event'});
+            Shiny.setInputValue(id, selected.length ? selected : null, {priority: 'event'});
           }
         });
         return true;
@@ -1550,7 +1550,7 @@ ui <- fluidPage(
   tags$script(HTML("
     (function(){
       if (window.BIOSZEN_debouncedCheckboxGroups &&
-          window.BIOSZEN_debouncedCheckboxGroups.version >= 5) {
+          window.BIOSZEN_debouncedCheckboxGroups.version >= 6) {
         return;
       }
       var pendingTimers = {};
@@ -1568,7 +1568,7 @@ ui <- fluidPage(
       var minHoldMs = 900;
       var holdMs = 3000;
       var maxHoldMs = 120000;
-      document.documentElement.setAttribute('data-bioszen-selector-guard', '5');
+      document.documentElement.setAttribute('data-bioszen-selector-guard', '6');
 
       function isDebouncedGroup(name) {
         if (!name) return false;
@@ -1723,6 +1723,13 @@ ui <- fluidPage(
         return value === null || typeof value === 'undefined' ? '' : String(value);
       }
 
+      function shinyValueFor(value, kind) {
+        if (kind === 'checkbox-group' && Array.isArray(value) && value.length === 0) {
+          return null;
+        }
+        return value;
+      }
+
       function applySelection(key, value, kind) {
         if (kind === 'checkbox-group') {
           value = Array.isArray(value) ? value.map(String) : [];
@@ -1762,8 +1769,10 @@ ui <- fluidPage(
 
       function valuesEqual(a, b) {
         if (Array.isArray(a) || Array.isArray(b)) {
-          a = Array.isArray(a) ? a.map(String).sort() : [String(a || '')];
-          b = Array.isArray(b) ? b.map(String).sort() : [String(b || '')];
+          a = Array.isArray(a) ? a.map(String).sort() :
+            (a === null || typeof a === 'undefined' ? [] : [String(a || '')]);
+          b = Array.isArray(b) ? b.map(String).sort() :
+            (b === null || typeof b === 'undefined' ? [] : [String(b || '')]);
           return a.length === b.length && a.every(function(value, index){ return value === b[index]; });
         }
         return String(a || '') === String(b || '');
@@ -1776,7 +1785,9 @@ ui <- fluidPage(
             valuesEqual(commit.value, value)) {
           return true;
         }
-        if (!Object.prototype.hasOwnProperty.call(Shiny.shinyapp.$inputValues, key)) return false;
+        if (!Object.prototype.hasOwnProperty.call(Shiny.shinyapp.$inputValues, key)) {
+          return Array.isArray(value) && value.length === 0;
+        }
         return valuesEqual(Shiny.shinyapp.$inputValues[key], value);
       }
 
@@ -1876,7 +1887,7 @@ ui <- fluidPage(
             value: selected,
             nonce: Date.now() + Math.random()
           }, {priority: 'event'});
-          Shiny.setInputValue(key, selected, {priority: 'event'});
+          Shiny.setInputValue(key, shinyValueFor(selected, kind), {priority: 'event'});
         }
         var ageMs = Date.now() - (pendingStartedAt[key] || Date.now());
         var firstReleaseCheckMs = Math.max(50, minHoldMs - ageMs);
@@ -1957,7 +1968,7 @@ ui <- fluidPage(
       }
 
       window.BIOSZEN_debouncedCheckboxGroups = {
-        version: 5,
+        version: 6,
         flush: function(name) {
           name = String(name || '');
           if (!pendingKinds[name] && !isDebouncedGroup(name)) return false;
@@ -1994,7 +2005,7 @@ ui <- fluidPage(
               value: selected.slice(),
               nonce: Date.now() + Math.random()
             }, {priority: 'event'});
-            Shiny.setInputValue(name, selected, {priority: 'event'});
+            Shiny.setInputValue(name, shinyValueFor(selected, 'checkbox-group'), {priority: 'event'});
           }
           startReapplyLoop();
           scheduleReapply();
