@@ -2761,3 +2761,133 @@ test_that("publication style exports preserve DPI metadata and one-slide PowerPo
     info = paste(unique(as.character(critical$message)), collapse = "\n")
   )
 })
+
+test_that("large platemap keeps final group order, filters, plot, and downloads", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("jsonlite")
+  skip_if_not_installed("png")
+  skip_if_not_installed("readxl")
+
+  fixture <- testthat::test_path("fixtures", "platemap_BigData_test.xlsx")
+  expect_true(file.exists(fixture))
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(
+    dataFile = normalizePath(fixture),
+    wait_ = FALSE,
+    timeout_ = 120000
+  )
+  app$wait_for_value(input = "param", timeout = 240000)
+  app$set_inputs(
+    scope = "Combinado",
+    tipo = "Boxplot",
+    x_wrap = FALSE,
+    wait_ = FALSE,
+    timeout_ = 120000,
+    allow_no_input_binding_ = TRUE
+  )
+  app$wait_for_value(input = "showGroups", timeout = 240000)
+
+  groups <- sort(unique(as.character(app$get_value(input = "showGroups"))))
+  groups <- groups[!is.na(groups) & nzchar(groups)]
+  expect_equal(length(groups), 14L)
+  expect_true(wait_for_dom_selected_values(app, "showGroups", groups, timeout_sec = 120))
+
+  removed <- groups[c(2L, 6L, 11L)]
+  expected <- setdiff(groups, removed)
+  ordered <- rev(expected)
+  order_text <- paste(ordered, collapse = ",")
+  removed_json <- jsonlite::toJSON(removed, auto_unbox = FALSE)
+  order_json <- jsonlite::toJSON(order_text, auto_unbox = TRUE)
+
+  changed <- app$get_js(sprintf(
+    "(function(){
+       var removed = %s.map(String);
+       var orderText = %s;
+       var order = document.getElementById('orderGroups');
+       if (order) {
+         order.value = orderText;
+         order.dispatchEvent(new Event('input', {bubbles: true}));
+         order.dispatchEvent(new Event('change', {bubbles: true}));
+       }
+       Array.from(document.querySelectorAll('input[type=\"checkbox\"]'))
+         .filter(function(box){
+           return String(box.name || '') === 'showGroups' &&
+             removed.indexOf(String(box.value || '')) >= 0 && box.checked;
+         })
+         .forEach(function(box){ box.click(); });
+       Shiny.setInputValue('orderGroups', orderText, {priority: 'event'});
+       return true;
+     })()",
+    removed_json,
+    order_json
+  ))
+  expect_true(normalize_js_bool(changed))
+  expect_true(
+    wait_for_selected_values(app, "showGroups", expected, timeout_sec = 180),
+    info = "The server did not keep the final group selection for the large platemap."
+  )
+  expect_true(
+    wait_for_dom_selected_values(app, "showGroups", expected, timeout_sec = 180),
+    info = "The browser did not keep the final group selection for the large platemap."
+  )
+
+  order_deadline <- Sys.time() + 180
+  order_ok <- FALSE
+  while (Sys.time() < order_deadline) {
+    current_order <- tryCatch(
+      normalize_js_scalar(app$get_value(input = "orderGroups")),
+      error = function(e) ""
+    )
+    if (identical(current_order, order_text)) {
+      order_ok <- TRUE
+      break
+    }
+    Sys.sleep(0.5)
+  }
+  expect_true(order_ok, info = "The requested large-platemap group order was not retained.")
+  expect_true(wait_for_plot_idle(app, timeout_sec = 240))
+  expect_true(
+    wait_for_no_plot_churn(app, quiet_sec = 2, timeout_sec = 90, max_plot_events = 1),
+    info = "The large-platemap plot kept invalidating after the final selection settled."
+  )
+
+  plot_groups_json <- app$get_js(
+    "(function(){
+       var plot = document.querySelector('#plotInteractivo .js-plotly-plot') ||
+         document.querySelector('#plotInteractivo.js-plotly-plot');
+       if (!plot || !Array.isArray(plot.data)) return '[]';
+       var axis = plot.layout && plot.layout.xaxis ? plot.layout.xaxis : {};
+       var values = Array.isArray(axis.ticktext) ? axis.ticktext.map(String) : [];
+       return JSON.stringify(values);
+     })()"
+  )
+  plot_groups <- unique(as.character(
+    jsonlite::fromJSON(normalize_js_scalar(plot_groups_json)) %||% character(0)
+  ))
+  expect_false(any(removed %in% plot_groups))
+  expect_true(
+    all(expected %in% plot_groups),
+    info = "The plotted groups did not match the final large-platemap selection."
+  )
+
+  data_download <- app$get_download(output = "downloadExcel")
+  expect_nonempty_download(data_download, "large-platemap grouped data")
+  expect_grouped_download_accepts_filtered_tabs(data_download, require_filtered = TRUE)
+
+  plot_download <- app$get_download(output = "downloadPlot_png")
+  expect_nonempty_download(plot_download, "large-platemap plot")
+  plot_array <- png::readPNG(plot_download)
+  expect_true(length(dim(plot_array)) >= 2L)
+  expect_true(all(dim(plot_array)[1:2] > 0L))
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})

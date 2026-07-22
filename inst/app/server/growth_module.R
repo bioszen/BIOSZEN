@@ -1235,9 +1235,6 @@ setup_growth_module <- function(input, output, session) {
   session$onSessionEnded(function() {
     growth_state$session_closed <- TRUE
     growth_state$cancel_requested <- TRUE
-    cancel_requested(TRUE)
-    rows <- selected_growth_rows(isolate_read = TRUE)
-    if (nrow(rows)) unlink(unique(rows$cache_dir), recursive = TRUE, force = TRUE)
     if (dir.exists(growth_selection_cache_parent)) {
       unlink(growth_selection_cache_parent, recursive = TRUE, force = TRUE)
     }
@@ -1328,7 +1325,10 @@ setup_growth_module <- function(input, output, session) {
 
     if (isFALSE(getOption("bioszen_growth_force_sync", FALSE)) &&
         requireNamespace("later", quietly = TRUE)) {
-      later::later(run_now, delay = 0)
+      later::later(function() {
+        if (is_growth_session_closed()) return(invisible(NULL))
+        run_now()
+      }, delay = 0)
     } else {
       run_now()
     }

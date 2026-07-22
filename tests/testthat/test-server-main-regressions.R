@@ -562,6 +562,13 @@ test_that("browser refresh and replicate bursts are stabilized without stopping 
   expect_match(server_txt, "cancel_last_session_stop <- function", fixed = TRUE)
   expect_match(server_txt, "cancel_last_session_stop\\(\\)", perl = TRUE)
   expect_match(server_txt, "later_fn\\(maybe_stop, delay = delay\\)", perl = TRUE)
+  expect_match(server_txt, "session_lifecycle <- new.env(parent = emptyenv())", fixed = TRUE)
+  expect_match(server_txt, "schedule_session_callback <- function", fixed = TRUE)
+  expect_match(server_txt, "on_session_flushed <- function", fixed = TRUE)
+  expect_false(
+    grepl("session_closing <- reactiveVal", server_txt, fixed = TRUE),
+    info = "Session shutdown state must remain readable after Shiny destroys session-owned reactives."
+  )
   session_end_match <- regexpr(
     "session\\$onSessionEnded\\(function\\(\\) \\{[\\s\\S]*?\\n  \\}\\)",
     server_txt,
@@ -892,7 +899,25 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   expect_match(server_txt, "selector_input_is_stale(\"showGroups\", selected, isolate(filter_groups_selected()))", fixed = TRUE)
   expect_match(server_txt, "filter_selector_retry_tick <- reactiveVal\\(0L\\)", perl = TRUE)
   expect_match(server_txt, "schedule_filter_selector_retry <- function", fixed = TRUE)
-  expect_match(server_txt, "later::later", fixed = TRUE)
+  expect_match(server_txt, "filter_selector_retry_state <- new.env(parent = emptyenv())", fixed = TRUE)
+  expect_match(
+    server_txt,
+    "schedule_filter_selector_retry <- function\\(delay = 0\\.25\\) \\{[\\s\\S]*?schedule_session_callback\\(function\\(\\)",
+    perl = TRUE,
+    info = "Filter retries must be skipped after the session closes."
+  )
+  expect_match(
+    server_txt,
+    "if \\(key %in% c\\(\"showMedios\", \"showGroups\"\\)\\) \\{\\s*commit_filter_selector\\(key, selected\\)",
+    perl = TRUE,
+    info = "Pending master-filter selections must update canonical state before an order edit can render stale groups."
+  )
+  expect_match(
+    server_txt,
+    "current <- selector_committed_or_input\\(\\s*\"showGroups\",\\s*input\\$showGroups,\\s*cached = cached",
+    perl = TRUE,
+    info = "Combined plots must use the latest committed group selection while browser input catches up."
+  )
   expect_match(
     server_txt,
     "selector_input_is_stale\\(\"showMedios\", selected, isolate\\(filter_medios_selected\\(\\)\\)\\)\\) \\{\\s*schedule_filter_selector_retry\\(\\)",
@@ -954,10 +979,10 @@ test_that("core reactive controls keep loop guards around programmatic updates",
   expect_match(deferred_section, "timeout_ms", fixed = TRUE)
   expect_match(deferred_section, "flag_rv\\(TRUE\\)", perl = TRUE)
   expect_match(deferred_section, "flag_rv\\(FALSE\\)", perl = TRUE)
-  expect_match(deferred_section, "session\\$onFlushed\\(", perl = TRUE)
+  expect_match(deferred_section, "on_session_flushed\\(", perl = TRUE)
   expect_match(deferred_section, "once = TRUE", fixed = TRUE)
   expect_match(deferred_section, "requireNamespace\\(\"later\", quietly = TRUE\\)", perl = TRUE)
-  expect_match(deferred_section, "getExportedValue\\(\"later\", \"later\"\\)", perl = TRUE)
+  expect_match(deferred_section, "schedule_session_callback\\(", perl = TRUE)
 
   toggle_medios <- extract_section(
     server_txt,
@@ -1231,4 +1256,25 @@ test_that("metadata restore validates enum-like design fields before updating in
   expect_match(server_txt, 'update_radio_metadata\\("curve_geom", v, c\\("line_points", "line_only"\\)\\)', perl = TRUE)
   expect_match(server_txt, 'update_radio_metadata\\("corr_norm_target", v, c\\("both", "x_only", "y_only"\\)\\)', perl = TRUE)
   expect_match(server_txt, 'update_select_metadata\\(\\s*"heat_hclust_method"', perl = TRUE)
+})
+
+test_that("closed biological-replicate panels do not build large selector trees", {
+  server_file <- app_test_path("server", "server_main.R")
+  server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(
+    server_txt,
+    "output\\$repsStrainUI\\s*<-\\s*renderUI\\(\\{[\\s\\S]*?input\\$repsPanel[\\s\\S]*?if \\(!\"reps_by_media\" %in% open_panels\\) return\\(NULL\\)",
+    perl = TRUE
+  )
+  expect_match(
+    server_txt,
+    "output\\$repsGrpUI\\s*<-\\s*renderUI\\(\\{[\\s\\S]*?uiOutput\\(\"repsGrpContent\"\\)[\\s\\S]*?value = \"reps_by_group\"",
+    perl = TRUE
+  )
+  expect_match(
+    server_txt,
+    "output\\$repsGrpContent\\s*<-\\s*renderUI\\(\\{[\\s\\S]*?input\\$repsGrpPanel[\\s\\S]*?if \\(!\"reps_by_group\" %in% open_panels\\) return\\(NULL\\)[\\s\\S]*?lapply\\(grps",
+    perl = TRUE
+  )
 })

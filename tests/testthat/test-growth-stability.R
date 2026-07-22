@@ -405,6 +405,24 @@ test_that("growth backgrounding is not wired as cancellation", {
   expect_match(module_txt, "session_closed\\s*<-\\s*TRUE", perl = TRUE)
   expect_match(module_txt, "growth_state\\$cancel_requested\\s*<-\\s*TRUE", perl = TRUE)
   expect_match(module_txt, "cancel_requested\\(TRUE\\)", fixed = FALSE)
+  growth_session_end <- regmatches(
+    module_txt,
+    regexpr("session\\$onSessionEnded\\(function\\(\\) \\{[\\s\\S]*?\\n  \\}\\)", module_txt, perl = TRUE)
+  )
+  expect_false(
+    grepl("cancel_requested(TRUE)", growth_session_end, fixed = TRUE),
+    info = "Growth shutdown must not write a reactiveVal after its module session is destroyed."
+  )
+  expect_false(
+    grepl("selected_growth_rows", growth_session_end, fixed = TRUE),
+    info = "Growth shutdown must clean its cache parent without reading session-owned reactive selections."
+  )
+  expect_match(
+    module_txt,
+    "later::later\\(function\\(\\) \\{\\s*if \\(is_growth_session_closed\\(\\)\\)",
+    perl = TRUE,
+    info = "Queued growth jobs must abort quietly if the session closes before execution starts."
+  )
   expect_match(module_txt, "\\.bioszen_copy_growth_uploads\\(", perl = TRUE)
   expect_match(module_txt, "should_stop_on_last_session", fixed = TRUE)
   expect_match(server_txt, "allowReconnect\\(TRUE\\)", fixed = FALSE)

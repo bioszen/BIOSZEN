@@ -324,7 +324,41 @@ get_current_version <- function(pkg = "BIOSZEN") {
 }
 
 server <- function(input, output, session) {
-  session_closing <- reactiveVal(FALSE)
+  session_lifecycle <- new.env(parent = emptyenv())
+  session_lifecycle$closing <- FALSE
+  session_closing <- function(value) {
+    if (missing(value)) return(isTRUE(session_lifecycle$closing))
+    session_lifecycle$closing <- isTRUE(value)
+    invisible(session_lifecycle$closing)
+  }
+  is_session_closing <- function() {
+    if (isTRUE(session_closing())) return(TRUE)
+    by_closed <- tryCatch(isTRUE(session$closed), error = function(e) FALSE)
+    if (isTRUE(by_closed)) return(TRUE)
+    tryCatch(isTRUE(session$isClosed()), error = function(e) FALSE)
+  }
+  schedule_session_callback <- function(callback, delay = 0) {
+    if (!is.function(callback) || is_session_closing()) return(invisible(FALSE))
+    wrapped <- function() {
+      if (is_session_closing()) return(invisible(NULL))
+      callback()
+    }
+    if (requireNamespace("later", quietly = TRUE)) {
+      later_fn <- getExportedValue("later", "later")
+      later_fn(wrapped, delay = max(0, as.numeric(delay %||% 0)))
+    } else {
+      wrapped()
+    }
+    invisible(TRUE)
+  }
+  on_session_flushed <- function(callback, once = TRUE) {
+    if (!is.function(callback) || is_session_closing()) return(invisible(FALSE))
+    session$onFlushed(function() {
+      if (is_session_closing()) return(invisible(NULL))
+      callback()
+    }, once = once)
+    invisible(TRUE)
+  }
   if (is.function(session$allowReconnect)) {
     try(session$allowReconnect(TRUE), silent = TRUE)
   }
@@ -349,7 +383,7 @@ server <- function(input, output, session) {
   plot_text_style_inputs_ready <- reactiveVal(FALSE)
   group_label_style_overrides <- reactiveVal(setNames(character(0), character(0)))
   group_label_style_syncing <- reactiveVal(FALSE)
-  session$onFlushed(function() {
+  on_session_flushed(function() {
     plot_text_style_inputs_ready(TRUE)
   }, once = TRUE)
 
@@ -368,13 +402,6 @@ server <- function(input, output, session) {
       duration = 6
     )
   }, ignoreInit = TRUE, ignoreNULL = FALSE)
-
-  is_session_closing <- function() {
-    if (isTRUE(session_closing())) return(TRUE)
-    by_closed <- tryCatch(isTRUE(session$closed), error = function(e) FALSE)
-    if (isTRUE(by_closed)) return(TRUE)
-    tryCatch(isTRUE(session$isClosed()), error = function(e) FALSE)
-  }
 
   announcement_data <- shiny::reactiveFileReader(
     intervalMillis = 10000,
@@ -891,15 +918,14 @@ server <- function(input, output, session) {
       if (remaining_flushes <= 0L) {
         clear_flag()
       } else {
-        session$onFlushed(wait_for_flushes, once = TRUE)
+        on_session_flushed(wait_for_flushes, once = TRUE)
       }
       invisible(NULL)
     }
 
-    session$onFlushed(wait_for_flushes, once = TRUE)
+    on_session_flushed(wait_for_flushes, once = TRUE)
     if (timeout_ms > 0 && requireNamespace("later", quietly = TRUE)) {
-      later_fn <- getExportedValue("later", "later")
-      later_fn(clear_flag, delay = timeout_ms / 1000)
+      schedule_session_callback(clear_flag, delay = timeout_ms / 1000)
     }
     TRUE
   }
@@ -931,10 +957,9 @@ server <- function(input, output, session) {
     }
 
     if (requireNamespace("later", quietly = TRUE)) {
-      later_fn <- getExportedValue("later", "later")
-      later_fn(clear_flag, delay = quiet_ms / 1000)
+      schedule_session_callback(clear_flag, delay = quiet_ms / 1000)
     } else {
-      session$onFlushed(clear_flag, once = TRUE)
+      on_session_flushed(clear_flag, once = TRUE)
     }
     TRUE
   }
@@ -1056,8 +1081,7 @@ server <- function(input, output, session) {
         invisible(NULL)
       }
       if (requireNamespace("later", quietly = TRUE)) {
-        later_fn <- getExportedValue("later", "later")
-        later_fn(release, delay = settle_timeout_ms / 1000)
+        schedule_session_callback(release, delay = settle_timeout_ms / 1000)
       } else {
         remaining_flushes <- settle_flush_cycles
         release_after_flushes <- function() {
@@ -1065,11 +1089,11 @@ server <- function(input, output, session) {
           if (remaining_flushes <= 0L) {
             release()
           } else {
-            session$onFlushed(release_after_flushes, once = TRUE)
+            on_session_flushed(release_after_flushes, once = TRUE)
           }
           invisible(NULL)
         }
-        session$onFlushed(release_after_flushes, once = TRUE)
+        on_session_flushed(release_after_flushes, once = TRUE)
       }
       invisible(TRUE)
     }
@@ -5557,36 +5581,52 @@ server <- function(input, output, session) {
 
   selected_show_medios <- reactive({
     choices <- media_filter_choices()
+    cached <- filter_medios_selected()
+    current <- selector_committed_or_input(
+      "showMedios",
+      input$showMedios,
+      cached = cached
+    )
     resolve_filter_selection(
-      current = input$showMedios,
-      cached = filter_medios_selected(),
+      current = current,
+      cached = cached,
       choices = choices,
       default = choices,
-      prefer_cached = TRUE
+      prefer_cached = FALSE
     )
   })
 
   selected_show_groups <- reactive({
     choices <- group_filter_choices()
+    cached <- filter_groups_selected()
+    current <- selector_committed_or_input(
+      "showGroups",
+      input$showGroups,
+      cached = cached
+    )
     resolve_filter_selection(
-      current = input$showGroups,
-      cached = filter_groups_selected(),
+      current = current,
+      cached = cached,
       choices = choices,
       default = choices,
-      prefer_cached = TRUE
+      prefer_cached = FALSE
     )
   })
 
   filter_selector_retry_tick <- reactiveVal(0L)
+  filter_selector_retry_state <- new.env(parent = emptyenv())
+  filter_selector_retry_state$generation <- 0L
   schedule_filter_selector_retry <- function(delay = 0.25) {
-    token <- isolate(filter_selector_retry_tick()) + 1L
-    later::later(
-      function() {
-        filter_selector_retry_tick(token)
-      },
-      delay = delay
-    )
-    invisible(TRUE)
+    if (is_session_closing()) return(invisible(FALSE))
+    filter_selector_retry_state$generation <- filter_selector_retry_state$generation + 1L
+    generation <- filter_selector_retry_state$generation
+    schedule_session_callback(function() {
+      if (!identical(generation, filter_selector_retry_state$generation)) {
+        return(invisible(NULL))
+      }
+      filter_selector_retry_tick(isolate(filter_selector_retry_tick()) + 1L)
+      invisible(NULL)
+    }, delay = delay)
   }
 
   set_checkbox_group_final <- function(input_id,
@@ -5980,6 +6020,8 @@ server <- function(input, output, session) {
       "replicate_bulk_updating"
     ))
     input$app_lang
+    open_panels <- as.character(input$repsPanel %||% character(0))
+    if (!"reps_by_media" %in% open_panels) return(NULL)
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
     df <- if (use_param) {
       param_rep_df()
@@ -6117,10 +6159,27 @@ server <- function(input, output, session) {
   })
   
   output$repsGrpUI <- renderUI({
+    input$app_lang
+    accordion(
+      id       = "repsGrpPanel",
+      open     = FALSE,
+      multiple = TRUE,
+      accordion_panel_safe(
+        tr("reps_by_group"),
+        uiOutput("repsGrpContent"),
+        value = "reps_by_group",
+        style = "default"
+      )
+    )
+  })
+
+  output$repsGrpContent <- renderUI({
     guard_stable_output(c(
       "replicate_bulk_updating"
     ))
     input$app_lang
+    open_panels <- as.character(input$repsGrpPanel %||% character(0))
+    if (!"reps_by_group" %in% open_panels) return(NULL)
     grps <- show_groups_for_reps()
     if (is.null(grps) || !length(grps)) return(helpText(tr("select_groups_prompt")))
     use_param <- !is.null(input$tipo) && input$tipo %in% c("Boxplot", "Barras", "Violin")
@@ -6135,53 +6194,46 @@ server <- function(input, output, session) {
     map_sel <- isolate(reps_group_selected())
     map_str <- isolate(reps_strain_selected())
     
-    accordion(
-      id       = "repsGrpPanel",
-      open     = FALSE,   # empieza cerrada
-      multiple = TRUE,
-      accordion_panel_safe(
-        tr("reps_by_group"),
-        actionButton(
-          "repsGrpSelectAll",
-          tr("reps_group_select_all"),
-          class = "btn btn-outline-primary w-100",
-          style = "white-space: normal; margin-bottom: 6px;"
-        ),
-        actionButton(
-          "repsGrpDeselectAll",
-          tr("reps_group_deselect_all"),
-          class = "btn btn-outline-secondary w-100",
-          style = "white-space: normal; margin-bottom: 8px;"
-        ),
-        tagList(                       # envolver lapply
-          lapply(grps, function(g){
-            grp_idx <- paste(df$Strain, df$Media, sep = "-") == g
-            reps <- normalize_rep_selection(
-              as.character(df$BiologicalReplicate[grp_idx])
-            )
-            drop_all <- isolate(as.character(input$rm_reps_all %||% character(0)))
-            input_id <- group_rep_input_id(g)
-            strain_g <- if (any(grp_idx)) as.character(df$Strain[grp_idx][[1]]) else ""
-            media_g <- if (any(grp_idx)) as.character(df$Media[grp_idx][[1]]) else ""
-            stored_sel <- map_sel[[as.character(g)]]
-            if (is.null(stored_sel)) {
-              stored_sel <- get_strain_media_selection(map_str, strain_g, media_g)
-            }
-            selected <- if (!is.null(stored_sel)) {
-              as.character(stored_sel)
-            } else {
-              setdiff(reps, drop_all)
-            }
-            selected <- intersect(selected, reps)
-            checkboxGroupInput(
-              input_id,
-              paste(tr("reps_prefix"), g),
-              choices  = reps,
-              selected = selected
-            )
-          })
-        ),
-        style = "default"
+    tagList(
+      actionButton(
+        "repsGrpSelectAll",
+        tr("reps_group_select_all"),
+        class = "btn btn-outline-primary w-100",
+        style = "white-space: normal; margin-bottom: 6px;"
+      ),
+      actionButton(
+        "repsGrpDeselectAll",
+        tr("reps_group_deselect_all"),
+        class = "btn btn-outline-secondary w-100",
+        style = "white-space: normal; margin-bottom: 8px;"
+      ),
+      tagList(
+        lapply(grps, function(g){
+          grp_idx <- paste(df$Strain, df$Media, sep = "-") == g
+          reps <- normalize_rep_selection(
+            as.character(df$BiologicalReplicate[grp_idx])
+          )
+          drop_all <- isolate(as.character(input$rm_reps_all %||% character(0)))
+          input_id <- group_rep_input_id(g)
+          strain_g <- if (any(grp_idx)) as.character(df$Strain[grp_idx][[1]]) else ""
+          media_g <- if (any(grp_idx)) as.character(df$Media[grp_idx][[1]]) else ""
+          stored_sel <- map_sel[[as.character(g)]]
+          if (is.null(stored_sel)) {
+            stored_sel <- get_strain_media_selection(map_str, strain_g, media_g)
+          }
+          selected <- if (!is.null(stored_sel)) {
+            as.character(stored_sel)
+          } else {
+            setdiff(reps, drop_all)
+          }
+          selected <- intersect(selected, reps)
+          checkboxGroupInput(
+            input_id,
+            paste(tr("reps_prefix"), g),
+            choices  = reps,
+            selected = selected
+          )
+        })
       )
     )
   })
@@ -9983,7 +10035,13 @@ server <- function(input, output, session) {
     if (!is.list(payload)) return()
     key <- as.character(payload$key %||% "")
     if (!length(key) || is.na(key[[1]]) || !nzchar(key[[1]])) return()
-    record_selector_commit(key[[1]], selector_commit_payload_value(payload))
+    key <- key[[1]]
+    selected <- selector_commit_payload_value(payload)
+    if (key %in% c("showMedios", "showGroups")) {
+      commit_filter_selector(key, selected)
+      return()
+    }
+    record_selector_commit(key, selected)
   }, ignoreInit = TRUE, priority = 230)
 
   observeEvent(input$bioszen_selector_release, {
