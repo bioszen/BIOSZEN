@@ -160,3 +160,28 @@ test_that("should_use_normalized_data only activates with an explicit control me
   expect_true(should_use_normalized_data(do_norm = TRUE, ctrl_medium = "Ctrl"))
   expect_true(should_use_normalized_data(do_norm = TRUE, ctrl_medium = c("Ctrl", "M1")))
 })
+
+test_that("normalization UI uses one effective control while the selector is restored", {
+  server_file <- app_test_path("server", "server_main.R")
+  server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(server_txt, "normalization_control_choices <- reactive", fixed = TRUE)
+  expect_match(server_txt, "effective_normalization_control <- reactive", fixed = TRUE)
+  expect_match(server_txt, "ctrl   <- effective_normalization_control()", fixed = TRUE)
+  expect_match(server_txt, "selected_ctrl <- effective_normalization_control()", fixed = TRUE)
+  expect_match(server_txt, "ctrl_medium = effective_normalization_control()", fixed = TRUE)
+  expect_match(
+    server_txt,
+    "observeEvent\\([\\s\\S]*?normalization_control_choices\\(\\)[\\s\\S]*?on_session_flushed\\(function\\(\\)[\\s\\S]*?schedule_session_callback\\(function\\(\\)[\\s\\S]*?has_ctrl_selected\\(\\)",
+    perl = TRUE,
+    info = "The missing-control warning must wait until the dynamic selector settles."
+  )
+  expect_false(
+    grepl(
+      "observeEvent\\(input\\$doNorm, \\{\\s*if \\(isTRUE\\(input\\$doNorm\\) && !has_ctrl_selected\\(\\)\\)",
+      server_txt,
+      perl = TRUE
+    ),
+    info = "The former immediate false warning must not be restored."
+  )
+})

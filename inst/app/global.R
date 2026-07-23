@@ -254,7 +254,195 @@ bioszen_safe_show_notification <- function(ui,
   )
 }
 
-# Reporta errores indicando el archivo de origen (soporta handlers sin argumento)
+bioszen_sanitize_diagnostic_text <- function(x, max_chars = 12000L) {
+  if (is.null(x) || !length(x)) return("")
+  out <- paste(as.character(x), collapse = "\n")
+  out <- enc2utf8(out)
+  out <- gsub("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "", out, perl = TRUE)
+  out <- gsub(
+    "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
+    "<redacted-email>",
+    out,
+    perl = TRUE
+  )
+  out <- gsub(
+    "([\"'])(?:[A-Za-z]:[\\\\/]|/(?:Users|home|tmp|private/tmp)/)[^\"'\\r\\n]+\\1",
+    "\"<redacted-path>\"",
+    out,
+    perl = TRUE
+  )
+  out <- gsub(
+    "(?i)\\b[A-Z]:[\\\\/](?:Users[\\\\/][^\\\\/\\r\\n]+[\\\\/])?[^\\r\\n,;]*",
+    "<redacted-path>",
+    out,
+    perl = TRUE
+  )
+  out <- gsub(
+    "(?i)/(?:Users|home|tmp|private/tmp)/[^\\r\\n,;]*",
+    "<redacted-path>",
+    out,
+    perl = TRUE
+  )
+  out <- gsub(
+    "(?i)(?:Users|home)[\\\\/][^\\\\/[:space:]]+",
+    "user/<redacted>",
+    out,
+    perl = TRUE
+  )
+  max_chars <- suppressWarnings(as.integer(max_chars[[1]]))
+  if (!is.finite(max_chars) || max_chars < 256L) max_chars <- 12000L
+  if (nchar(out, type = "chars") > max_chars) {
+    out <- paste0(substr(out, 1L, max_chars), "\n[diagnostic truncated]")
+  }
+  out
+}
+
+bioszen_error_call_text <- function(call_obj) {
+  if (is.null(call_obj)) return("Unavailable")
+  txt <- tryCatch(
+    paste(deparse(call_obj, width.cutoff = 120L), collapse = " "),
+    error = function(e) "Unavailable"
+  )
+  bioszen_sanitize_diagnostic_text(txt, max_chars = 2000L)
+}
+
+bioszen_error_trace_text <- function(calls = NULL, max_calls = 30L) {
+  if (is.null(calls) || !length(calls)) return("Unavailable")
+  max_calls <- suppressWarnings(as.integer(max_calls[[1]]))
+  if (!is.finite(max_calls) || max_calls < 1L) max_calls <- 30L
+  calls <- tail(calls, max_calls)
+  lines <- vapply(seq_along(calls), function(i) {
+    sprintf("%02d. %s", i, bioszen_error_call_text(calls[[i]]))
+  }, character(1))
+  bioszen_sanitize_diagnostic_text(paste(lines, collapse = "\n"))
+}
+
+bioszen_is_expected_shiny_condition <- function(e = NULL) {
+  !is.null(e) && inherits(e, c("shiny.silent.error", "validation"))
+}
+
+bioszen_is_user_input_condition <- function(e = NULL) {
+  if (is.null(e)) return(FALSE)
+  if (inherits(e, c("bioszen_user_input_error", "bioszen.input.error"))) return(TRUE)
+  if (bioszen_is_expected_shiny_condition(e)) return(TRUE)
+
+  msg <- tryCatch(conditionMessage(e), error = function(err) "")
+  msg <- tolower(trimws(iconv(msg, from = "", to = "ASCII//TRANSLIT", sub = "")))
+  if (!length(msg) || is.na(msg[[1]]) || !nzchar(msg[[1]])) return(FALSE)
+  msg <- msg[[1]]
+  patterns <- c(
+    "^(no data|no curve files|no additional platemap files)",
+    "no .* selected",
+    "select .* first",
+    "file .*does not exist",
+    "(invalid|not a valid).*(file|workbook|csv|excel|curve)",
+    "(file|csv|excel|workbook).*not (recognized|supported)",
+    "format.*not recognized",
+    "could not read (csv|sheet|workbook)",
+    "missing required (sheet|column)",
+    "(sheet|workbook).*(must contain|is missing)",
+    "^no hay .*seleccionad",
+    "selecciona .* primero",
+    "archivo.*(invalido|no reconocido)",
+    "formato.*no reconocido",
+    "archivo .* no existe",
+    "no se (encontro|pudo leer).*(archivo|hoja)",
+    "faltan.*columnas",
+    "debe contener.*columnas"
+  )
+  any(vapply(patterns, grepl, logical(1), x = msg, perl = TRUE))
+}
+
+bioszen_is_reportable_app_error <- function(e = NULL) {
+  !is.null(e) &&
+    !bioszen_is_expected_shiny_condition(e) &&
+    !bioszen_is_user_input_condition(e)
+}
+
+bioszen_build_error_report <- function(condition = NULL,
+                                       user_message = "An unexpected application error occurred.",
+                                       module = "Application",
+                                       action = "Unhandled operation",
+                                       version = NULL,
+                                       calls = NULL) {
+  original_message <- if (!is.null(condition)) {
+    tryCatch(conditionMessage(condition), error = function(e) "Unavailable")
+  } else {
+    "Unavailable"
+  }
+  condition_class <- if (!is.null(condition)) {
+    paste(class(condition), collapse = ", ")
+  } else {
+    "Unavailable"
+  }
+  failing_call <- if (!is.null(condition)) {
+    tryCatch(conditionCall(condition), error = function(e) NULL)
+  } else {
+    NULL
+  }
+  sys <- tryCatch(Sys.info(), error = function(e) NULL)
+  os_text <- if (!is.null(sys)) {
+    paste(
+      na.omit(c(
+        as.character(sys[["sysname"]]),
+        as.character(sys[["release"]]),
+        as.character(sys[["machine"]])
+      )),
+      collapse = " / "
+    )
+  } else {
+    "Unavailable"
+  }
+  version <- trimws(as.character(version %||% ""))
+  if (!length(version) || !nzchar(version[[1]])) version <- "Unavailable"
+  module <- bioszen_sanitize_diagnostic_text(module, max_chars = 300L)
+  action <- bioszen_sanitize_diagnostic_text(action, max_chars = 500L)
+  user_message <- bioszen_sanitize_diagnostic_text(user_message, max_chars = 1000L)
+  original_message <- bioszen_sanitize_diagnostic_text(original_message, max_chars = 4000L)
+  condition_class <- bioszen_sanitize_diagnostic_text(condition_class, max_chars = 500L)
+  failing_call_text <- bioszen_error_call_text(failing_call)
+  trace_text <- bioszen_error_trace_text(calls)
+  generated <- format(Sys.time(), "%Y-%m-%d %H:%M:%S UTC", tz = "UTC")
+
+  report <- paste(
+    "BIOSZEN ERROR REPORT",
+    paste0("Generated: ", generated),
+    paste0("BIOSZEN version: ", version[[1]]),
+    paste0("Module: ", module),
+    paste0("Action: ", action),
+    paste0("User-facing message: ", user_message),
+    paste0("R condition class: ", condition_class),
+    paste0("Original R condition: ", original_message),
+    paste0("Failing call: ", failing_call_text),
+    paste0("R version: ", bioszen_sanitize_diagnostic_text(R.version.string, 500L)),
+    paste0("Operating system: ", bioszen_sanitize_diagnostic_text(os_text, 500L)),
+    "Traceback / active calls:",
+    trace_text,
+    sep = "\n"
+  )
+  report <- bioszen_sanitize_diagnostic_text(report, max_chars = 18000L)
+  list(
+    text = report,
+    user_message = user_message,
+    original_message = original_message,
+    module = module,
+    action = action,
+    version = version[[1]],
+    signature = paste(module, action, condition_class, original_message, failing_call_text, sep = "||")
+  )
+}
+
+bioszen_plot_workload_is_large <- function(n_rows, threshold = 1000L) {
+  n_rows <- if (length(n_rows)) n_rows[[1]] else 0
+  threshold <- if (length(threshold)) threshold[[1]] else 1000
+  n_rows <- suppressWarnings(as.numeric(n_rows))
+  threshold <- suppressWarnings(as.numeric(threshold))
+  if (!is.finite(n_rows) || n_rows < 0) n_rows <- 0
+  if (!is.finite(threshold) || threshold < 1) threshold <- 1000
+  n_rows >= threshold
+}
+
+# Report unexpected Shiny errors through the active session when possible.
 options(shiny.error = function(e = NULL) {
   calls <- sys.calls()
   src <- NULL
@@ -270,8 +458,30 @@ options(shiny.error = function(e = NULL) {
   }
   if (is.null(src)) src <- 'fuente_desconocida'
   msg <- if (!is.null(e)) conditionMessage(e) else geterrmessage()
+  condition <- if (!is.null(e)) e else simpleError(msg)
+  if (!bioszen_is_reportable_app_error(condition)) return(invisible(NULL))
+  notify_session <- tryCatch(shiny::getDefaultReactiveDomain(), error = function(err) NULL)
+  recorder <- tryCatch(notify_session$userData$bioszen_record_error, error = function(err) NULL)
+  if (is.function(recorder)) {
+    handled <- tryCatch({
+      recorder(
+        e = condition,
+        user_message = NULL,
+        module = NULL,
+        action = paste("Unhandled Shiny operation in", src),
+        calls = calls,
+        notify = TRUE
+      )
+      TRUE
+    }, error = function(err) FALSE)
+    if (isTRUE(handled)) return(invisible(NULL))
+  }
   bioszen_safe_show_notification(
-    sprintf(tr_text("global_error_template", i18n_lang), src, msg),
+    sprintf(
+      tr_text("global_error_template", i18n_lang),
+      src,
+      bioszen_sanitize_diagnostic_text(msg, max_chars = 1200L)
+    ),
     type = 'error', duration = NULL
   )
 })
@@ -417,7 +627,7 @@ tab_compos <- tabPanel(
                     bioszen_plot_text_styles(),
                     list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
                   ),
-                  selected = "bold",
+                  selected = character(0),
                   inline = TRUE
                 ),
                 checkboxGroupInput(
@@ -427,7 +637,7 @@ tab_compos <- tabPanel(
                     bioszen_plot_text_styles(),
                     list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
                   ),
-                  selected = "bold",
+                  selected = character(0),
                   inline = TRUE
                 ),
                 checkboxInput(
@@ -444,7 +654,7 @@ tab_compos <- tabPanel(
                       bioszen_plot_text_styles(),
                       list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
                     ),
-                    selected = "bold",
+                    selected = character(0),
                     inline = TRUE
                   ),
                   checkboxGroupInput(
@@ -454,7 +664,7 @@ tab_compos <- tabPanel(
                       bioszen_plot_text_styles(),
                       list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
                     ),
-                    selected = "bold",
+                    selected = character(0),
                     inline = TRUE
                   )
                 ),

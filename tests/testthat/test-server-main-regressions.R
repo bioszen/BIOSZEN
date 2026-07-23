@@ -28,14 +28,31 @@ test_that("server string literals do not contain mojibake text", {
   )
 })
 
-test_that("global Shiny error notifications are defensive", {
+test_that("global Shiny errors use defensive sanitized session diagnostics", {
   global_file <- app_test_path("global.R")
+  server_file <- app_test_path("server", "server_main.R")
+  ui_file <- app_test_path("ui", "ui_main.R")
   txt <- paste(readLines(global_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  ui_txt <- paste(readLines(ui_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
 
   expect_match(txt, "bioszen_safe_show_notification <- function", fixed = TRUE)
+  expect_match(txt, "bioszen_sanitize_diagnostic_text <- function", fixed = TRUE)
+  expect_match(txt, "bioszen_build_error_report <- function", fixed = TRUE)
+  expect_match(txt, "bioszen_is_expected_shiny_condition <- function", fixed = TRUE)
+  expect_match(txt, "bioszen_is_user_input_condition <- function", fixed = TRUE)
+  expect_match(txt, "bioszen_is_reportable_app_error <- function", fixed = TRUE)
   expect_match(txt, "sendNotification", fixed = TRUE)
   expect_match(txt, 'inherits\\(notify_session, "ShinySession"\\)', perl = TRUE)
+  expect_match(txt, "options\\(shiny\\.error[\\s\\S]*bioszen_record_error", perl = TRUE)
   expect_match(txt, "options\\(shiny\\.error[\\s\\S]*bioszen_safe_show_notification", perl = TRUE)
+  expect_match(server_txt, "record_application_error <- function", fixed = TRUE)
+  expect_match(server_txt, "output$appErrorReportUI <- renderUI", fixed = TRUE)
+  expect_match(server_txt, 'to = "bioszenf\\+bugs@gmail.com"', perl = TRUE)
+  expect_match(ui_txt, "uiOutput('appErrorReportUI')", fixed = TRUE)
+  expect_match(ui_txt, "bioszen-copy-error-report", fixed = TRUE)
+  expect_match(ui_txt, "bioszen-email-error-report", fixed = TRUE)
+  expect_match(ui_txt, "encoded.length > 1800", fixed = TRUE)
 })
 
 test_that("technical QC selection is wired to filtered final table and export cache keys", {
@@ -259,9 +276,33 @@ test_that("upload and filter updates are batched before plot redraws", {
   )
   expect_match(
     server_txt,
-    "plot_base_interactive\\s*<-\\s*debounce\\([\\s\\S]*?millis = 750",
+    "plot_base_interactive_fast\\s*<-\\s*debounce\\([\\s\\S]*?millis = 250",
     perl = TRUE,
-    info = "The plot output should debounce long enough to avoid visible intermediate plot states."
+    info = "Ordinary datasets should use the responsive plot lane."
+  )
+  expect_match(
+    server_txt,
+    "plot_base_interactive_large\\s*<-\\s*debounce\\([\\s\\S]*?millis = 750",
+    perl = TRUE,
+    info = "Large datasets should retain the longer stability debounce."
+  )
+  expect_match(
+    server_txt,
+    "plot_base_interactive\\s*<-\\s*reactive\\(\\{[\\s\\S]*?bioszen_plot_workload_is_large\\([\\s\\S]*?plot_base_interactive_large\\(\\)[\\s\\S]*?plot_base_interactive_fast\\(\\)",
+    perl = TRUE,
+    info = "Only one workload-specific debounced plot lane should be read per render."
+  )
+  expect_match(
+    server_txt,
+    "plot_workload_rows\\s*<-\\s*reactive",
+    perl = TRUE,
+    info = "Plot workload classification should be cached reactively."
+  )
+  expect_match(
+    server_txt,
+    "plot_workload_rows\\s*<-\\s*reactive\\(\\{[\\s\\S]*?datos_combinados\\(\\)",
+    perl = TRUE,
+    info = "Large-data throttling must count raw rows, not only grouped summaries."
   )
   expect_false(
     grepl("plot_selection_settled_signal", server_txt, fixed = TRUE),

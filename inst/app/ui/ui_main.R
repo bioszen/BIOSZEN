@@ -1125,6 +1125,47 @@ ui <- fluidPage(
         transition: opacity 0.35s ease;
         pointer-events: none;
       }
+      .bioszen-error-report {
+        margin: 0 0 16px;
+        border-radius: 6px;
+      }
+      .bioszen-error-report-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .bioszen-error-report h4 {
+        margin: 0 0 6px;
+        font-size: 18px;
+      }
+      .bioszen-error-report-message,
+      .bioszen-error-report-intro {
+        margin-bottom: 8px;
+      }
+      .bioszen-error-report details {
+        margin: 8px 0 12px;
+      }
+      .bioszen-error-report summary {
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .bioszen-error-report-text {
+        max-height: 300px;
+        overflow: auto;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        margin-top: 8px;
+        padding: 10px;
+        background: rgba(255, 255, 255, 0.75);
+        color: #1f1f1f;
+        border: 1px solid rgba(130, 0, 0, 0.18);
+      }
+      .bioszen-error-report-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
     "))
   ),
   tags$script(HTML("
@@ -2216,6 +2257,85 @@ ui <- fluidPage(
     })();
   ")),
   tags$script(HTML("
+    (function(){
+      function fallbackCopy(text){
+        return new Promise(function(resolve, reject){
+          try {
+            var area = document.createElement('textarea');
+            area.value = text;
+            area.setAttribute('readonly', '');
+            area.style.position = 'fixed';
+            area.style.left = '-9999px';
+            document.body.appendChild(area);
+            area.select();
+            var ok = document.execCommand('copy');
+            document.body.removeChild(area);
+            if (ok) resolve(); else reject(new Error('Clipboard copy was not accepted'));
+          } catch (error) {
+            reject(error);
+          }
+        });
+      }
+
+      function copyDiagnostic(text){
+        text = String(text || '');
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          return navigator.clipboard.writeText(text).catch(function(){
+            return fallbackCopy(text);
+          });
+        }
+        return fallbackCopy(text);
+      }
+
+      function notifyCopy(ok, detail){
+        if (!window.Shiny || typeof Shiny.setInputValue !== 'function') return;
+        Shiny.setInputValue('bioszen_error_copy_result', {
+          ok: !!ok,
+          detail: String(detail || ''),
+          ts: Date.now()
+        }, {priority: 'event'});
+      }
+
+      Shiny.addCustomMessageHandler('bioszen-copy-error-report', function(msg){
+        copyDiagnostic(msg && msg.text).then(function(){
+          notifyCopy(true, 'copied');
+        }).catch(function(error){
+          notifyCopy(false, error && error.message ? error.message : String(error));
+        });
+      });
+
+      Shiny.addCustomMessageHandler('bioszen-email-error-report', function(msg){
+        msg = msg || {};
+        var recipient = String(msg.to || 'bioszenf+bugs@gmail.com');
+        var subject = String(msg.subject || 'BIOSZEN error report');
+        var report = String(msg.report || '');
+        var prompt = String(msg.prompt || 'What were you doing before the error occurred?\\n[Please describe here]\\n\\n').replace(/\\\\n/g, '\\n');
+        var body = prompt + '\\nDiagnostic report:\\n' + report;
+        var encoded = 'mailto:' + recipient + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+        var useFallback = encoded.length > 1800;
+        var openMail = function(mailBody){
+          window.location.href = 'mailto:' + recipient + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(mailBody);
+        };
+
+        if (!useFallback) {
+          openMail(body);
+          return;
+        }
+
+        copyDiagnostic(report).then(function(){
+          notifyCopy(true, 'copied-for-email');
+          if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+            Shiny.setInputValue('bioszen_error_mail_fallback', {used: true, ts: Date.now()}, {priority: 'event'});
+          }
+          openMail(prompt + '\\n' + String(msg.fallback || 'The complete diagnostic report was copied. Please paste it below.').replace(/\\\\n/g, '\\n'));
+        }).catch(function(error){
+          notifyCopy(false, error && error.message ? error.message : String(error));
+          openMail(prompt + '\\n' + String(msg.fallback || 'Please copy and paste the diagnostic report from BIOSZEN below.').replace(/\\\\n/g, '\\n'));
+        });
+      });
+    })();
+  ")),
+  tags$script(HTML("
     Shiny.addCustomMessageHandler('copyPlotToClipboard', function(msg){
       var container = document.getElementById('plotInteractivo');
       var failId    = msg.fail    || 'plot_copy_error';
@@ -3100,7 +3220,7 @@ ui <- fluidPage(
                           bioszen_plot_text_styles(),
                           list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
                         ),
-                        selected = "bold",
+                        selected = character(0),
                         inline = TRUE
                       ),
                       checkboxGroupInput(
@@ -3110,7 +3230,7 @@ ui <- fluidPage(
                           bioszen_plot_text_styles(),
                           list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
                         ),
-                        selected = "bold",
+                        selected = character(0),
                         inline = TRUE
                       ),
                       checkboxInput(
@@ -3127,7 +3247,7 @@ ui <- fluidPage(
                             bioszen_plot_text_styles(),
                             list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
                           ),
-                          selected = "bold",
+                          selected = character(0),
                           inline = TRUE
                         ),
                         checkboxGroupInput(
@@ -3137,7 +3257,7 @@ ui <- fluidPage(
                             bioszen_plot_text_styles(),
                             list(tr("plot_text_style_bold"), tr("plot_text_style_italic"), tr("plot_text_style_underline"))
                           ),
-                          selected = "bold",
+                          selected = character(0),
                           inline = TRUE
                         )
                       ),
@@ -3669,6 +3789,7 @@ ui <- fluidPage(
                    width = 8,
                   tags$div(
                     class = "bioszen-main-content",
+                    uiOutput('appErrorReportUI'),
                     uiOutput('plotInteractivoUI'),
                     br(),
                    tags$div(

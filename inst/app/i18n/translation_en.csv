@@ -710,3 +710,16 @@ shinyfiles_cancel,Cancel
 shinyfiles_select,Select
 growth_folder_created,Folder created: %s
 growth_folder_create_error,Could not create folder: %s
+app_error_generic,An unexpected application error occurred.
+app_error_title,Application error
+app_error_intro,Technical details are available below without uploaded data or personal paths.
+app_error_details,Show technical details
+app_error_copy,Copy report
+app_error_email,Prepare email
+app_error_dismiss,Dismiss error report
+app_error_copy_success,The diagnostic report was copied to the clipboard.
+app_error_copy_failed,The diagnostic report could not be copied automatically.
+app_error_email_prompt,"What were you doing before the error occurred?\n[Please describe here]\n"
+app_error_email_fallback,The complete report was copied. Please paste it into the email before sending.
+app_error_email_fallback_body,The complete diagnostic report was copied to the clipboard. Please paste it below before sending.
+plot_error_unexpected,The plot could not be generated because of an unexpected application error.

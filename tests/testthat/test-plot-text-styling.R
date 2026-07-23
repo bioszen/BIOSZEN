@@ -52,6 +52,30 @@ test_that("main graph typography controls are wired through UI and server", {
   expect_match(server_txt, "plot_text_face <- function", fixed = TRUE)
   expect_match(server_txt, "plot_text_styles_for_target <- function", fixed = TRUE)
 
+  for (input_id in c(
+    "plot_text_style_title",
+    "plot_text_style_axis_titles",
+    "plot_text_style_axis_title_x",
+    "plot_text_style_axis_title_y"
+  )) {
+    expect_match(
+      ui_txt,
+      paste0('"', input_id, '"[\\s\\S]*?selected = character\\(0\\)'),
+      perl = TRUE,
+      info = paste(input_id, "must start without bold, italic, or underline")
+    )
+  }
+  expect_match(
+    server_txt,
+    'plot.title = update_text_element\\([\\s\\S]*?"title",[\\s\\S]*?default_face = "plain"',
+    perl = TRUE
+  )
+  expect_match(
+    server_txt,
+    'axis.title = update_text_element\\([\\s\\S]*?"axis_titles",[\\s\\S]*?default_face = "plain"',
+    perl = TRUE
+  )
+
   expect_match(server_txt, "plot_font_family = as.character(input$plot_font_family", fixed = TRUE)
   expect_match(server_txt, "plot_text_style_title = plot_metadata_style_value(\"title\")", fixed = TRUE)
   expect_match(server_txt, "plot_text_style_axis_titles = plot_metadata_style_value(\"axis_titles\")", fixed = TRUE)
@@ -113,6 +137,21 @@ test_that("main graph typography controls are wired through UI and server", {
   expect_match(global_txt, "id = \"comboTextStylePanel\"", fixed = TRUE)
   expect_match(global_txt, "accordion_panel_safe(\n                tr(\"plot_text_style_section\")", fixed = TRUE)
   expect_match(global_txt, "choices = bioszen_plot_font_choices()", fixed = TRUE)
+  for (input_id in c(
+    "combo_text_style_title",
+    "combo_text_style_axis_titles",
+    "combo_text_style_axis_title_x",
+    "combo_text_style_axis_title_y"
+  )) {
+    expect_match(
+      global_txt,
+      paste0('"', input_id, '"[\\s\\S]*?selected = character\\(0\\)'),
+      perl = TRUE,
+      info = paste(input_id, "must start without bold, italic, or underline")
+    )
+  }
+  expect_match(panel_txt, '"title", default_face = "plain"', fixed = TRUE)
+  expect_match(panel_txt, '"axis_titles", default_face = "plain"', fixed = TRUE)
   expect_match(panel_txt, "combo_text_face <- function", fixed = TRUE)
   expect_match(panel_txt, "combo_style_text_layers <- function", fixed = TRUE)
   expect_match(panel_txt, "combo_axis_xy_custom = input$combo_axis_xy_custom", fixed = TRUE)

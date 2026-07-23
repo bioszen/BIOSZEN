@@ -1124,21 +1124,21 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
         p <- p + theme(
           text = element_text(family = combo_family),
           plot.title = combo_text_element(
-            "title", default_face = "bold", size = global_title_size * panel_scale
+            "title", default_face = "plain", size = global_title_size * panel_scale
           ),
           axis.title = combo_text_element(
-            "axis_titles", default_face = "bold", size = global_axis_title_size * panel_scale
+            "axis_titles", default_face = "plain", size = global_axis_title_size * panel_scale
           ),
           axis.title.x = combo_text_element(
             "axis_title_x",
-            default_face = "bold",
+            default_face = "plain",
             size = global_axis_title_size * panel_scale,
             axis_spacing_x = scaled_axis_spacing_x,
             axis_spacing_y = scaled_axis_spacing_y
           ),
           axis.title.y = combo_text_element(
             "axis_title_y",
-            default_face = "bold",
+            default_face = "plain",
             size = global_axis_title_size * panel_scale,
             axis_spacing_x = scaled_axis_spacing_x,
             axis_spacing_y = scaled_axis_spacing_y
@@ -1253,7 +1253,7 @@ setup_panel_module <- function(input, output, session, plot_bank, panel_inserto,
       } else {
         combo_title
       }
-      combo_title_element <- combo_text_element("title", default_face = "bold", size = combo_title_size)
+      combo_title_element <- combo_text_element("title", default_face = "plain", size = combo_title_size)
       combo_title_element$hjust <- 0.5
       res <- res + plot_annotation(
         title = combo_title_label,

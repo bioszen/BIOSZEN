@@ -359,6 +359,151 @@ server <- function(input, output, session) {
     }, once = once)
     invisible(TRUE)
   }
+
+  app_error_state <- new.env(parent = emptyenv())
+  app_error_state$signature <- ""
+  last_app_error <- reactiveVal(NULL)
+
+  active_module_name <- function() {
+    active_tab <- isolate(as.character(input$mainTabs %||% "tab_plots"))
+    if (identical(active_tab, "tab_growth")) {
+      "Growth parameter extraction"
+    } else {
+      "Plots and statistics"
+    }
+  }
+
+  record_application_error <- function(e = NULL,
+                                       user_message = NULL,
+                                       module = NULL,
+                                       action = "Unexpected operation",
+                                       calls = sys.calls(),
+                                       notify = TRUE) {
+    if (is_session_closing() || !bioszen_is_reportable_app_error(e)) {
+      return(invisible(FALSE))
+    }
+    lang <- isolate(input$app_lang %||% i18n_lang)
+    user_message <- as.character(user_message %||% tr_text("app_error_generic", lang))
+    module <- as.character(module %||% active_module_name())
+    report <- bioszen_build_error_report(
+      condition = e,
+      user_message = user_message,
+      module = module,
+      action = action,
+      version = get_current_version("BIOSZEN"),
+      calls = calls
+    )
+    if (identical(report$signature, app_error_state$signature) && !is.null(isolate(last_app_error()))) {
+      return(invisible(FALSE))
+    }
+    app_error_state$signature <- report$signature
+    last_app_error(report)
+    if (isTRUE(notify)) {
+      bioszen_safe_show_notification(
+        user_message,
+        type = "error",
+        duration = 8,
+        session = session
+      )
+    }
+    invisible(TRUE)
+  }
+  session$userData$bioszen_record_error <- record_application_error
+
+  output$appErrorReportUI <- renderUI({
+    report <- last_app_error()
+    if (is.null(report) || !nzchar(report$text %||% "")) return(NULL)
+    lang <- input$app_lang %||% i18n_lang
+    tags$section(
+      class = "bioszen-error-report alert alert-danger",
+      role = "alert",
+      tags$div(
+        class = "bioszen-error-report-header",
+        tags$div(
+          tags$h4(icon("triangle-exclamation"), tr_text("app_error_title", lang)),
+          tags$p(class = "bioszen-error-report-message", report$user_message)
+        ),
+        actionButton(
+          "dismiss_app_error_report",
+          label = icon("xmark"),
+          class = "btn btn-sm btn-outline-danger",
+          title = tr_text("app_error_dismiss", lang)
+        )
+      ),
+      tags$p(class = "bioszen-error-report-intro", tr_text("app_error_intro", lang)),
+      tags$details(
+        tags$summary(tr_text("app_error_details", lang)),
+        tags$pre(class = "bioszen-error-report-text", report$text)
+      ),
+      tags$div(
+        class = "bioszen-error-report-actions",
+        actionButton(
+          "copy_app_error_report",
+          label = tagList(icon("copy"), tr_text("app_error_copy", lang)),
+          class = "btn btn-outline-danger"
+        ),
+        actionButton(
+          "email_app_error_report",
+          label = tagList(icon("envelope"), tr_text("app_error_email", lang)),
+          class = "btn btn-danger"
+        )
+      )
+    )
+  })
+
+  observeEvent(input$dismiss_app_error_report, {
+    app_error_state$signature <- ""
+    last_app_error(NULL)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$copy_app_error_report, {
+    report <- isolate(last_app_error())
+    if (is.null(report) || is_session_closing()) return()
+    session$sendCustomMessage("bioszen-copy-error-report", list(text = report$text))
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$email_app_error_report, {
+    report <- isolate(last_app_error())
+    if (is.null(report) || is_session_closing()) return()
+    subject <- sprintf(
+      "BIOSZEN %s error report - %s",
+      report$version %||% "unknown",
+      report$module %||% "Application"
+    )
+    session$sendCustomMessage(
+      "bioszen-email-error-report",
+      list(
+        to = "bioszenf+bugs@gmail.com",
+        subject = subject,
+        report = report$text,
+        prompt = tr_text("app_error_email_prompt", isolate(input$app_lang %||% i18n_lang)),
+        fallback = tr_text("app_error_email_fallback_body", isolate(input$app_lang %||% i18n_lang))
+      )
+    )
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$bioszen_error_copy_result, {
+    payload <- input$bioszen_error_copy_result
+    lang <- input$app_lang %||% i18n_lang
+    ok <- is.list(payload) && isTRUE(payload$ok)
+    bioszen_safe_show_notification(
+      tr_text(if (ok) "app_error_copy_success" else "app_error_copy_failed", lang),
+      type = if (ok) "message" else "warning",
+      duration = 5,
+      session = session
+    )
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$bioszen_error_mail_fallback, {
+    if (!isTRUE(input$bioszen_error_mail_fallback$used %||% FALSE)) return()
+    bioszen_safe_show_notification(
+      tr_text("app_error_email_fallback", input$app_lang %||% i18n_lang),
+      type = "message",
+      duration = 7,
+      session = session
+    )
+  }, ignoreInit = TRUE)
+
   if (is.function(session$allowReconnect)) {
     try(session$allowReconnect(TRUE), silent = TRUE)
   }
@@ -562,7 +707,7 @@ server <- function(input, output, session) {
       parameter = input$param %||% "",
       stacked_parameters = input$stackParams %||% character(0),
       normalized = isTRUE(input$doNorm),
-      normalization_control = input$ctrlMedium %||% ""
+      normalization_control = effective_normalization_control() %||% ""
     )
   }
 
@@ -618,6 +763,10 @@ server <- function(input, output, session) {
   curve_merge_status <- reactiveVal("")
   missing_params_notice_key <- reactiveVal("")
   norm_unavailable_notice_key <- reactiveVal("")
+  norm_ctrl_notice_key <- reactiveVal("")
+  last_valid_ctrl_medium <- reactiveVal("")
+  normalization_notice_state <- new.env(parent = emptyenv())
+  normalization_notice_state$generation <- 0L
 
   ylims <- reactiveValues()
   strain_label_ui <- reactiveVal(NULL)
@@ -687,7 +836,49 @@ server <- function(input, output, session) {
       paste0(base, ":")
     }
   }
-  has_ctrl_selected <- function(ctrl_val = input$ctrlMedium) {
+  normalization_control_choices <- reactive({
+    df <- datos_agrupados()
+    if (!is.data.frame(df) || !nrow(df) || !"Media" %in% names(df)) {
+      return(character(0))
+    }
+    strain_val <- if (is.null(input$strain) || !length(input$strain)) {
+      ""
+    } else {
+      as.character(input$strain[[1]])
+    }
+    if (identical(input$scope %||% "Por Cepa", "Por Cepa") && nzchar(strain_val) &&
+        "Strain" %in% names(df)) {
+      opts <- df$Media[df$Strain == strain_val]
+    } else {
+      opts <- df$Media
+    }
+    opts <- trimws(as.character(opts))
+    sort(unique(opts[!is.na(opts) & nzchar(opts)]))
+  })
+
+  effective_normalization_control <- reactive({
+    opts <- normalization_control_choices()
+    current <- as.character(input$ctrlMedium %||% character(0))
+    current <- current[!is.na(current) & nzchar(trimws(current))]
+    if (length(current) && current[[1]] %in% opts) return(current[[1]])
+
+    cached <- isolate(as.character(last_valid_ctrl_medium() %||% ""))
+    if (length(cached) && !is.na(cached[[1]]) && cached[[1]] %in% opts) {
+      return(cached[[1]])
+    }
+    if (length(opts)) opts[[1]] else ""
+  })
+
+  observe({
+    opts <- normalization_control_choices()
+    ctrl <- effective_normalization_control()
+    if (length(ctrl) && !is.na(ctrl[[1]]) && nzchar(ctrl[[1]]) && ctrl[[1]] %in% opts &&
+        !identical(ctrl[[1]], isolate(last_valid_ctrl_medium()))) {
+      last_valid_ctrl_medium(ctrl[[1]])
+    }
+  })
+
+  has_ctrl_selected <- function(ctrl_val = effective_normalization_control()) {
     isTRUE(should_use_normalized_data(
       do_norm = TRUE,
       ctrl_medium = ctrl_val
@@ -3420,13 +3611,13 @@ server <- function(input, output, session) {
     axis_title_x <- update_text_element(
       plot_theme_element(p, "axis.title.x", "axis.title"),
       "axis_title_x",
-      default_face = "bold",
+      default_face = "plain",
       size = axis_title_size
     )
     axis_title_y <- update_text_element(
       plot_theme_element(p, "axis.title.y", "axis.title"),
       "axis_title_y",
-      default_face = "bold",
+      default_face = "plain",
       size = axis_title_size
     )
     axis_title_x <- add_text_element_margin(axis_title_x, top = plot_axis_title_spacing("x"))
@@ -3437,13 +3628,13 @@ server <- function(input, output, session) {
       plot.title = update_text_element(
         plot_theme_element(p, "plot.title"),
         "title",
-        default_face = "bold",
+        default_face = "plain",
         size = title_size
       ),
       axis.title = update_text_element(
         plot_theme_element(p, "axis.title"),
         "axis_titles",
-        default_face = "bold",
+        default_face = "plain",
         size = axis_title_size
       ),
       axis.title.x = axis_title_x,
@@ -3869,13 +4060,47 @@ server <- function(input, output, session) {
     tags$img(src = archivo, style = "height:220px;")
   })
   
-  observeEvent(input$doNorm, {
-    if (isTRUE(input$doNorm) && !has_ctrl_selected()) {
-      lang <- input$app_lang %||% i18n_lang
-      showNotification(tr_text("norm_ctrl_required", lang),  
-                       type = "warning", duration = 4)  
-    }  
-  })  
+  observeEvent(
+    list(
+      input$doNorm,
+      input$ctrlMedium,
+      normalization_control_choices(),
+      dataset_loading(),
+      plot_input_sync_inflight()
+    ),
+    {
+      normalization_notice_state$generation <- normalization_notice_state$generation + 1L
+      generation <- normalization_notice_state$generation
+      if (!isTRUE(input$doNorm)) {
+        norm_ctrl_notice_key("")
+        return()
+      }
+      on_session_flushed(function() {
+        schedule_session_callback(function() {
+          if (!identical(generation, normalization_notice_state$generation)) return(invisible(NULL))
+          if (isTRUE(isolate(dataset_loading())) || isTRUE(isolate(plot_input_sync_inflight()))) {
+            return(invisible(NULL))
+          }
+          has_control <- isolate(has_ctrl_selected())
+          next_key <- if (isTRUE(has_control)) "" else "missing"
+          if (!identical(next_key, isolate(norm_ctrl_notice_key()))) {
+            norm_ctrl_notice_key(next_key)
+            if (identical(next_key, "missing")) {
+              lang <- isolate(input$app_lang %||% i18n_lang)
+              showNotification(
+                tr_text("norm_ctrl_required", lang),
+                type = "warning",
+                duration = 4
+              )
+            }
+          }
+          invisible(NULL)
+        }, delay = 0.08)
+      }, once = TRUE)
+    },
+    ignoreInit = TRUE,
+    ignoreNULL = FALSE
+  )
   
   sig_choice_vec <- function(sl){
     if (!length(sl)) return(named_choices(character(), character()))
@@ -5554,7 +5779,7 @@ server <- function(input, output, session) {
   active_plot_data <- function() {
     if (isTRUE(should_use_normalized_data(
       do_norm = input$doNorm,
-      ctrl_medium = input$ctrlMedium
+      ctrl_medium = effective_normalization_control()
     ))) {
       datos_agrupados_norm()
     } else {
@@ -5875,7 +6100,7 @@ server <- function(input, output, session) {
   
     params <- plot_settings()$Parameter  
     lang   <- input$app_lang %||% i18n_lang  
-    ctrl   <- input$ctrlMedium  
+    ctrl   <- effective_normalization_control()
     res <- withProgress(message = tr_text("progress_normalization", lang), value = 0, {
       incProgress(0.25)
       out <- tryCatch(  
@@ -5907,7 +6132,7 @@ server <- function(input, output, session) {
       ""
     }
     warn_key <- ""
-    if (isTRUE(should_warn_unavailable)) {
+    if (isTRUE(should_warn_unavailable) && nzchar(ctrl_chr)) {
       warn_key <- paste0("unavailable::", tolower(ctrl_chr))
       if (!identical(isolate(norm_unavailable_notice_key()), warn_key)) {
         msg <- if (nzchar(ctrl_chr)) {
@@ -6081,32 +6306,9 @@ server <- function(input, output, session) {
   output$ctrlSelUI <- renderUI({  
     lang <- input$app_lang %||% i18n_lang
     req(input$doNorm)                          # sÃƒÂ³lo cuando se active el check  
-    
-    # Ã¢â‚¬â€˜Ã¢â‚¬â€˜Ã‚Â si la cepa aÃƒÂºn no estÃƒÂ¡ elegida, muestra TODOS los medios  
-    strain_val <- if (is.null(input$strain) || !length(input$strain)) {
-      ""
-    } else {
-      as.character(input$strain[[1]])
-    }
-    has_strain <- nzchar(strain_val)
-    if (input$scope == "Por Cepa" && has_strain) {
-      opts <- sort(unique(
-        datos_agrupados()$Media[
-          datos_agrupados()$Strain == strain_val]))
-    } else {
-      opts <- sort(unique(datos_agrupados()$Media))
-    }
-    opts <- trimws(as.character(opts))
-    opts <- opts[!is.na(opts) & nzchar(opts)]
-    prev_sel <- isolate(input$ctrlMedium)
-    selected_ctrl <- if (!is.null(prev_sel) && length(prev_sel) &&
-                           as.character(prev_sel[[1]]) %in% opts) {
-      as.character(prev_sel[[1]])
-    } else if (length(opts)) {
-      opts[1]
-    } else {
-      character(0)
-    }
+    opts <- normalization_control_choices()
+    selected_ctrl <- effective_normalization_control()
+    if (!length(selected_ctrl) || !nzchar(selected_ctrl[[1]])) selected_ctrl <- character(0)
     selectInput("ctrlMedium", norm_medium_label(lang),    # Ã¢â€ Â etiqueta genÃƒÂ©rica
                 choices = opts,
                 selected = selected_ctrl)
@@ -13957,10 +14159,13 @@ server <- function(input, output, session) {
         is_expected_transient <- inherits(e, "shiny.silent.error") ||
           grepl("need at least 3 points|no data to plot", msg, ignore.case = TRUE)
         if (!is_expected_transient) {
-          showNotification(
-            paste(msg_no_data, "-", msg),
-            type = "error",
-            duration = 6
+          record_application_error(
+            e = e,
+            user_message = tr_text("plot_error_unexpected", lang),
+            module = "Plots and statistics",
+            action = paste("Render", as.character(input$tipo %||% "plot")),
+            calls = sys.calls(),
+            notify = TRUE
           )
         }
         style_plot_text(
@@ -13972,10 +14177,38 @@ server <- function(input, output, session) {
     )
   })  
 
-  plot_base_interactive <- debounce(
+  plot_workload_rows <- reactive({
+    raw <- tryCatch(datos_combinados(), error = function(e) NULL)
+    raw_rows <- if (is.data.frame(raw)) nrow(raw) else 0L
+    grouped <- tryCatch(datos_agrupados(), error = function(e) NULL)
+    grouped_rows <- if (is.data.frame(grouped)) nrow(grouped) else 0L
+    data_rows <- max(raw_rows, grouped_rows)
+    if (!identical(input$tipo %||% "", "Curvas")) return(data_rows)
+
+    curves <- tryCatch(cur_data_box(), error = function(e) NULL)
+    curve_points <- if (is.data.frame(curves)) {
+      nrow(curves) * max(1L, ncol(curves) - 1L)
+    } else {
+      0L
+    }
+    max(data_rows, curve_points)
+  })
+
+  plot_base_interactive_fast <- debounce(
+    reactive(plot_base()),
+    millis = 250
+  )
+  plot_base_interactive_large <- debounce(
     reactive(plot_base()),
     millis = 750
   )
+  plot_base_interactive <- reactive({
+    if (bioszen_plot_workload_is_large(plot_workload_rows(), threshold = 1000L)) {
+      plot_base_interactive_large()
+    } else {
+      plot_base_interactive_fast()
+    }
+  })
 
   # --- Salidas ---  
   output$plotInteractivoUI <- renderUI({
@@ -14295,7 +14528,22 @@ server <- function(input, output, session) {
 
     lang <- isolate(input$app_lang %||% i18n_lang)
     msg_no_data <- tr_text("no_data_plot", lang)
-    p <- tryCatch(plot_base_interactive(), error = function(e) NULL)
+    p <- tryCatch(
+      plot_base_interactive(),
+      error = function(e) {
+        if (!bioszen_is_expected_shiny_condition(e)) {
+          record_application_error(
+            e = e,
+            user_message = tr_text("plot_error_unexpected", lang),
+            module = "Plots and statistics",
+            action = paste("Prepare", as.character(isolate(input$tipo %||% "plot"))),
+            calls = sys.calls(),
+            notify = TRUE
+          )
+        }
+        NULL
+      }
+    )
     validate(need(!is.null(p), msg_no_data))
     if (inherits(p, "ggplot")) {
       plotly_width <- isolate(input$plot_w)
@@ -14313,7 +14561,19 @@ server <- function(input, output, session) {
             )
           )
         ),
-        error = function(e) NULL
+        error = function(e) {
+          if (!bioszen_is_expected_shiny_condition(e)) {
+            record_application_error(
+              e = e,
+              user_message = tr_text("plot_error_unexpected", lang),
+              module = "Plots and statistics",
+              action = paste("Convert", as.character(isolate(input$tipo %||% "plot")), "to interactive plot"),
+              calls = sys.calls(),
+              notify = TRUE
+            )
+          }
+          NULL
+        }
       )
       validate(need(!is.null(plt), msg_no_data))
       plt <- plt %>% config(responsive = FALSE)
@@ -16222,7 +16482,19 @@ server <- function(input, output, session) {
           rvg::dml(ggobj = pptx_plot),
           location = plot_location
         ),
-        error = function(e) NULL
+        error = function(e) {
+          if (!bioszen_is_expected_shiny_condition(e)) {
+            record_application_error(
+              e = e,
+              user_message = tr_text("app_error_generic", input$app_lang %||% i18n_lang),
+              module = "Plot composition",
+              action = "Export composition to editable PowerPoint",
+              calls = sys.calls(),
+              notify = TRUE
+            )
+          }
+          NULL
+        }
       )
       if (is.null(vector_doc)) {
         raster_file <- tempfile(fileext = ".png")

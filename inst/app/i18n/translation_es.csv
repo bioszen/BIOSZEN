@@ -710,3 +710,16 @@ shinyfiles_cancel,Cancelar
 shinyfiles_select,Seleccionar
 growth_folder_created,Carpeta creada: %s
 growth_folder_create_error,No se pudo crear la carpeta: %s
+app_error_generic,Ocurrió un error inesperado en la aplicación.
+app_error_title,Error de la aplicación
+app_error_intro,Los detalles técnicos están disponibles abajo sin datos cargados ni rutas personales.
+app_error_details,Mostrar detalles técnicos
+app_error_copy,Copiar informe
+app_error_email,Preparar correo
+app_error_dismiss,Cerrar informe de error
+app_error_copy_success,El informe de diagnóstico se copió al portapapeles.
+app_error_copy_failed,No se pudo copiar automáticamente el informe de diagnóstico.
+app_error_email_prompt,"¿Qué estaba haciendo antes de que ocurriera el error?\n[Descríbalo aquí]\n"
+app_error_email_fallback,El informe completo fue copiado. Péguelo en el correo antes de enviarlo.
+app_error_email_fallback_body,El informe de diagnóstico completo fue copiado al portapapeles. Péguelo abajo antes de enviarlo.
+plot_error_unexpected,No se pudo generar el gráfico debido a un error inesperado de la aplicación.
