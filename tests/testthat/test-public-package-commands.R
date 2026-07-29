@@ -111,16 +111,25 @@ test_that("the package installs into a clean library with its public API and cit
   clean_library <- tempfile("bioszen-clean-library-")
   dir.create(clean_library)
   clean_library <- normalizePath(clean_library, winslash = "/", mustWork = TRUE)
-  dependency_library <- normalizePath(.libPaths()[[1]], winslash = "/", mustWork = TRUE)
+  dependency_libraries <- normalizePath(.libPaths(), winslash = "/", mustWork = TRUE)
   previous_r_libs_user <- Sys.getenv("R_LIBS_USER", unset = NA_character_)
+  previous_r_libs <- Sys.getenv("R_LIBS", unset = NA_character_)
   on.exit({
     if (is.na(previous_r_libs_user)) {
       Sys.unsetenv("R_LIBS_USER")
     } else {
       Sys.setenv(R_LIBS_USER = previous_r_libs_user)
     }
+    if (is.na(previous_r_libs)) {
+      Sys.unsetenv("R_LIBS")
+    } else {
+      Sys.setenv(R_LIBS = previous_r_libs)
+    }
   }, add = TRUE)
-  Sys.setenv(R_LIBS_USER = dependency_library)
+  Sys.setenv(
+    R_LIBS_USER = dependency_libraries[[1]],
+    R_LIBS = paste(dependency_libraries, collapse = .Platform$path.sep)
+  )
 
   r_executable <- file.path(
     R.home("bin"),

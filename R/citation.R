@@ -1,5 +1,7 @@
 .bioszen_metadata <- function() {
-  desc <- tryCatch(utils::packageDescription("BIOSZEN"), error = function(e) NULL)
+  desc <- suppressWarnings(
+    tryCatch(utils::packageDescription("BIOSZEN"), error = function(e) NULL)
+  )
   if (is.null(desc)) {
     candidates <- unique(c(
       file.path(getwd(), "DESCRIPTION"),
@@ -14,8 +16,9 @@
   }
 
   field <- function(name, fallback = "") {
-    value <- if (is.null(desc)) NULL else desc[[name]]
-    if (is.null(value) || !length(value) || is.na(value[[1]]) || !nzchar(value[[1]])) fallback else value[[1]]
+    if (is.null(desc) || !name %in% names(desc)) return(fallback)
+    value <- as.character(desc[[name]])
+    if (!length(value) || is.na(value[[1]]) || !nzchar(value[[1]])) fallback else value[[1]]
   }
 
   list(
