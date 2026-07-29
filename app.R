@@ -83,9 +83,11 @@ if (!dir.exists(app_dir)) {
   app_root <- normalizePath(app_root, winslash = "/", mustWork = TRUE)
   app_dir <- normalizePath(app_dir, winslash = "/", mustWork = TRUE)
 
+  citation_file <- file.path(app_root, "R", "citation.R")
   startup_file <- file.path(app_root, "R", "app_startup.R")
-  if (file.exists(startup_file)) {
-    sys.source(startup_file, envir = globalenv())
+  startup_files <- c(citation_file, startup_file)
+  if (all(file.exists(startup_files))) {
+    for (startup_file in startup_files) sys.source(startup_file, envir = globalenv())
     bioszen_prepare_direct_run()
   }
 

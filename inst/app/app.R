@@ -62,14 +62,20 @@ resolve_bioszen_source_root <- function(app_dir) {
 
 source_root <- resolve_bioszen_source_root(app_dir)
 
-startup_files <- unique(c(
-  file.path(source_root, "R", "app_startup.R"),
-  file.path("R", "app_startup.R"),
-  file.path("..", "..", "R", "app_startup.R")
+startup_dirs <- unique(c(
+  file.path(source_root, "R"),
+  file.path("R"),
+  file.path("..", "..", "R")
 ))
-startup_file <- startup_files[file.exists(startup_files)][1]
-if (!is.na(startup_file)) {
-  sys.source(startup_file, envir = globalenv())
+startup_dir <- startup_dirs[
+  vapply(startup_dirs, function(path) {
+    all(file.exists(file.path(path, c("citation.R", "app_startup.R"))))
+  }, logical(1))
+][1]
+if (!is.na(startup_dir)) {
+  for (startup_name in c("citation.R", "app_startup.R")) {
+    sys.source(file.path(startup_dir, startup_name), envir = globalenv())
+  }
   in_r_cmd_check <- nzchar(Sys.getenv("_R_CHECK_PACKAGE_NAME_", unset = "")) ||
     grepl("\\.Rcheck(/|$)", normalizePath(getwd(), winslash = "/", mustWork = FALSE))
   skip_direct_setup <- isTRUE(getOption("BIOSZEN.skip_direct_run_setup", FALSE)) ||
@@ -130,15 +136,19 @@ shiny::addResourcePath("www", file.path(app_dir, "www"))
     return(invisible(FALSE))
   }
 
-  citation_message <- paste(
-    "##",
-    "## BIOSZEN",
-    "## See https://github.com/bioszen/BIOSZEN for additional documentation and source code.",
-    "## Please cite software as:",
-    "##   Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210",
-    "##",
-    sep = "\n"
-  )
+  citation_message <- if (exists(".bioszen_startup_citation_text", mode = "function", inherits = TRUE)) {
+    .bioszen_startup_citation_text()
+  } else {
+    paste(
+      "##",
+      "## BIOSZEN",
+      "## See https://github.com/bioszen/BIOSZEN for additional documentation and source code.",
+      "## Please cite software as:",
+      "##   Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210",
+      "##",
+      sep = "\n"
+    )
+  }
   options(BIOSZEN.startup_citation_shown = TRUE)
   schedule_fun(function() packageStartupMessage(citation_message), delay = 0)
   invisible(TRUE)

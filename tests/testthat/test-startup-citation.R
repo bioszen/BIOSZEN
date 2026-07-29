@@ -5,9 +5,11 @@ normalize_captured_console <- function(x) {
 }
 
 test_that("BIOSZEN startup citation includes the Zenodo DOI", {
+  citation_file <- file.path(app_test_root(), "R", "citation.R")
   run_app_file <- file.path(app_test_root(), "R", "run_app.R")
-  if (file.exists(run_app_file)) {
+  if (file.exists(citation_file) && file.exists(run_app_file)) {
     run_app_env <- new.env(parent = globalenv())
+    source(citation_file, local = run_app_env)
     source(run_app_file, local = run_app_env)
     startup_citation <- get(".bioszen_startup_citation", envir = run_app_env)
   } else {
@@ -163,6 +165,7 @@ test_that("direct source launchers emit the BIOSZEN startup citation", {
   }
 
   startup_env <- new.env(parent = globalenv())
+  source(file.path(app_test_root(), "R", "citation.R"), local = startup_env)
   source(startup_file, local = startup_env)
   expect_true(exists(".bioszen_startup_citation", envir = startup_env, inherits = FALSE))
 
@@ -199,12 +202,14 @@ test_that("direct source launchers emit the BIOSZEN startup citation", {
   )
   expect_match(app_launcher, "bioszen_prepare_direct_run\\(\\)", perl = TRUE)
   expect_match(app_launcher, "shiny::shinyAppDir\\(app_dir\\)", perl = TRUE)
-  expect_match(run_app_launcher, "\\.bioszen_startup_citation\\s*<-\\s*function\\(force = FALSE\\)", perl = TRUE)
+  citation_source <- paste(readLines(file.path(app_test_root(), "R", "citation.R"), warn = FALSE), collapse = "\n")
+  expect_match(citation_source, "\\.bioszen_startup_citation\\s*<-\\s*function\\(force = FALSE\\)", perl = TRUE)
   expect_false(
     grepl("app_dir <- system\\.file\\(\"app\", package = \"BIOSZEN\"\\)[\\s\\S]*?\\.bioszen_startup_citation\\(", run_app_launcher, perl = TRUE),
     info = "run_app should let inst/app/app.R print the citation after app dependencies are loaded."
   )
   expect_match(embedded_launcher, "\\.bioszen_emit_app_startup_citation\\s*<-\\s*function", perl = TRUE)
+  expect_match(embedded_launcher, "\\.bioszen_startup_citation_text\\(\\)", perl = TRUE)
   expect_match(embedded_launcher, "BIOSZEN_LAUNCHER_CITATION_SHOWN", fixed = TRUE)
   expect_match(embedded_launcher, "schedule_fun\\(function\\(\\) packageStartupMessage\\(citation_message\\), delay = 0\\)", perl = TRUE)
   expect_match(embedded_launcher, "\\.bioszen_emit_app_startup_citation\\(\\)", perl = TRUE)

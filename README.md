@@ -20,6 +20,7 @@ From data import to reproducible plots, statistics, metadata, and bundle exports
 - [Why BIOSZEN](#why-bioszen)
 - [Core Capabilities](#core-capabilities)
 - [Quick Start](#quick-start)
+- [R Commands](#r-commands)
 - [Choose the Right Input Mode](#choose-the-right-input-mode)
 - [Recommended Workflow](#recommended-workflow)
 - [Visual Gallery](#visual-gallery)
@@ -68,10 +69,64 @@ If BIOSZEN is already installed, you can also run:
 BIOSZEN::run_app()
 ```
 
+The shorter equivalent is:
+
+```r
+BIOSZEN::BIOSZEN()
+```
+
 4. Open the local URL shown in the console.
 
 > **NOTE:**
 > On first launch, dependencies may be installed into a local `R_libs` directory. Keep this folder to avoid reinstalling packages.
+
+### Install from R-universe
+
+```r
+install.packages(
+  "BIOSZEN",
+  repos = c(
+    "https://bioszen.r-universe.dev",
+    "https://cloud.r-project.org"
+  )
+)
+BIOSZEN::BIOSZEN()
+```
+
+Stable releases are selected in the BIOSZEN R-universe registry with the
+`*release` branch pattern. See [R-universe setup](docs/R_UNIVERSE.md) for the
+repository configuration and release checklist.
+
+## R Commands
+
+The Shiny app remains the main interactive workflow. These commands provide the
+same core operations for scripts and reproducible pipelines:
+
+```r
+# Launch the app (run_app() remains supported)
+BIOSZEN::BIOSZEN()
+
+# Check for or install an approved update
+BIOSZEN::bioszen_update_available()
+BIOSZEN::bioszen_update()
+
+# Official citation in text, bibentry, BibTeX, or DOI form
+BIOSZEN::bioszen_citation()
+
+# Extract the same growth parameters as the Shiny Growth tab
+result <- BIOSZEN::growth_parameters("Curvas.xlsx")
+
+# Optional workbook output; no file is written when output_dir is NULL
+result <- BIOSZEN::growth_parameters(
+  "Curvas.xlsx",
+  output_dir = "growth_results",
+  overwrite = FALSE
+)
+```
+
+`growth_parameters()` accepts wide or tidy data frames, one or more Excel/CSV
+files, or a directory. It uses the identical robust-first calculation and
+permissive fallback as the Shiny module and returns the same parameter columns.
 
 ## Choose the Right Input Mode
 
@@ -211,6 +266,13 @@ not change the BIOSZEN Shiny application.
 ## Citation
 
 Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210
+
+In R:
+
+```r
+BIOSZEN::bioszen_citation()
+citation("BIOSZEN")
+```
 
 ## License
 

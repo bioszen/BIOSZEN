@@ -33,7 +33,7 @@ A practical guide to run BIOSZEN from raw files to reproducible outputs.
 Requirements:
 
 - R >= 4.1.
-- BIOSZEN launched from `app.R` or `BIOSZEN::run_app()`.
+- BIOSZEN launched from `app.R`, `BIOSZEN::BIOSZEN()`, or `BIOSZEN::run_app()`.
 - Data file for **Load Data** in `Excel` (`.xlsx`, `.xls`) or `CSV` (`.csv`).
 - Curves file for **Load Curves** in `Excel` (`.xlsx`, `.xls`) or `CSV` (`.csv`) when curves are not embedded in the main workbook.
 
@@ -74,6 +74,14 @@ Template files:
 1. Start with `.csv` in **Load Data**.
 2. Keep selected parameters small while iterating.
 3. Add overlays/advanced layers only near final export.
+
+### Scenario D: I need a reproducible R script
+
+- Launch the same app with `BIOSZEN::BIOSZEN()`; `BIOSZEN::run_app()` remains supported.
+- Use `BIOSZEN::growth_parameters()` to obtain the same growth parameters as the Growth tab without opening the visual interface.
+- `growth_parameters()` accepts wide/tidy data frames, one or more `.xlsx`/`.xls`/`.csv` files, or a directory. It writes nothing unless `output_dir` is supplied.
+- Use `BIOSZEN::bioszen_update_available()` to check for an update and `BIOSZEN::bioszen_update()` to install one after confirmation and after closing the app.
+- Use `BIOSZEN::bioszen_citation()` or `citation("BIOSZEN")` for the official citation.
 
 ![Plot setup and layers](manual_images/02_plot_setup_layers.png)
 
@@ -492,6 +500,22 @@ Autosave and interruption handling:
 - During long runs, BIOSZEN writes per-well checkpoints under a temporary `BIOSZEN_growth_checkpoints` folder inside the selected autosave folder. These checkpoints allow an interrupted run to resume from completed wells instead of starting from zero.
 - Checkpoints are deleted automatically after a successful completion or successful resume. They are kept only when processing is interrupted before completion.
 - **Stop process** requests a safe cancellation. The app may finish the current well/checkpoint before releasing the run so partial files stay usable and the growth-parameter calculations are not changed.
+
+R command equivalent:
+
+```r
+parameters <- BIOSZEN::growth_parameters("Curves.xlsx")
+parameters <- BIOSZEN::growth_parameters(
+  "Curves.xlsx",
+  output_dir = "growth_results",
+  overwrite = FALSE
+)
+```
+
+The command runs the same robust detector first and uses the same permissive
+fallback only for values the robust method could not calculate. Its returned
+columns and numerical results match the Growth tab. Without `output_dir`, it
+returns the result in R and does not create files.
 
 ![Growth workflow](manual_images/13_growth_parameters_workflow.png)
 

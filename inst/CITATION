@@ -1,0 +1,20 @@
+year <- meta[["Config/BIOSZEN/CitationYear"]]
+concept_doi <- meta[["Config/BIOSZEN/ConceptDOI"]]
+
+bibentry(
+  bibtype = "Manual",
+  title = "BIOSZEN",
+  author = person(
+    given = "Benjamín",
+    family = "Szenfeld",
+    comment = c(ORCID = "0009-0003-4702-4149")
+  ),
+  year = year,
+  version = meta$Version,
+  doi = concept_doi,
+  url = paste0("https://doi.org/", concept_doi),
+  note = "R package and Shiny application",
+  textVersion = paste0(
+    "Szenfeld, B. (", year, "). BIOSZEN. Zenodo. https://doi.org/", concept_doi
+  )
+)

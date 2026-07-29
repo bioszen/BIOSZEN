@@ -231,6 +231,20 @@ launch_fresh_launcher_process <- function(script,
 }
 
 bioszen_startup_citation <- function() {
+  package_citation <- tryCatch(
+    {
+      if (requireNamespace("BIOSZEN", quietly = TRUE)) {
+        getFromNamespace(".bioszen_startup_citation", "BIOSZEN")
+      } else {
+        NULL
+      }
+    },
+    error = function(e) NULL
+  )
+  if (is.function(package_citation)) {
+    return(package_citation())
+  }
+
   if (!isTRUE(getOption("BIOSZEN.show_startup_citation", TRUE))) {
     return(invisible(FALSE))
   }

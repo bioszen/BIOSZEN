@@ -112,8 +112,6 @@
   list(done = visible_done, progress = target, detail = detail)
 }
 
-.bioszen_growth_result_columns <- c("Well", "µMax", "ODmax", "AUC", "lag_time", "max_percap_time", "doub_time", "max_time", "OD0")
-
 .bioszen_growth_file_hash <- function(path) {
   if (!file.exists(path)) return(NA_character_)
   hash <- tryCatch(unname(tools::md5sum(path)), error = function(e) NA_character_)
@@ -252,41 +250,6 @@
   )
 }
 
-.bioszen_empty_growth_results <- function() {
-  out <- as.data.frame(stats::setNames(replicate(length(.bioszen_growth_result_columns), logical(0), simplify = FALSE),
-                                       .bioszen_growth_result_columns))
-  out$Well <- character(0)
-  for (col in setdiff(.bioszen_growth_result_columns, "Well")) out[[col]] <- numeric(0)
-  out
-}
-
-.bioszen_growth_od0_lookup <- function(tidy_df) {
-  if (is.null(tidy_df) || !is.data.frame(tidy_df) ||
-      !all(c("Well", "Time", "Measurements") %in% names(tidy_df))) {
-    return(stats::setNames(numeric(0), character(0)))
-  }
-  split_df <- split(tidy_df, as.character(tidy_df$Well), drop = TRUE)
-  vapply(split_df, function(d) {
-    measurements <- suppressWarnings(as.numeric(d$Measurements))
-    time <- suppressWarnings(as.numeric(d$Time))
-    ord <- order(time, seq_along(time), na.last = TRUE)
-    measurements <- measurements[ord]
-    measurements <- measurements[is.finite(measurements)]
-    if (!length(measurements)) NA_real_ else measurements[[1]]
-  }, numeric(1), USE.NAMES = TRUE)
-}
-
-.bioszen_fill_restored_od0 <- function(results, tidy_df) {
-  if (is.null(results) || !is.data.frame(results) || !nrow(results)) return(results)
-  if (!"OD0" %in% names(results)) results$OD0 <- NA_real_
-  lookup <- .bioszen_growth_od0_lookup(tidy_df)
-  if (!length(lookup)) return(results)
-  idx <- match(as.character(results$Well), names(lookup))
-  needs <- is.na(results$OD0) & !is.na(idx)
-  results$OD0[needs] <- unname(lookup[idx[needs]])
-  results
-}
-
 .bioszen_restore_growth_checkpoint <- function(checkpoint) {
   if (is.null(checkpoint) || !file.exists(checkpoint$rds_file)) {
     return(.bioszen_empty_growth_results())
@@ -401,77 +364,6 @@
   list(files = targets, names = names, output_stems = stems, cache_dir = run_dir)
 }
 
-.bioszen_compute_growth_results_batch_core <- function(tidy_df, should_abort = NULL, progress_callback = NULL) {
-  .bioszen_abort_if_requested(should_abort)
-  wells <- unique(tidy_df$Well)
-  tidy_df <- tidy_df %>%
-    dplyr::mutate(
-      Well = factor(Well, levels = wells),
-      Time = as.numeric(Time)
-    )
-
-  robust <- calculate_growth_rates_robust(
-    tidy_df,
-    should_abort = should_abort,
-    progress_callback = function(done, total, well) {
-      if (is.function(progress_callback)) {
-        progress_callback(stage = "robust", done = done, total = total, well = well)
-      }
-    }
-  )
-  .bioszen_abort_if_requested(should_abort)
-
-  fill_cols <- setdiff(names(robust), "Well")
-  permissive <- robust
-  for (col in fill_cols) {
-    permissive[[col]] <- rep(NA_real_, nrow(permissive))
-  }
-
-  need_permissive <- rep(FALSE, nrow(robust))
-  if (length(fill_cols)) {
-    for (col in fill_cols) {
-      need_permissive <- need_permissive | is_empty_value(robust[[col]])
-    }
-  }
-
-  if (any(need_permissive)) {
-    wells_needed <- as.character(robust$Well[need_permissive])
-    subset_df <- tidy_df[as.character(tidy_df$Well) %in% wells_needed, , drop = FALSE]
-    subset_df$Well <- factor(subset_df$Well, levels = wells)
-    permissive_subset <- calculate_growth_rates_permissive(
-      subset_df,
-      should_abort = should_abort,
-      progress_callback = function(done, total, well) {
-        if (is.function(progress_callback)) {
-          progress_callback(stage = "permissive", done = done, total = total, well = well)
-        }
-      }
-    )
-    idx <- match(as.character(permissive$Well), as.character(permissive_subset$Well))
-    matched <- !is.na(idx)
-    for (col in fill_cols) {
-      permissive[[col]][matched] <- permissive_subset[[col]][idx[matched]]
-    }
-    if (is.function(progress_callback)) {
-      progress_callback(
-        stage = "permissive_done",
-        done = sum(need_permissive),
-        total = sum(need_permissive),
-        well = NA_character_
-      )
-    }
-  } else if (is.function(progress_callback)) {
-    progress_callback(stage = "permissive_skipped", done = 0L, total = 0L, well = NA_character_)
-  }
-
-  .bioszen_abort_if_requested(should_abort)
-
-  combine_growth_results(robust, permissive) %>%
-    dplyr::mutate(Well = factor(Well, levels = wells)) %>%
-    dplyr::arrange(Well) %>%
-    dplyr::select(Well, µMax, ODmax, AUC, lag_time, max_percap_time, doub_time, max_time, OD0)
-}
-
 .bioszen_compute_growth_results_batch_checkpointed <- function(tidy_df,
                                                                should_abort = NULL,
                                                                progress_callback = NULL,
@@ -574,122 +466,6 @@ compute_growth_results_batch <- function(tidy_df,
     progress_callback = progress_callback,
     checkpoint = checkpoint
   )
-}
-
-.bioszen_parse_numeric <- function(x) {
-  if (is.numeric(x)) return(as.numeric(x))
-  y <- trimws(as.character(x))
-  y[y == ""] <- NA_character_
-  y <- gsub(",", ".", y, fixed = TRUE)
-  suppressWarnings(as.numeric(y))
-}
-
-.bioszen_is_index_like_series <- function(x) {
-  vals <- .bioszen_parse_numeric(x)
-  vals <- vals[is.finite(vals)]
-  if (length(vals) < 3L) return(FALSE)
-
-  diffs <- diff(vals)
-  if (!length(diffs)) return(FALSE)
-
-  tol <- sqrt(.Machine$double.eps)
-  frac_int <- mean(abs(vals - round(vals)) <= tol)
-  frac_step1 <- mean(abs(diffs - 1) <= tol)
-  monotonic <- mean(diffs >= -tol)
-  frac_unique <- length(unique(vals)) / length(vals)
-
-  isTRUE(
-    is.finite(frac_int) &&
-      is.finite(frac_step1) &&
-      is.finite(monotonic) &&
-      is.finite(frac_unique) &&
-      frac_int >= 0.95 &&
-      monotonic >= 0.95 &&
-      (frac_step1 >= 0.8 || frac_unique >= 0.95)
-  )
-}
-
-.bioszen_is_processed_curves_table <- function(df) {
-  if (is.null(df) || !ncol(df) || ncol(df) < 2) return(FALSE)
-  df <- as.data.frame(df, check.names = FALSE, stringsAsFactors = FALSE)
-  keep_cols <- vapply(df, function(col) !all(is.na(col)), logical(1))
-  df <- df[, keep_cols, drop = FALSE]
-  if (!ncol(df) || ncol(df) < 2) return(FALSE)
-
-  time_num <- .bioszen_parse_numeric(df[[1]])
-  time_finite <- is.finite(time_num)
-  frac_time <- mean(time_finite)
-  if (!is.finite(frac_time) || frac_time < 0.8) return(FALSE)
-
-  time_vals <- time_num[time_finite]
-  nondecreasing <- if (length(time_vals) > 1L) {
-    mean(diff(time_vals) >= 0)
-  } else {
-    1
-  }
-  if (!is.finite(nondecreasing) || nondecreasing < 0.8) return(FALSE)
-
-  if (ncol(df) >= 2) {
-    # Raw reader exports often begin with two index-like columns that should
-    # be dropped; avoid treating those files as already processed.
-    first_index_like <- .bioszen_is_index_like_series(df[[1]])
-    second_index_like <- .bioszen_is_index_like_series(df[[2]])
-    if (isTRUE(first_index_like) && isTRUE(second_index_like)) return(FALSE)
-  }
-
-  col_numeric_frac <- vapply(df[-1], function(col) {
-    vals <- .bioszen_parse_numeric(col)
-    mean(is.finite(vals))
-  }, numeric(1))
-
-  any(is.finite(col_numeric_frac) & col_numeric_frac >= 0.6)
-}
-
-.bioszen_normalize_processed_curves <- function(df) {
-  df <- as.data.frame(df, check.names = FALSE, stringsAsFactors = FALSE)
-  keep_cols <- vapply(df, function(col) !all(is.na(col)), logical(1))
-  df <- df[, keep_cols, drop = FALSE]
-  names(df)[1] <- "Time"
-  df$Time <- .bioszen_parse_numeric(df$Time)
-  for (nm in names(df)[-1]) {
-    df[[nm]] <- .bioszen_parse_numeric(df[[nm]])
-  }
-  df <- df[is.finite(df$Time), , drop = FALSE]
-  if (!nrow(df) || ncol(df) < 2) {
-    stop("Processed curves file does not contain a valid Time + wells table.")
-  }
-  df
-}
-
-.bioszen_build_curves_sheet <- function(file_path, max_time, time_interval) {
-  first_sheet <- readxl::read_excel(file_path, sheet = 1, .name_repair = "minimal")
-  fixed_params <- data.frame(
-    X_Max      = 50,
-    Interval_X = 10,
-    Y_Max      = 1.5,
-    Interval_Y = 0.5,
-    X_Title    = "Tiempo (h)",
-    Y_Title    = "OD620",
-    stringsAsFactors = FALSE
-  )
-
-  if (.bioszen_is_processed_curves_table(first_sheet)) {
-    new_data <- .bioszen_normalize_processed_curves(first_sheet)
-    return(list(new_data = new_data, fixed_params = fixed_params, format = "processed"))
-  }
-
-  raw <- readxl::read_excel(file_path, skip = 2, .name_repair = "minimal")
-  Time <- seq(0, max_time, by = time_interval)
-  raw <- raw[seq_len(min(length(Time), nrow(raw))), , drop = FALSE]
-  if (ncol(raw) < 3) {
-    stop("Raw curves file does not contain expected columns.")
-  }
-  meas <- as.data.frame(raw[, -c(1, 2), drop = FALSE], check.names = FALSE, stringsAsFactors = FALSE)
-  for (nm in names(meas)) {
-    meas[[nm]] <- .bioszen_parse_numeric(meas[[nm]])
-  }
-  new_data <- data.frame(Time = Time[seq_len(nrow(raw))], meas, check.names = FALSE, stringsAsFactors = FALSE)
-  list(new_data = new_data, fixed_params = fixed_params, format = "raw")
 }
 
 setup_growth_module <- function(input, output, session) {

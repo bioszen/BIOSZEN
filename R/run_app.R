@@ -1,31 +1,21 @@
-.bioszen_startup_citation <- function(force = FALSE) {
-  if (!isTRUE(getOption("BIOSZEN.show_startup_citation", TRUE))) {
-    return(invisible(FALSE))
-  }
-  if (!isTRUE(force) && isTRUE(getOption("BIOSZEN.startup_citation_shown", FALSE))) {
-    return(invisible(FALSE))
-  }
-
-  options(BIOSZEN.startup_citation_shown = TRUE)
-  packageStartupMessage(paste(
-    "##",
-    "## BIOSZEN",
-    "## See https://github.com/bioszen/BIOSZEN for additional documentation and source code.",
-    "## Please cite software as:",
-    "##   Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210",
-    "##",
-    sep = "\n"
-  ))
-  invisible(TRUE)
-}
-
+#' Launch BIOSZEN
 #'
-#' This function launches the interactive app that ships with the package.
+#' Starts the interactive BIOSZEN Shiny application. `BIOSZEN()` is the concise
+#' public launcher; `run_app()` remains available for backward compatibility.
 #'
 #' @param host Host interface for the local Shiny server.
 #' @param port Port for the local Shiny server.
-#' @param launch.browser Browser launcher passed to `shiny::runApp()`.
+#' @param launch.browser Browser launcher passed to [shiny::runApp()].
 #'
+#' @return The value returned by [shiny::runApp()], invisibly when appropriate.
+#' @export
+BIOSZEN <- function(host = getOption("shiny.host", "127.0.0.1"),
+                    port = getOption("shiny.port", 4321),
+                    launch.browser = getOption("shiny.launch.browser", TRUE)) {
+  run_app(host = host, port = port, launch.browser = launch.browser)
+}
+
+#' @rdname BIOSZEN
 #' @export
 run_app <- function(host = getOption("shiny.host", "127.0.0.1"),
                     port = getOption("shiny.port", 4321),
@@ -37,6 +27,14 @@ run_app <- function(host = getOption("shiny.host", "127.0.0.1"),
   }
 
   app_dir <- system.file("app", package = "BIOSZEN")
+  if (!nzchar(app_dir) || !dir.exists(app_dir)) {
+    stop("The installed BIOSZEN Shiny application could not be found.", call. = FALSE)
+  }
+
+  previous_running <- getOption("BIOSZEN.app_running", NULL)
+  options(BIOSZEN.app_running = TRUE)
+  on.exit(options(BIOSZEN.app_running = previous_running), add = TRUE)
+
   shiny::runApp(
     app_dir,
     host = host,

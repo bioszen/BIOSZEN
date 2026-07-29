@@ -1,4 +1,4 @@
-﻿# Manual de Usuario BIOSZEN (Español)
+# Manual de Usuario BIOSZEN (Español)
 
 Guía práctica para usar BIOSZEN desde archivos crudos hasta salidas reproducibles.
 
@@ -33,7 +33,7 @@ Guía práctica para usar BIOSZEN desde archivos crudos hasta salidas reproducib
 Requisitos:
 
 - R >= 4.1.
-- BIOSZEN ejecutado desde `app.R` o `BIOSZEN::run_app()`.
+- BIOSZEN ejecutado desde `app.R`, `BIOSZEN::BIOSZEN()` o `BIOSZEN::run_app()`.
 - Archivo de datos para **Cargar datos** en `Excel` (`.xlsx`, `.xls`) o `CSV` (`.csv`).
 - Archivo de curvas para **Cargar curvas** en `Excel` (`.xlsx`, `.xls`) o `CSV` (`.csv`) cuando las curvas no vienen embebidas en el workbook principal.
 
@@ -74,6 +74,14 @@ Archivos de plantilla:
 1. Comienza con `.csv` en **Cargar datos**.
 2. Mantén pocos parámetros seleccionados durante iteración.
 3. Activa capas avanzadas solo al final.
+
+### Escenario D: Necesito un script reproducible en R
+
+- Inicia la misma app con `BIOSZEN::BIOSZEN()`; `BIOSZEN::run_app()` sigue disponible.
+- Usa `BIOSZEN::growth_parameters()` para obtener los mismos parámetros de crecimiento que la pestaña de crecimiento sin abrir la interfaz visual.
+- `growth_parameters()` acepta data frames anchos/ordenados, uno o más archivos `.xlsx`/`.xls`/`.csv`, o una carpeta. No escribe archivos salvo que se indique `output_dir`.
+- Usa `BIOSZEN::bioszen_update_available()` para revisar actualizaciones y `BIOSZEN::bioszen_update()` para instalar una después de confirmarla y cerrar la app.
+- Usa `BIOSZEN::bioszen_citation()` o `citation("BIOSZEN")` para la cita oficial.
 
 ![Configuración de gráficos y capas](manual_images/02_plot_setup_layers.png)
 
@@ -494,6 +502,22 @@ Autoguardado y manejo de interrupciones:
 - Los puntos de control se eliminan automáticamente después de completar correctamente el proceso o después de reanudarlo con éxito. Solo se conservan cuando el procesamiento se interrumpe antes de terminar.
 - **Detener proceso** solicita una cancelación segura. La app puede terminar el well/punto de control actual antes de liberar la corrida para que los archivos parciales sigan siendo utilizables y no se modifique el cálculo de parámetros de crecimiento.
 
+Comando equivalente en R:
+
+```r
+parametros <- BIOSZEN::growth_parameters("Curvas.xlsx")
+parametros <- BIOSZEN::growth_parameters(
+  "Curvas.xlsx",
+  output_dir = "resultados_crecimiento",
+  overwrite = FALSE
+)
+```
+
+El comando ejecuta primero el mismo detector robusto y usa el mismo fallback
+permisivo solo para los valores que el método robusto no pudo calcular. Las
+columnas y resultados numéricos coinciden con la pestaña de crecimiento. Sin
+`output_dir`, devuelve el resultado en R y no crea archivos.
+
 ![Flujo de parámetros de crecimiento](manual_images/13_growth_parameters_workflow.png)
 
 ## 14. Guía de Solución de Problemas
@@ -537,5 +561,4 @@ Autoguardado y manejo de interrupciones:
 ## 15. Soporte
 
 Soporte y reporte de errores: `bioszenf@gmail.com`
-
 

@@ -165,9 +165,24 @@ has_seen_announcement <- function(id, pkg = "BIOSZEN") {
 }
 
 mark_seen_announcement <- function(id, pkg = "BIOSZEN") {
-  p <- announcements_state_path(pkg)
-  seen <- if (file.exists(p)) tryCatch(readRDS(p), error = function(e) character()) else character()
-  saveRDS(unique(c(seen, id)), p)
+  p <- tryCatch(
+    announcements_state_path(pkg),
+    error = function(e) NULL
+  )
+  if (is.null(p) || !nzchar(p)) return(invisible(FALSE))
+
+  seen <- if (file.exists(p)) {
+    tryCatch(readRDS(p), error = function(e) character())
+  } else {
+    character()
+  }
+
+  saved <- tryCatch({
+    suppressWarnings(saveRDS(unique(c(seen, id)), p))
+    TRUE
+  }, error = function(e) FALSE)
+
+  invisible(saved)
 }
 
 should_show_announcement <- function(a, current_version = NULL) {

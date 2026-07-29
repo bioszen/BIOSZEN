@@ -1,5 +1,4 @@
 ^inst/app/www/.*\.(docx)$
-^tests/testthat$ # include tests but not the results
 ^\.github$
 ^\.git
 ^BIOSZEN_.*\.tar\.gz$
@@ -49,3 +48,4 @@
 ^check_clean$
 ^check_clean_as_cran$
 ^output$
+^outputs$
