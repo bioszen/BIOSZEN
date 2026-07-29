@@ -46,15 +46,23 @@ BIOSZEN is an R package with a modular Shiny app focused on biological experimen
 
 ## Quick Start
 
-1. Install **R (>= 4.1)**.
-2. Open this project folder.
-3. Run one of the following:
+1. Install **R (>= 4.1)** and **RStudio** by following the step-by-step [R and RStudio download guide](https://bioszen.github.io/r-rstudio-download-guide/).
+2. Extract the BIOSZEN bundle and open its folder.
+3. Launch BIOSZEN using one of the following methods:
 
-```bash
-Rscript app.R
+In RStudio, open `App.R` and click **Source**, or run:
+
+```r
+source("App.R")
 ```
 
-Or inside R:
+From a terminal:
+
+```bash
+Rscript App.R
+```
+
+If BIOSZEN is already installed, you can also run:
 
 ```r
 BIOSZEN::run_app()

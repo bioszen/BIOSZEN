@@ -113,7 +113,6 @@ jobs:
           mkdir -p dist/release
           cp "$PKG_TARBALL_RELEASE" dist/release/
           cp inst/launchers/App.R dist/release/App.R
-          cp Download_R_and_RStudio.html dist/release/Download_R_and_RStudio.html
           cp README.md dist/release/README.md
 
       - name: Upload release artifact
@@ -159,7 +158,11 @@ jobs:
           mkdir -p "$bundle_dir"
           cp "dist/release/BIOSZEN-v${VERSION}.tar.gz" "$bundle_dir/"
           cp "dist/release/App.R" "$bundle_dir/"
-          cp "dist/release/Download_R_and_RStudio.html" "$bundle_dir/"
+          cp "dist/release/README.md" "$bundle_dir/"
+
+          test -f "$bundle_dir/README.md"
+          test ! -e "$bundle_dir/Download_R_and_RStudio.html"
+          grep -Fq 'https://bioszen.github.io/r-rstudio-download-guide/' "$bundle_dir/README.md"
 
           (cd bundle && zip -r "../BIOSZEN-v${VERSION}-bundle.zip" "BIOSZEN-v${VERSION}")
 

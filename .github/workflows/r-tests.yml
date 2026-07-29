@@ -92,15 +92,15 @@ jobs:
           mkdir -p dist/BIOSZEN_2.0.4
           cp BIOSZEN_2.0.4.tar.gz dist/BIOSZEN_2.0.4/
           cp inst/launchers/App.R dist/BIOSZEN_2.0.4/App.R
-          cp Download_R_and_RStudio.html dist/BIOSZEN_2.0.4/
           cp README.md dist/BIOSZEN_2.0.4/
 
       - name: Validate bundle contents
         run: |
           test -f dist/BIOSZEN_2.0.4/App.R
           test -f dist/BIOSZEN_2.0.4/BIOSZEN_2.0.4.tar.gz
-          test -f dist/BIOSZEN_2.0.4/Download_R_and_RStudio.html
           test -f dist/BIOSZEN_2.0.4/README.md
+          test ! -e dist/BIOSZEN_2.0.4/Download_R_and_RStudio.html
+          grep -Fq 'https://bioszen.github.io/r-rstudio-download-guide/' dist/BIOSZEN_2.0.4/README.md
 
       - name: Upload BIOSZEN_2.0.4
         uses: actions/upload-artifact@v4
