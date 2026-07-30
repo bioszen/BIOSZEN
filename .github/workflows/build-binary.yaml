@@ -16,14 +16,22 @@ defaults:
 
 jobs:
   test:
-    name: Test suite (release gate)
+    name: Test suite (release gate, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 97
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os:
+          - windows-latest
+          - macos-15
+          - macos-15-intel
     env:
       NOT_CRAN: "true"
+      CI: "true"
+      RGL_USE_NULL: "true"
+      SHINYTEST2_TIMEOUT: "120000"
+      SHINYTEST2_LOAD_TIMEOUT: "120000"
 
     steps:
       - name: Checkout
@@ -33,6 +41,7 @@ jobs:
         uses: r-lib/actions/setup-r@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590
         with:
           r-version: release
+          use-public-rspm: true
 
       - name: Install dependencies
         uses: r-lib/actions/setup-r-dependencies@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590
@@ -42,14 +51,13 @@ jobs:
             any::shinytest2
             any::chromote
           needs: check
+          pak-version: stable
 
-      - name: Run full testthat suite (incl shiny e2e)
-        if: matrix.os == 'windows-latest'
-        run: Rscript -e "testthat::test_dir('tests/testthat')"
+      - name: Check test environment
+        run: Rscript -e "cat('Operating system:', Sys.info()[['sysname']], '\n'); cat('Architecture:', Sys.info()[['machine']], '\n'); cat('R version:', R.version.string, '\n'); cat('Chrome executable:', chromote::find_chrome(), '\n')"
 
-      - name: Run core testthat suite (exclude shiny e2e)
-        if: matrix.os != 'windows-latest'
-        run: Rscript -e "files <- list.files('tests/testthat', pattern='^test-.*[.]R$', full.names = TRUE); files <- files[basename(files) != 'test-shinytest2-integration.R']; invisible(lapply(files, testthat::test_file))"
+      - name: Run full testthat suite including shiny e2e
+        run: Rscript -e "options(shinytest2.timeout = 120000, shinytest2.load_timeout = 120000, testthat.progress.max_fails = Inf); testthat::test_dir('tests/testthat', reporter = 'summary', stop_on_failure = TRUE, stop_on_warning = FALSE)"
 
   package:
     name: Package BIOSZEN (${{ matrix.os }})
@@ -58,7 +66,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest]
+        os: [macos-15]
 
     steps:
       - name: Checkout
@@ -87,13 +95,13 @@ jobs:
           echo "PKG_TARBALL_RELEASE=${PKG_NAME}-v${PKG_VERSION}.tar.gz" >> $GITHUB_ENV
 
       - name: Install system libraries (macOS)
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-15'
         run: |
           brew update
           brew install gmp
 
       - name: Install R package dependencies (macOS, source)
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-15'
         run: |
           Rscript -e "cat('DESCRIPTION deps:\n'); print(desc::desc_get_deps('.'))"
           Rscript -e "cat('Remotes entries:\n'); print(desc::desc_get_remotes())"
@@ -102,7 +110,7 @@ jobs:
           Rscript -e "if (requireNamespace('pak', quietly = TRUE)) try(pak::lockfile_create('pkg.lock'), silent = TRUE)"
 
       - name: Build macOS source tarball
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-15'
         run: |
           R CMD build .
           mv "$PKG_TARBALL" "$PKG_TARBALL_RELEASE"
