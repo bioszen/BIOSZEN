@@ -103,8 +103,8 @@ test_that("standalone launcher can use the current folder as extracted BIOSZEN s
     "find_package_source_dirs"
   ))
 
-  source_dir <- tempfile("BIOSZEN_2.0.5-")
-  write_launcher_desc(source_dir, "2.0.5")
+  source_dir <- tempfile("BIOSZEN_2.1.0-")
+  write_launcher_desc(source_dir, "2.1.0")
 
   found <- env$find_package_source_dirs(source_dir, "BIOSZEN")
 

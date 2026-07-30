@@ -5,14 +5,23 @@
 #'
 #' @param host Host interface for the local Shiny server.
 #' @param port Port for the local Shiny server.
-#' @param launch.browser Browser launcher passed to [shiny::runApp()].
+#' @param launch.browser Browser launcher passed to [shiny::runApp()]. The
+#'   default, `TRUE`, opens the app automatically. Supply `FALSE` to disable
+#'   automatic opening or a function to use a custom launcher.
+#' @param app_window Logical. When `FALSE` (the default), `BIOSZEN()` opens the
+#'   operating system's configured default browser. Set it to `TRUE` to prefer
+#'   a dedicated Chromium app window and fall back to the default browser. This
+#'   argument is used by `BIOSZEN()`; `run_app()` retains its original
+#'   browser-launch interface.
 #'
 #' @return The value returned by [shiny::runApp()], invisibly when appropriate.
 #' @export
 BIOSZEN <- function(host = getOption("shiny.host", "127.0.0.1"),
                     port = getOption("shiny.port", 4321),
-                    launch.browser = getOption("shiny.launch.browser", TRUE)) {
-  run_app(host = host, port = port, launch.browser = launch.browser)
+                    launch.browser = TRUE,
+                    app_window = FALSE) {
+  browser_launcher <- .bioszen_browser_launcher(launch.browser, app_window)
+  run_app(host = host, port = port, launch.browser = browser_launcher)
 }
 
 #' @rdname BIOSZEN

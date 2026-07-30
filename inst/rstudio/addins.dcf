@@ -1,0 +1,4 @@
+Name: Launch BIOSZEN in Browser
+Description: Starts BIOSZEN in the operating system's configured default browser.
+Binding: BIOSZEN
+Interactive: true

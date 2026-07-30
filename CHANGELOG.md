@@ -6,6 +6,11 @@ Semantic Versioning.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-07-30
+- Added a public browser-first `BIOSZEN()` launcher that uses the operating system's configured default browser, with an optional app-style Chromium mode.
+- Added an automatically registered RStudio Addin for launching BIOSZEN without typing commands.
+- Preserved `run_app()` compatibility and explicit controls for regular-browser and no-browser startup.
+
 ## [2.0.5] - 2026-07-30
 - Fixed installed-package test discovery so R-universe checks no longer assume individual files remain under `R/` after installation.
 - Kept the full cross-platform test matrix on Windows, macOS ARM, and macOS Intel while making browser widget fixtures independent of Pandoc.

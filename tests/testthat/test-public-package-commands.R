@@ -4,7 +4,7 @@ public_package_api <- new.env(parent = globalenv())
 public_package_sources <- file.path(
   app_test_root(),
   "R",
-  c("citation.R", "update.R", "run_app.R")
+  c("citation.R", "update.R", "browser_launcher.R", "run_app.R")
 )
 if (all(file.exists(public_package_sources))) {
   for (file in public_package_sources) {
@@ -55,14 +55,139 @@ test_that("BIOSZEN launcher delegates to run_app without changing arguments", {
   expect_true(is.function(public_package_api$run_app))
 })
 
+test_that("BIOSZEN uses the operating-system default browser by default", {
+  run_app_default <- eval(
+    formals(public_package_api$run_app)$launch.browser,
+    envir = environment(public_package_api$run_app)
+  )
+  received <- NULL
+  restore <- mock_public_package_api(list(
+    run_app = function(host, port, launch.browser) {
+      received <<- list(host = host, port = port, launch.browser = launch.browser)
+      "launched"
+    }
+  ))
+  on.exit(restore(), add = TRUE)
+
+  old_browser <- getOption("shiny.launch.browser", NULL)
+  on.exit(options(shiny.launch.browser = old_browser), add = TRUE)
+  options(shiny.launch.browser = function(url) stop("RStudio Viewer should not be inherited"))
+
+  expect_identical(public_package_api$BIOSZEN(), "launched")
+  expect_identical(received$launch.browser, public_package_api$.bioszen_open_default_browser)
+  expect_true(isTRUE(run_app_default))
+  expect_false(eval(formals(public_package_api$BIOSZEN)$app_window))
+})
+
+test_that("BIOSZEN preserves regular-browser and no-browser overrides", {
+  received <- NULL
+  restore <- mock_public_package_api(list(
+    run_app = function(host, port, launch.browser) {
+      received <<- launch.browser
+      "launched"
+    }
+  ))
+  on.exit(restore(), add = TRUE)
+
+  expect_identical(public_package_api$BIOSZEN(app_window = TRUE), "launched")
+  expect_identical(received, public_package_api$.bioszen_open_app_browser)
+
+  expect_identical(public_package_api$BIOSZEN(launch.browser = FALSE), "launched")
+  expect_false(received)
+
+  custom <- function(url) invisible(url)
+  expect_identical(public_package_api$BIOSZEN(launch.browser = custom), "launched")
+  expect_identical(received, custom)
+})
+
+test_that("default-browser launcher dispatches by operating system", {
+  launched <- character()
+  fallback <- FALSE
+  restore <- mock_public_package_api(list(
+    .bioszen_system_name = function() "Windows",
+    .bioszen_open_default_windows = function(url) {
+      launched <<- c(launched, "Windows")
+      TRUE
+    },
+    .bioszen_open_default_macos = function(url) {
+      launched <<- c(launched, "Darwin")
+      TRUE
+    },
+    .bioszen_open_default_unix = function(url) {
+      launched <<- c(launched, "Unix")
+      TRUE
+    },
+    .bioszen_open_default_fallback = function(url) {
+      fallback <<- TRUE
+      TRUE
+    }
+  ))
+  on.exit(restore(), add = TRUE)
+
+  expect_true(public_package_api$.bioszen_open_default_browser("http://127.0.0.1:4321"))
+  expect_identical(launched, "Windows")
+  expect_false(fallback)
+
+  public_package_api$.bioszen_system_name <- function() "Darwin"
+  expect_true(public_package_api$.bioszen_open_default_browser("http://127.0.0.1:4321"))
+  expect_identical(launched, c("Windows", "Darwin"))
+
+  public_package_api$.bioszen_system_name <- function() "Linux"
+  expect_true(public_package_api$.bioszen_open_default_browser("http://127.0.0.1:4321"))
+  expect_identical(launched, c("Windows", "Darwin", "Unix"))
+})
+
+test_that("default-browser launcher uses a safe fallback", {
+  fallback <- FALSE
+  restore <- mock_public_package_api(list(
+    .bioszen_system_name = function() "Linux",
+    .bioszen_open_default_unix = function(url) FALSE,
+    .bioszen_open_default_fallback = function(url) {
+      fallback <<- TRUE
+      TRUE
+    }
+  ))
+  on.exit(restore(), add = TRUE)
+
+  expect_true(public_package_api$.bioszen_open_default_browser("http://127.0.0.1:4321"))
+  expect_true(fallback)
+})
+
+test_that("app-window browser selection stops after the first success", {
+  launches <- character()
+  restore <- mock_public_package_api(list(
+    .bioszen_find_chromium_windows = function() c("first-browser", "second-browser"),
+    .bioszen_default_browser_windows = function() "",
+    .bioszen_launch_executable_app = function(executable, url) {
+      launches <<- c(launches, executable)
+      TRUE
+    }
+  ))
+  on.exit(restore(), add = TRUE)
+
+  expect_true(public_package_api$.bioszen_open_app_windows("http://127.0.0.1:4321"))
+  expect_identical(launches, "first-browser")
+})
+
+test_that("RStudio registers the browser launcher as an interactive addin", {
+  addins_file <- file.path(app_test_root(), "inst", "rstudio", "addins.dcf")
+  expect_true(file.exists(addins_file))
+
+  addins <- read.dcf(addins_file)
+  expect_true(any(addins[, "Name"] == "Launch BIOSZEN in Browser"))
+  browser_addin <- addins[addins[, "Name"] == "Launch BIOSZEN in Browser", , drop = FALSE]
+  expect_identical(unname(browser_addin[1, "Binding"]), "BIOSZEN")
+  expect_identical(tolower(unname(browser_addin[1, "Interactive"])), "true")
+})
+
 test_that("update checks compare versions without installing anything", {
   available <- matrix(
-    c("2.0.5"),
+    c("2.1.0"),
     nrow = 1,
     dimnames = list("BIOSZEN", "Version")
   )
   restore <- mock_public_package_api(list(
-    .bioszen_installed_version = function() numeric_version("2.0.4"),
+    .bioszen_installed_version = function() numeric_version("2.0.5"),
     .bioszen_available_packages = function(repos) available
   ))
   on.exit(restore(), add = TRUE)
@@ -70,8 +195,8 @@ test_that("update checks compare versions without installing anything", {
   status <- public_package_api$bioszen_update_available(repos = "https://example.invalid")
 
   expect_true(status)
-  expect_identical(attr(status, "installed_version"), "2.0.4")
-  expect_identical(attr(status, "available_version"), "2.0.5")
+  expect_identical(attr(status, "installed_version"), "2.0.5")
+  expect_identical(attr(status, "available_version"), "2.1.0")
 })
 
 test_that("update checks fail gracefully when the repository is unavailable", {
@@ -90,12 +215,12 @@ test_that("update checks fail gracefully when the repository is unavailable", {
 test_that("bioszen_update installs only after consent and outside the app", {
   installed <- FALSE
   available <- matrix(
-    c("2.0.5"),
+    c("2.1.0"),
     nrow = 1,
     dimnames = list("BIOSZEN", "Version")
   )
   restore <- mock_public_package_api(list(
-    .bioszen_installed_version = function() numeric_version("2.0.4"),
+    .bioszen_installed_version = function() numeric_version("2.0.5"),
     .bioszen_available_packages = function(repos) available,
     .bioszen_install_package = function(repos, lib) installed <<- TRUE
   ))
@@ -190,6 +315,14 @@ test_that("the package installs into a clean library with its public API and cit
   namespace <- loadNamespace("BIOSZEN", lib.loc = clean_library)
   on.exit(try(unloadNamespace("BIOSZEN"), silent = TRUE), add = TRUE)
   expect_true(all(expected_exports %in% getNamespaceExports(namespace)))
+
+  installed_addin <- system.file(
+    "rstudio", "addins.dcf",
+    package = "BIOSZEN",
+    lib.loc = clean_library
+  )
+  expect_true(file.exists(installed_addin))
+  expect_identical(unname(read.dcf(installed_addin)[1, "Binding"]), "BIOSZEN")
 
   package_citation <- utils::citation("BIOSZEN", lib.loc = clean_library)
   expect_s3_class(package_citation, "bibentry")

@@ -75,6 +75,14 @@ The shorter equivalent is:
 BIOSZEN::BIOSZEN()
 ```
 
+`BIOSZEN()` opens the app in the browser configured as the operating system
+default. Use `BIOSZEN::BIOSZEN(app_window = TRUE)` to request a dedicated
+app-style Chromium window instead. RStudio installs the BIOSZEN Addin
+automatically with the package: restart RStudio after installation, then select
+**Addins > Launch BIOSZEN in Browser** to launch it without typing code. A
+keyboard shortcut can optionally be assigned from **Addins > Browse Addins >
+Keyboard Shortcuts**.
+
 4. Open the local URL shown in the console.
 
 > **NOTE:**
@@ -92,6 +100,10 @@ install.packages(
 )
 BIOSZEN::BIOSZEN()
 ```
+
+After installation and an RStudio restart, **Addins > Launch BIOSZEN in
+Browser** is registered automatically; no Addin files need to be copied or
+installed manually.
 
 Stable releases are selected in the BIOSZEN R-universe registry with the
 `*release` branch pattern. See [R-universe setup](docs/R_UNIVERSE.md) for the

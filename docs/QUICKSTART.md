@@ -18,10 +18,16 @@ Rscript app.R
 Or from R:
 
 ```r
-BIOSZEN::run_app()
+BIOSZEN::BIOSZEN()
 ```
 
-Then open the local URL shown in your console.
+The package launcher opens the operating system's configured default browser.
+Use `BIOSZEN::BIOSZEN(app_window = TRUE)` to request a dedicated app-style
+Chromium window; `BIOSZEN::run_app()` remains supported. The RStudio Addin is
+installed automatically with BIOSZEN. Restart RStudio after installation and
+click **Addins > Launch BIOSZEN in Browser**; no manual Addin installation is
+required. A keyboard shortcut can optionally be assigned from **Addins > Browse
+Addins > Keyboard Shortcuts**.
 
 > **NOTE:**
 > First run may install packages into `R_libs`. Keep that folder for faster next launches.

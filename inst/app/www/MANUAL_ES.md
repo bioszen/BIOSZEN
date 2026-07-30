@@ -50,6 +50,16 @@ install.packages(
 BIOSZEN::BIOSZEN()
 ```
 
+El lanzador del paquete abre el navegador configurado como predeterminado en el
+sistema operativo. Usa `BIOSZEN::BIOSZEN(app_window = TRUE)` para solicitar una
+ventana de aplicación independiente de un navegador Chromium. El Addin de
+RStudio se instala y registra automáticamente con BIOSZEN; no es necesario
+copiar archivos del Addin manualmente. Reinicia RStudio después de instalar o
+actualizar BIOSZEN y usa **Addins > Launch BIOSZEN in Browser** para iniciar la
+app sin escribir un comando. Opcionalmente, puedes asignar un atajo en **Addins
+> Browse Addins > Keyboard Shortcuts**. Usa `launch.browser = FALSE` solo si no
+deseas que el navegador se abra automáticamente.
+
 Los métodos independientes mediante `App.R` y el bundle siguen disponibles
 para quienes prefieran no instalar BIOSZEN desde un repositorio de paquetes.
 
@@ -94,6 +104,7 @@ Archivos de plantilla:
 ### Escenario D: Necesito un script reproducible en R
 
 - Inicia la misma app con `BIOSZEN::BIOSZEN()`; `BIOSZEN::run_app()` sigue disponible.
+- En RStudio, el comando instalado automáticamente **Addins > Launch BIOSZEN in Browser** ofrece el mismo inicio con un clic y abre el navegador predeterminado del sistema operativo.
 - Usa `BIOSZEN::growth_parameters()` para obtener los mismos parámetros de crecimiento que la pestaña de crecimiento sin abrir la interfaz visual.
 - `growth_parameters()` acepta data frames anchos/ordenados, uno o más archivos `.xlsx`/`.xls`/`.csv`, o una carpeta. No escribe archivos salvo que se indique `output_dir`.
 - Usa `BIOSZEN::bioszen_update_available()` para revisar actualizaciones y `BIOSZEN::bioszen_update()` para instalar una después de confirmarla y cerrar la app.
