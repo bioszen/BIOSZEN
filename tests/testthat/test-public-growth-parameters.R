@@ -1,8 +1,20 @@
 library(testthat)
 
 public_growth_api <- new.env(parent = globalenv())
-for (file in c("growth_core.R", "growth_parameters.R")) {
-  sys.source(file.path(app_test_root(), "R", file), envir = public_growth_api)
+public_growth_sources <- file.path(
+  app_test_root(),
+  "R",
+  c("growth_core.R", "growth_parameters.R")
+)
+if (all(file.exists(public_growth_sources))) {
+  for (file in public_growth_sources) {
+    sys.source(file, envir = public_growth_api)
+  }
+} else {
+  package_namespace <- asNamespace("BIOSZEN")
+  for (name in c("growth_parameters", ".bioszen_growth_result_columns")) {
+    assign(name, get(name, envir = package_namespace, inherits = FALSE), envir = public_growth_api)
+  }
 }
 
 make_public_growth_curves <- function() {

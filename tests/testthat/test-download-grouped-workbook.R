@@ -710,7 +710,7 @@ test_that("large platemap automatic biological outliers create filt tabs and ful
   skip_if_not_installed("dplyr")
   skip_if_not_installed("tidyr")
 
-  fixture_path <- file.path(root, "tests", "testthat", "fixtures", "platemap_BigData_test.xlsx")
+  fixture_path <- testthat::test_path("fixtures", "platemap_BigData_test.xlsx")
   fixture_path <- normalizePath(fixture_path, winslash = "/", mustWork = FALSE)
 
   old <- setwd(app_dir)

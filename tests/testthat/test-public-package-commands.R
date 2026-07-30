@@ -1,8 +1,24 @@
 library(testthat)
 
 public_package_api <- new.env(parent = globalenv())
-for (file in c("citation.R", "update.R", "run_app.R")) {
-  sys.source(file.path(app_test_root(), "R", file), envir = public_package_api)
+public_package_sources <- file.path(
+  app_test_root(),
+  "R",
+  c("citation.R", "update.R", "run_app.R")
+)
+if (all(file.exists(public_package_sources))) {
+  for (file in public_package_sources) {
+    sys.source(file, envir = public_package_api)
+  }
+} else {
+  package_namespace <- asNamespace("BIOSZEN")
+  for (name in ls(package_namespace, all.names = TRUE)) {
+    value <- get(name, envir = package_namespace, inherits = FALSE)
+    if (is.function(value) && identical(environment(value), package_namespace)) {
+      environment(value) <- public_package_api
+    }
+    assign(name, value, envir = public_package_api)
+  }
 }
 
 mock_public_package_api <- function(bindings) {
@@ -108,6 +124,25 @@ test_that("citation commands expose one official DOI and citation", {
 
 test_that("the package installs into a clean library with its public API and citation", {
   package_root <- normalizePath(app_test_root(), winslash = "/", mustWork = TRUE)
+  expected_exports <- c(
+    "BIOSZEN", "run_app", "growth_parameters", "bioszen_citation",
+    "bioszen_update_available", "bioszen_update"
+  )
+
+  if (!file.exists(file.path(package_root, "R", "run_app.R"))) {
+    namespace <- asNamespace("BIOSZEN")
+    expect_true(all(expected_exports %in% getNamespaceExports(namespace)))
+
+    package_citation <- utils::citation("BIOSZEN")
+    expect_s3_class(package_citation, "bibentry")
+    expect_match(
+      paste(format(package_citation), collapse = " "),
+      "10.5281/zenodo.18217210",
+      fixed = TRUE
+    )
+    return(invisible(NULL))
+  }
+
   clean_library <- tempfile("bioszen-clean-library-")
   dir.create(clean_library)
   clean_library <- normalizePath(clean_library, winslash = "/", mustWork = TRUE)
@@ -154,10 +189,6 @@ test_that("the package installs into a clean library with its public API and cit
 
   namespace <- loadNamespace("BIOSZEN", lib.loc = clean_library)
   on.exit(try(unloadNamespace("BIOSZEN"), silent = TRUE), add = TRUE)
-  expected_exports <- c(
-    "BIOSZEN", "run_app", "growth_parameters", "bioszen_citation",
-    "bioszen_update_available", "bioszen_update"
-  )
   expect_true(all(expected_exports %in% getNamespaceExports(namespace)))
 
   package_citation <- utils::citation("BIOSZEN", lib.loc = clean_library)

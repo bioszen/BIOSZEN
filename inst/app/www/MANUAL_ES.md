@@ -37,6 +37,22 @@ Requisitos:
 - Archivo de datos para **Cargar datos** en `Excel` (`.xlsx`, `.xls`) o `CSV` (`.csv`).
 - Archivo de curvas para **Cargar curvas** en `Excel` (`.xlsx`, `.xls`) o `CSV` (`.csv`) cuando las curvas no vienen embebidas en el workbook principal.
 
+Instala el paquete estable desde R-universe con:
+
+```r
+install.packages(
+  "BIOSZEN",
+  repos = c(
+    "https://bioszen.r-universe.dev",
+    "https://cloud.r-project.org"
+  )
+)
+BIOSZEN::BIOSZEN()
+```
+
+Los métodos independientes mediante `App.R` y el bundle siguen disponibles
+para quienes prefieran no instalar BIOSZEN desde un repositorio de paquetes.
+
 Plantillas de referencia disponibles en la app (**Archivos de entrada de referencia (descargar)**) y en:
 
 - `inst/app/www/reference_files/`
@@ -561,4 +577,3 @@ columnas y resultados numéricos coinciden con la pestaña de crecimiento. Sin
 ## 15. Soporte
 
 Soporte y reporte de errores: `bioszenf@gmail.com`
-

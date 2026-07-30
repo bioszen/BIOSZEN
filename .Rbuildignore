@@ -1,4 +1,3 @@
-^inst/app/www/.*\.(docx)$
 ^\.github$
 ^\.git
 ^BIOSZEN_.*\.tar\.gz$

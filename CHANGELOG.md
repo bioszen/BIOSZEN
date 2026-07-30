@@ -6,6 +6,13 @@ Semantic Versioning.
 
 ## [Unreleased]
 
+## [2.0.5] - 2026-07-30
+- Fixed installed-package test discovery so R-universe checks no longer assume individual files remain under `R/` after installation.
+- Kept the full cross-platform test matrix on Windows, macOS ARM, and macOS Intel while making browser widget fixtures independent of Pandoc.
+- Made the large grouped-workbook fixture resolve correctly in both source-tree and installed-package checks.
+- Included the downloadable English and Spanish DOCX manuals in installed packages and documented R-universe installation in both manuals.
+- Updated archived Zenodo metadata for the published 2.0.4 release while retaining the concept DOI for the general BIOSZEN citation.
+
 ## [2.0.4] - 2026-07-11
 - Fixed standalone bundle startup after dependency installation by continuing in a clean R process, preventing loaded-namespace conflicts in RStudio on Windows and macOS.
 - Preserved the BIOSZEN version, GitHub link, and approved citation block in the parent terminal when startup uses the clean-process handoff, and made the citation the final startup message after Shiny begins listening during direct launches.

@@ -36,7 +36,7 @@ testthat::test_that("plotly legend autofit avoids clipping", {
   )
 
   p <- plotly_autofit_widget(p, force_legend_right = TRUE)
-  htmlwidgets::saveWidget(p, tmp_html, selfcontained = TRUE)
+  htmlwidgets::saveWidget(p, tmp_html, selfcontained = FALSE)
 
   chrome_candidates <- c(
     Sys.getenv("CHROMOTE_CHROME"),

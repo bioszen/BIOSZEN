@@ -1,7 +1,7 @@
 Package: BIOSZEN
 Type: Package
 Title: Biological Data Analysis and Visualization with Shiny
-Version: 2.0.4
+Version: 2.0.5
 Authors@R: person("Benjamín", "Szenfeld",
                   email = "bioszenf@gmail.com",
                   role  = c("aut", "cre"),
@@ -68,7 +68,7 @@ Suggests:
 Config/testthat/edition: 3
 Config/BIOSZEN/CitationYear: 2026
 Config/BIOSZEN/ConceptDOI: 10.5281/zenodo.18217210
-Config/BIOSZEN/LatestArchivedVersion: 2.0.3
-Config/BIOSZEN/LatestArchivedDOI: 10.5281/zenodo.21093971
+Config/BIOSZEN/LatestArchivedVersion: 2.0.4
+Config/BIOSZEN/LatestArchivedDOI: 10.5281/zenodo.21705868
 RoxygenNote: 7.3.1
 NeedsCompilation: no

@@ -37,6 +37,22 @@ Requirements:
 - Data file for **Load Data** in `Excel` (`.xlsx`, `.xls`) or `CSV` (`.csv`).
 - Curves file for **Load Curves** in `Excel` (`.xlsx`, `.xls`) or `CSV` (`.csv`) when curves are not embedded in the main workbook.
 
+Install the stable R package from R-universe with:
+
+```r
+install.packages(
+  "BIOSZEN",
+  repos = c(
+    "https://bioszen.r-universe.dev",
+    "https://cloud.r-project.org"
+  )
+)
+BIOSZEN::BIOSZEN()
+```
+
+The standalone `App.R` and bundle launch methods remain available for users who
+prefer not to install BIOSZEN from a package repository.
+
 Reference templates available in-app (**Reference input files (download)**) and in:
 
 - `inst/app/www/reference_files/`
