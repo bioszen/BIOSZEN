@@ -35,20 +35,58 @@ run_app <- function(host = getOption("shiny.host", "127.0.0.1"),
     .libPaths(unique(c(local_lib, .libPaths())))
   }
 
-  app_dir <- system.file("app", package = "BIOSZEN")
+  app_dir <- .bioszen_installed_app_dir()
   if (!nzchar(app_dir) || !dir.exists(app_dir)) {
     stop("The installed BIOSZEN Shiny application could not be found.", call. = FALSE)
   }
 
   previous_running <- getOption("BIOSZEN.app_running", NULL)
-  options(BIOSZEN.app_running = TRUE)
-  on.exit(options(BIOSZEN.app_running = previous_running), add = TRUE)
+  previous_update_request <- getOption("BIOSZEN.update_after_app", NULL)
+  options(
+    BIOSZEN.app_running = TRUE,
+    BIOSZEN.update_after_app = FALSE
+  )
+  on.exit({
+    options(
+      BIOSZEN.app_running = previous_running,
+      BIOSZEN.update_after_app = previous_update_request
+    )
+  }, add = TRUE)
 
-  shiny::runApp(
+  app_result <- .bioszen_run_shiny_app(
     app_dir,
     host = host,
     port = port,
     launch.browser = launch.browser,
     display.mode = "normal"
   )
+
+  update_requested <- isTRUE(getOption("BIOSZEN.update_after_app", FALSE))
+  options(
+    BIOSZEN.app_running = previous_running,
+    BIOSZEN.update_after_app = FALSE
+  )
+  if (update_requested) {
+    tryCatch(
+      bioszen_update(ask = FALSE),
+      error = function(e) {
+        warning(
+          "BIOSZEN closed, but the update could not be installed: ",
+          conditionMessage(e),
+          ". Run BIOSZEN::bioszen_update() in a fresh R session.",
+          call. = FALSE
+        )
+        FALSE
+      }
+    )
+  }
+  app_result
+}
+
+.bioszen_installed_app_dir <- function() {
+  system.file("app", package = "BIOSZEN")
+}
+
+.bioszen_run_shiny_app <- function(app_dir, ...) {
+  shiny::runApp(app_dir, ...)
 }

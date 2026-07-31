@@ -723,3 +723,15 @@ app_error_email_prompt,"¿Qué estaba haciendo antes de que ocurriera el error?\
 app_error_email_fallback,El informe completo fue copiado. Péguelo en el correo antes de enviarlo.
 app_error_email_fallback_body,El informe de diagnóstico completo fue copiado al portapapeles. Péguelo abajo antes de enviarlo.
 plot_error_unexpected,No se pudo generar el gráfico debido a un error inesperado de la aplicación.
+app_update_button,Actualizar
+app_update_checking,Buscando actualizaciones de BIOSZEN en R-universe...
+app_update_package_unavailable,No se encontró el paquete BIOSZEN instalado. Cierra la app y ejecuta BIOSZEN::bioszen_update() en R.
+app_update_check_failed,BIOSZEN no pudo buscar actualizaciones. Revisa la conexión a internet e inténtalo nuevamente.
+app_update_none,No hay una versión estable de BIOSZEN más reciente (instalada: %s). Puedes continuar trabajando.
+app_update_available_title,Actualización de BIOSZEN disponible
+app_update_available_body,Está instalada BIOSZEN %s y está disponible la versión estable %s.
+app_update_close_warning,Primero guarda o descarga cualquier trabajo pendiente. BIOSZEN se cerrará y actualizará desde R-universe; luego reinicia R antes de volver a iniciarla.
+app_update_cancel,Continuar trabajando
+app_update_confirm,Cerrar BIOSZEN y actualizar
+app_update_launcher_required,La actualización automática requiere iniciar BIOSZEN con BIOSZEN() o run_app(). Cierra la app y ejecuta BIOSZEN::bioszen_update() en R.
+app_update_closing,BIOSZEN se cerrará y actualizará desde R-universe. Sigue el progreso en la consola de R y reinicia R cuando termine.

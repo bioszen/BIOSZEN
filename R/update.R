@@ -17,6 +17,14 @@
   tryCatch(utils::packageVersion("BIOSZEN"), error = function(e) numeric_version("0"))
 }
 
+.bioszen_request_update_after_app <- function() {
+  if (!isTRUE(getOption("BIOSZEN.app_running", FALSE))) {
+    return(invisible(FALSE))
+  }
+  options(BIOSZEN.update_after_app = TRUE)
+  invisible(TRUE)
+}
+
 #' Check for a BIOSZEN update
 #'
 #' Checks the BIOSZEN R-universe repository without installing anything.

@@ -238,6 +238,135 @@ test_that("bioszen_update installs only after consent and outside the app", {
   expect_false(installed)
 })
 
+test_that("bioszen_update leaves the installation untouched when already current", {
+  installed <- FALSE
+  available <- matrix(
+    c("2.1.0"),
+    nrow = 1,
+    dimnames = list("BIOSZEN", "Version")
+  )
+  restore <- mock_public_package_api(list(
+    .bioszen_installed_version = function() numeric_version("2.1.0"),
+    .bioszen_available_packages = function(repos) available,
+    .bioszen_install_package = function(repos, lib) installed <<- TRUE
+  ))
+  on.exit(restore(), add = TRUE)
+
+  old_running <- getOption("BIOSZEN.app_running", NULL)
+  on.exit(options(BIOSZEN.app_running = old_running), add = TRUE)
+  options(BIOSZEN.app_running = FALSE)
+
+  expect_message(
+    result <- public_package_api$bioszen_update(ask = FALSE, repos = "https://example.invalid"),
+    "already up to date"
+  )
+  expect_false(result)
+  expect_false(installed)
+})
+
+test_that("the app can request an update only while it is running", {
+  old_running <- getOption("BIOSZEN.app_running", NULL)
+  old_request <- getOption("BIOSZEN.update_after_app", NULL)
+  on.exit(options(
+    BIOSZEN.app_running = old_running,
+    BIOSZEN.update_after_app = old_request
+  ), add = TRUE)
+
+  options(BIOSZEN.app_running = FALSE, BIOSZEN.update_after_app = FALSE)
+  expect_false(public_package_api$.bioszen_request_update_after_app())
+  expect_false(isTRUE(getOption("BIOSZEN.update_after_app", FALSE)))
+
+  options(BIOSZEN.app_running = TRUE)
+  expect_true(public_package_api$.bioszen_request_update_after_app())
+  expect_true(isTRUE(getOption("BIOSZEN.update_after_app", FALSE)))
+})
+
+test_that("run_app installs a confirmed update only after Shiny stops", {
+  updated <- FALSE
+  running_during_install <- NA
+  restore <- mock_public_package_api(list(
+    .bioszen_installed_app_dir = function() tempdir(),
+    .bioszen_run_shiny_app = function(app_dir, ...) {
+      expect_true(isTRUE(getOption("BIOSZEN.app_running", FALSE)))
+      expect_true(public_package_api$.bioszen_request_update_after_app())
+      "app-closed"
+    },
+    bioszen_update = function(ask = TRUE, repos = NULL) {
+      running_during_install <<- isTRUE(getOption("BIOSZEN.app_running", FALSE))
+      expect_false(ask)
+      updated <<- TRUE
+      TRUE
+    }
+  ))
+  on.exit(restore(), add = TRUE)
+
+  old_running <- getOption("BIOSZEN.app_running", NULL)
+  old_request <- getOption("BIOSZEN.update_after_app", NULL)
+  on.exit(options(
+    BIOSZEN.app_running = old_running,
+    BIOSZEN.update_after_app = old_request
+  ), add = TRUE)
+  options(BIOSZEN.app_running = FALSE, BIOSZEN.update_after_app = FALSE)
+
+  result <- public_package_api$run_app(launch.browser = FALSE)
+
+  expect_identical(result, "app-closed")
+  expect_true(updated)
+  expect_false(running_during_install)
+  expect_false(isTRUE(getOption("BIOSZEN.app_running", FALSE)))
+})
+
+test_that("run_app does not update when the user did not request it", {
+  update_calls <- 0L
+  restore <- mock_public_package_api(list(
+    .bioszen_installed_app_dir = function() tempdir(),
+    .bioszen_run_shiny_app = function(app_dir, ...) "app-closed",
+    bioszen_update = function(...) {
+      update_calls <<- update_calls + 1L
+      TRUE
+    }
+  ))
+  on.exit(restore(), add = TRUE)
+
+  old_running <- getOption("BIOSZEN.app_running", NULL)
+  old_request <- getOption("BIOSZEN.update_after_app", NULL)
+  on.exit(options(
+    BIOSZEN.app_running = old_running,
+    BIOSZEN.update_after_app = old_request
+  ), add = TRUE)
+  options(BIOSZEN.app_running = FALSE, BIOSZEN.update_after_app = FALSE)
+
+  expect_identical(public_package_api$run_app(launch.browser = FALSE), "app-closed")
+  expect_identical(update_calls, 0L)
+})
+
+test_that("a post-shutdown installation failure does not crash run_app", {
+  restore <- mock_public_package_api(list(
+    .bioszen_installed_app_dir = function() tempdir(),
+    .bioszen_run_shiny_app = function(app_dir, ...) {
+      public_package_api$.bioszen_request_update_after_app()
+      "app-closed"
+    },
+    bioszen_update = function(...) stop("library is locked")
+  ))
+  on.exit(restore(), add = TRUE)
+
+  old_running <- getOption("BIOSZEN.app_running", NULL)
+  old_request <- getOption("BIOSZEN.update_after_app", NULL)
+  on.exit(options(
+    BIOSZEN.app_running = old_running,
+    BIOSZEN.update_after_app = old_request
+  ), add = TRUE)
+  options(BIOSZEN.app_running = FALSE, BIOSZEN.update_after_app = FALSE)
+
+  expect_warning(
+    result <- public_package_api$run_app(launch.browser = FALSE),
+    "library is locked"
+  )
+  expect_identical(result, "app-closed")
+  expect_false(isTRUE(getOption("BIOSZEN.app_running", FALSE)))
+})
+
 test_that("citation commands expose one official DOI and citation", {
   expected_text <- "Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210"
 

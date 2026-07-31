@@ -108,6 +108,8 @@ Archivos de plantilla:
 - Usa `BIOSZEN::growth_parameters()` para obtener los mismos parámetros de crecimiento que la pestaña de crecimiento sin abrir la interfaz visual.
 - `growth_parameters()` acepta data frames anchos/ordenados, uno o más archivos `.xlsx`/`.xls`/`.csv`, o una carpeta. No escribe archivos salvo que se indique `output_dir`.
 - Usa `BIOSZEN::bioszen_update_available()` para revisar actualizaciones y `BIOSZEN::bioszen_update()` para instalar una después de confirmarla y cerrar la app.
+- Como alternativa, usa el botón azul **Actualizar** al final de cualquiera de los paneles de la app. Si no existe una versión estable más reciente, BIOSZEN lo informa y permanece abierto. Si existe una actualización, BIOSZEN muestra ambas versiones y solicita confirmación; después de confirmarla, cierra la app y ejecuta el mismo flujo seguro de actualización. Los métodos por comando siguen disponibles.
+- **Seguridad de la actualización:** el botón nunca instala de forma silenciosa y consulta únicamente el canal estable configurado de BIOSZEN en R-universe. Guarda o descarga el trabajo no guardado antes de confirmar. BIOSZEN cierra Shiny antes de reemplazar archivos del paquete, y la consulta no envía datos experimentales cargados, información personal ni credenciales. Si se interrumpe la descarga o la biblioteca de R está bloqueada, reinicia R y ejecuta `BIOSZEN::bioszen_update()` manualmente.
 - Usa `BIOSZEN::bioszen_citation()` o `citation("BIOSZEN")` para la cita oficial.
 
 ![Configuración de gráficos y capas](manual_images/02_plot_setup_layers.png)

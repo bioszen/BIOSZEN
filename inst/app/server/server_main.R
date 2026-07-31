@@ -519,6 +519,124 @@ server <- function(input, output, session) {
     )
   }, ignoreInit = TRUE)
 
+  pending_bioszen_update <- reactiveVal(NULL)
+
+  bioszen_package_function <- function(name, exported = TRUE) {
+    tryCatch({
+      if (!requireNamespace("BIOSZEN", quietly = TRUE)) return(NULL)
+      if (isTRUE(exported)) {
+        getExportedValue("BIOSZEN", name)
+      } else {
+        getFromNamespace(name, "BIOSZEN")
+      }
+    }, error = function(e) NULL)
+  }
+
+  check_bioszen_update <- function() {
+    if (is_session_closing()) return(invisible(FALSE))
+    lang <- isolate(input$app_lang %||% i18n_lang)
+    check_fun <- bioszen_package_function("bioszen_update_available")
+    if (!is.function(check_fun)) {
+      bioszen_safe_show_notification(
+        tr_text("app_update_package_unavailable", lang),
+        type = "warning",
+        duration = 7,
+        session = session
+      )
+      return(invisible(FALSE))
+    }
+
+    shinyjs::disable("bioszenUpdate")
+    shinyjs::disable("bioszenUpdateGrowth")
+    on.exit({
+      if (!is_session_closing()) {
+        shinyjs::enable("bioszenUpdate")
+        shinyjs::enable("bioszenUpdateGrowth")
+      }
+    }, add = TRUE)
+
+    status <- withProgress(
+      message = tr_text("app_update_checking", lang),
+      value = 0.35,
+      check_fun(quiet = TRUE)
+    )
+    if (length(status) != 1L || is.na(status)) {
+      bioszen_safe_show_notification(
+        tr_text("app_update_check_failed", lang),
+        type = "warning",
+        duration = 7,
+        session = session
+      )
+      return(invisible(FALSE))
+    }
+
+    installed <- as.character(attr(status, "installed_version") %||% get_current_version("BIOSZEN") %||% "unknown")
+    available <- as.character(attr(status, "available_version") %||% "unknown")
+    if (!isTRUE(status)) {
+      pending_bioszen_update(NULL)
+      bioszen_safe_show_notification(
+        sprintf(tr_text("app_update_none", lang), installed),
+        type = "message",
+        duration = 6,
+        session = session
+      )
+      return(invisible(TRUE))
+    }
+
+    pending_bioszen_update(list(installed = installed, available = available))
+    showModal(modalDialog(
+      title = tr_text("app_update_available_title", lang),
+      tags$p(sprintf(tr_text("app_update_available_body", lang), installed, available)),
+      tags$p(class = "text-warning", tr_text("app_update_close_warning", lang)),
+      easyClose = FALSE,
+      footer = tagList(
+        modalButton(tr_text("app_update_cancel", lang)),
+        actionButton(
+          "bioszenConfirmUpdate",
+          label = tagList(icon("download"), tr_text("app_update_confirm", lang)),
+          class = "btn btn-primary"
+        )
+      )
+    ))
+    invisible(TRUE)
+  }
+
+  observeEvent(input$bioszenUpdate, {
+    check_bioszen_update()
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$bioszenUpdateGrowth, {
+    check_bioszen_update()
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$bioszenConfirmUpdate, {
+    update_info <- isolate(pending_bioszen_update())
+    if (is.null(update_info) || is_session_closing()) return()
+    lang <- isolate(input$app_lang %||% i18n_lang)
+    request_fun <- bioszen_package_function(".bioszen_request_update_after_app", exported = FALSE)
+    if (!is.function(request_fun) || !isTRUE(request_fun())) {
+      removeModal()
+      pending_bioszen_update(NULL)
+      bioszen_safe_show_notification(
+        tr_text("app_update_launcher_required", lang),
+        type = "warning",
+        duration = 9,
+        session = session
+      )
+      return()
+    }
+
+    removeModal()
+    pending_bioszen_update(NULL)
+    bioszen_safe_show_notification(
+      tr_text("app_update_closing", lang),
+      type = "message",
+      duration = NULL,
+      session = session
+    )
+    schedule_session_callback(function() shiny::stopApp(), delay = 0.35)
+  }, ignoreInit = TRUE)
+
   if (is.function(session$allowReconnect)) {
     try(session$allowReconnect(TRUE), silent = TRUE)
   }
@@ -3214,6 +3332,17 @@ server <- function(input, output, session) {
     if (!is.null(input$bundle_label)) {
       updateTextInput(session, "bundle_label", placeholder = tr_text("bundle_label_placeholder", lang))
     }
+
+    updateActionButton(
+      session,
+      "bioszenUpdate",
+      label = tagList(icon("arrows-rotate"), tr_text("app_update_button", lang))
+    )
+    updateActionButton(
+      session,
+      "bioszenUpdateGrowth",
+      label = tagList(icon("arrows-rotate"), tr_text("app_update_button", lang))
+    )
 
     if (!is.null(input$ov_tipo)) {
       updateSelectInput(

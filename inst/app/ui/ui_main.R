@@ -209,6 +209,37 @@ ui <- fluidPage(
         overflow-wrap: break-word;
       }
 
+      .bioszen-update-action {
+        display: flex;
+        justify-content: center;
+        margin: 4px 0 12px;
+      }
+
+      .bioszen-sidebar-content .bioszen-update-button {
+        width: auto;
+        min-height: 44px;
+        padding: 9px 17px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border: 0;
+        border-radius: 999px;
+        color: #fff;
+        background: #2196f3;
+        box-shadow: 0 5px 14px rgba(33, 150, 243, 0.28);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .bioszen-sidebar-content .bioszen-update-button:hover,
+      .bioszen-sidebar-content .bioszen-update-button:focus,
+      .bioszen-sidebar-content .bioszen-update-button:active {
+        color: #fff;
+        background: #1688db;
+        filter: brightness(1.03);
+      }
+
       .bioszen-datafile-row {
         display: flex;
         align-items: flex-start;
@@ -3776,9 +3807,17 @@ ui <- fluidPage(
                                 class = "btn btn-primary"),
                  br(), br(),
 
-                 downloadButton("downloadBundleZip", tr("download_bundle"),
-                                class = "btn btn-secondary"),
-                 hr()
+                  downloadButton("downloadBundleZip", tr("download_bundle"),
+                                 class = "btn btn-secondary"),
+                  hr(),
+                  div(
+                    class = "bioszen-update-action",
+                    actionButton(
+                      "bioszenUpdate",
+                      label = tagList(icon("arrows-rotate"), tr("app_update_button")),
+                      class = "btn bioszen-update-button"
+                    )
+                  )
                 )
                ),  # ---- FIN sidebarPanel -----------------------------------------------
                
@@ -3955,7 +3994,16 @@ ui <- fluidPage(
                     })();
                   ")),
                   # solo mostramos cuando el usuario haya subido exactamente 1 archivo
-                  uiOutput("showImportBtn")
+                  uiOutput("showImportBtn"),
+                  hr(),
+                  div(
+                    class = "bioszen-update-action",
+                    actionButton(
+                      "bioszenUpdateGrowth",
+                      label = tagList(icon("arrows-rotate"), tr("app_update_button")),
+                      class = "btn bioszen-update-button"
+                    )
+                  )
                  )
                 ),
                 mainPanel(

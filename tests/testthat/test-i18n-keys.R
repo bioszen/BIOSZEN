@@ -41,7 +41,9 @@ test_that("translation files stay synchronized and include new keys", {
     "run_mixed_model", "run_advanced_stats", "mixed_model_not_available",
     "progress_advanced_stats", "progress_normality", "progress_normalization",
     "download_repro_report", "tab_qc", "qc_title", "qc_subtitle", "qc_missing_table", "qc_outlier_table",
-    "qc_sample_table"
+    "qc_sample_table",
+    "app_update_button", "app_update_checking", "app_update_none",
+    "app_update_available_title", "app_update_confirm", "app_update_cancel"
   )
   expect_true(all(required_new_keys %in% en_keys))
   expect_true(all(required_new_keys %in% es_keys))

@@ -107,6 +107,8 @@ Template files:
 - Use `BIOSZEN::growth_parameters()` to obtain the same growth parameters as the Growth tab without opening the visual interface.
 - `growth_parameters()` accepts wide/tidy data frames, one or more `.xlsx`/`.xls`/`.csv` files, or a directory. It writes nothing unless `output_dir` is supplied.
 - Use `BIOSZEN::bioszen_update_available()` to check for an update and `BIOSZEN::bioszen_update()` to install one after confirmation and after closing the app.
+- Alternatively, use the blue **Update** button at the bottom of either app panel. If no newer stable release exists, BIOSZEN reports that and stays open. If an update exists, BIOSZEN shows both versions and requests confirmation; after confirmation it closes the app and runs the same safe update workflow. The command-line methods remain available.
+- **Update safety:** the button never installs silently and checks only the configured stable BIOSZEN R-universe channel. Save or download unsaved work before confirming. BIOSZEN closes Shiny before replacing package files, and the check does not send uploaded experimental data, personal information, or credentials. If a download is interrupted or the R library is locked, restart R and run `BIOSZEN::bioszen_update()` manually.
 - Use `BIOSZEN::bioszen_citation()` or `citation("BIOSZEN")` for the official citation.
 
 ![Plot setup and layers](manual_images/02_plot_setup_layers.png)

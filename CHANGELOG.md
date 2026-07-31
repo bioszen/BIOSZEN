@@ -9,6 +9,7 @@ Semantic Versioning.
 ## [2.1.0] - 2026-07-30
 - Added a public browser-first `BIOSZEN()` launcher that uses the operating system's configured default browser, with an optional app-style Chromium mode.
 - Added an automatically registered RStudio Addin for launching BIOSZEN without typing commands.
+- Added a consent-based in-app update control that checks R-universe, keeps the session open when no update exists, and installs only after BIOSZEN has closed.
 - Preserved `run_app()` compatibility and explicit controls for regular-browser and no-browser startup.
 
 ## [2.0.5] - 2026-07-30

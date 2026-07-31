@@ -136,6 +136,14 @@ result <- BIOSZEN::growth_parameters(
 )
 ```
 
+The same update workflow is also available from the blue **Update** button at
+the bottom of either app panel. The button never installs silently: it reports
+when the installed stable version is current, or shows both versions and asks
+for confirmation before closing the app and updating. The R commands above
+remain supported. Save or download unsaved work before confirming; BIOSZEN
+closes Shiny before replacing package files, and the update check does not send
+uploaded data or credentials.
+
 `growth_parameters()` accepts wide or tidy data frames, one or more Excel/CSV
 files, or a directory. It uses the identical robust-first calculation and
 permissive fallback as the Shiny module and returns the same parameter columns.
