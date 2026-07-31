@@ -60,7 +60,7 @@ jobs:
         run: Rscript -e "options(shinytest2.timeout = 120000, shinytest2.load_timeout = 120000, testthat.progress.max_fails = Inf); testthat::test_dir('tests/testthat', reporter = 'summary', stop_on_failure = TRUE, stop_on_warning = FALSE)"
 
       - name: Build source package for release check
-        run: R CMD build .
+        run: Rscript -e "r <- file.path(R.home('bin'), if (.Platform[['OS.type']] == 'windows') 'R.exe' else 'R'); status <- system2(r, c('CMD', 'build', '.')); quit(status = status)"
 
       - name: Run R CMD check release gate
         run: Rscript -e "pkg <- list.files(pattern = '^BIOSZEN_.*[.]tar[.]gz$', full.names = TRUE); stopifnot(length(pkg) == 1L); status <- system2(file.path(R.home('bin'), 'R'), c('CMD', 'check', '--no-manual', '--no-build-vignettes', pkg[[1]])); quit(status = status)"
