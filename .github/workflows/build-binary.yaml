@@ -59,6 +59,12 @@ jobs:
       - name: Run full testthat suite including shiny e2e
         run: Rscript -e "options(shinytest2.timeout = 120000, shinytest2.load_timeout = 120000, testthat.progress.max_fails = Inf); testthat::test_dir('tests/testthat', reporter = 'summary', stop_on_failure = TRUE, stop_on_warning = FALSE)"
 
+      - name: Build source package for release check
+        run: R CMD build .
+
+      - name: Run R CMD check release gate
+        run: Rscript -e "pkg <- list.files(pattern = '^BIOSZEN_.*[.]tar[.]gz$', full.names = TRUE); stopifnot(length(pkg) == 1L); status <- system2(file.path(R.home('bin'), 'R'), c('CMD', 'check', '--no-manual', '--no-build-vignettes', pkg[[1]])); quit(status = status)"
+
   package:
     name: Package BIOSZEN (${{ matrix.os }})
     needs: test

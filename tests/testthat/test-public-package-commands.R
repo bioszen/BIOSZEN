@@ -170,8 +170,17 @@ test_that("app-window browser selection stops after the first success", {
 })
 
 test_that("RStudio registers the browser launcher as an interactive addin", {
-  addins_file <- file.path(app_test_root(), "inst", "rstudio", "addins.dcf")
-  expect_true(file.exists(addins_file))
+  package_root <- app_test_root()
+  addins_candidates <- c(
+    file.path(package_root, "inst", "rstudio", "addins.dcf"),
+    file.path(package_root, "rstudio", "addins.dcf"),
+    system.file("rstudio", "addins.dcf", package = "BIOSZEN")
+  )
+  addins_file <- addins_candidates[
+    nzchar(addins_candidates) & file.exists(addins_candidates)
+  ][1]
+
+  expect_true(length(addins_file) == 1L && !is.na(addins_file))
 
   addins <- read.dcf(addins_file)
   expect_true(any(addins[, "Name"] == "Launch BIOSZEN in Browser"))
