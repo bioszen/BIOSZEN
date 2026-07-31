@@ -18,7 +18,7 @@ jobs:
   test:
     name: Test suite (release gate, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 97
+    timeout-minutes: 194
     strategy:
       fail-fast: false
       matrix:

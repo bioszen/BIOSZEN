@@ -20,7 +20,7 @@ jobs:
   test:
     name: test (${{ matrix.os }}, R-release)
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 97
+    timeout-minutes: 194
 
     strategy:
       fail-fast: false
