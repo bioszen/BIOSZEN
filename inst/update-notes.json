@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "releases": {
+    "2.1.0": {
+      "en": "BIOSZEN 2.1.0 supports editable PowerPoint downloads for plots and installation from R-universe; see https://bioszen.r-universe.dev/BIOSZEN, then launch it from RStudio Addins or with BIOSZEN::BIOSZEN().",
+      "es": "BIOSZEN 2.1.0 permite descargar gráficos como PowerPoint editable e instalar el paquete desde R-universe; consulta https://bioszen.r-universe.dev/BIOSZEN y luego ábrelo desde RStudio Addins o con BIOSZEN::BIOSZEN()."
+    },
+    "2.1.1": {
+      "en": "BIOSZEN 2.1.1 improves editable PowerPoint fidelity for stacked plots, adds X-axis label controls to heatmaps and correlation matrices, and provides weekly update notices.",
+      "es": "BIOSZEN 2.1.1 mejora la fidelidad del PowerPoint editable para gráficos apilados, añade controles de etiquetas del eje X a mapas de calor y matrices de correlación, e incorpora avisos semanales de actualización."
+    }
+  }
+}

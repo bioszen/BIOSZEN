@@ -1444,6 +1444,95 @@ ui <- fluidPage(
   ")),
   tags$script(HTML("
     (function () {
+      var scheduled = false;
+
+      function packageVersion(payload) {
+        if (!payload || typeof payload !== 'object') return '';
+        return String(payload.Version || payload.version || payload._version || '').trim();
+      }
+
+      function releaseSummary(payload, version) {
+        if (!payload || typeof payload !== 'object' || !payload.releases) return {};
+        var entry = payload.releases[String(version)] || {};
+        if (!entry || typeof entry !== 'object') return {};
+        return {
+          summary_en: String(entry.en || '').trim(),
+          summary_es: String(entry.es || '').trim()
+        };
+      }
+
+      function fetchJson(url, timeoutMs) {
+        if (!window.fetch) return Promise.reject(new Error('fetch not supported'));
+        var controller = window.AbortController ? new AbortController() : null;
+        var timer = controller ? setTimeout(function () { controller.abort(); }, timeoutMs) : null;
+        return fetch(url, {
+          cache: 'no-store',
+          credentials: 'omit',
+          referrerPolicy: 'no-referrer',
+          signal: controller ? controller.signal : undefined
+        }).then(function (response) {
+          if (timer) clearTimeout(timer);
+          if (!response.ok) throw new Error('http ' + response.status);
+          return response.json();
+        });
+      }
+
+      function schedule(config) {
+        if (scheduled || !config || !config.endpoint) return;
+        scheduled = true;
+
+        setTimeout(function () {
+          fetchJson(String(config.endpoint), 5000).then(function (payload) {
+            var available = packageVersion(payload);
+            var packageName = String(payload.Package || payload.package || '').trim();
+            if (!available || packageName !== 'BIOSZEN') return;
+
+            var result = {
+              package: packageName,
+              installed: String(config.installed || '0'),
+              available: available,
+              checked_at: Date.now()
+            };
+
+            function sendResult() {
+              if (!window.Shiny || typeof Shiny.setInputValue !== 'function') return;
+              Shiny.setInputValue(
+                'bioszen_weekly_update_result',
+                result,
+                {priority: 'event'}
+              );
+            }
+
+            if (!config.notes_endpoint || available === result.installed) {
+              sendResult();
+              return;
+            }
+
+            fetchJson(String(config.notes_endpoint), 3500).then(function (notes) {
+              var summary = releaseSummary(notes, available);
+              result.summary_en = summary.summary_en || '';
+              result.summary_es = summary.summary_es || '';
+              sendResult();
+            }).catch(sendResult);
+          }).catch(function () {
+            // Keep the previous timestamp so the next launch with internet retries.
+          });
+        }, Math.max(0, Number(config.delay_ms) || 1500));
+      }
+
+      function register() {
+        if (!window.Shiny || typeof Shiny.addCustomMessageHandler !== 'function') {
+          setTimeout(register, 100);
+          return;
+        }
+        Shiny.addCustomMessageHandler('bioszenWeeklyUpdateConfig', schedule);
+      }
+
+      register();
+    })();
+  ")),
+  tags$script(HTML("
+    (function () {
       function getActiveLayout() {
         var panes = document.querySelectorAll('.bioszen-main-tabs .tab-content > .tab-pane.active');
         if (panes && panes.length) {
@@ -3314,19 +3403,22 @@ ui <- fluidPage(
                                 min = 0.5, max = 20,  step = 0.5),
                    numericInput("errbar_size", tr("errbar_size"),
                                 value = 0.6, min = 0.1, step = 0.1),
-                   # ─── Ángulo de las etiquetas del eje X ──────────────────────────────────
-                   numericInput(
-                     "x_angle",                     # <-- NUEVO input
-                     tr("x_angle"),
-                     value = NA,                    #  NA ⇒ “automático” (no fuerza nada)
-                     min   = 0,
-                     max   = 90,
-                     step  = 5
-                   ),
                    checkboxInput(
                      "plot_flip",
                      tr("plot_flip"),
                      FALSE
+                   )
+                 ),
+
+                 conditionalPanel(
+                   condition = "['Boxplot','Barras','Violin','Apiladas','Heatmap','MatrizCorrelacion'].indexOf(input.tipo) >= 0",
+                   numericInput(
+                     "x_angle",
+                     tr("x_angle"),
+                     value = NA,
+                     min   = 0,
+                     max   = 90,
+                     step  = 5
                    ),
                    checkboxInput(
                      "x_wrap",

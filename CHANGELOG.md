@@ -6,6 +6,11 @@ Semantic Versioning.
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-08-01
+- Matched editable PowerPoint output for stacked plots to the existing preview/raster palette, stack order, and proportions without changing other plot exports.
+- Added optional X-axis label angle and multi-line wrapping controls to heatmaps and correlation matrices while preserving their existing defaults.
+- Added a non-blocking weekly update check that stays silent when BIOSZEN is current and shows a closable, localized release notification only when a newer version is available.
+
 ## [2.1.0] - 2026-07-30
 - Added a public browser-first `BIOSZEN()` launcher that uses the operating system's configured default browser, with an optional app-style Chromium mode.
 - Added an automatically registered RStudio Addin for launching BIOSZEN without typing commands.

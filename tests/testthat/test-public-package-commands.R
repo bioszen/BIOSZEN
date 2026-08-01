@@ -191,7 +191,7 @@ test_that("RStudio registers the browser launcher as an interactive addin", {
 
 test_that("update checks compare versions without installing anything", {
   available <- matrix(
-    c("2.1.0"),
+    c("2.1.1"),
     nrow = 1,
     dimnames = list("BIOSZEN", "Version")
   )
@@ -205,7 +205,7 @@ test_that("update checks compare versions without installing anything", {
 
   expect_true(status)
   expect_identical(attr(status, "installed_version"), "2.0.5")
-  expect_identical(attr(status, "available_version"), "2.1.0")
+  expect_identical(attr(status, "available_version"), "2.1.1")
 })
 
 test_that("update checks fail gracefully when the repository is unavailable", {
@@ -224,7 +224,7 @@ test_that("update checks fail gracefully when the repository is unavailable", {
 test_that("bioszen_update installs only after consent and outside the app", {
   installed <- FALSE
   available <- matrix(
-    c("2.1.0"),
+    c("2.1.1"),
     nrow = 1,
     dimnames = list("BIOSZEN", "Version")
   )
@@ -250,12 +250,12 @@ test_that("bioszen_update installs only after consent and outside the app", {
 test_that("bioszen_update leaves the installation untouched when already current", {
   installed <- FALSE
   available <- matrix(
-    c("2.1.0"),
+    c("2.1.1"),
     nrow = 1,
     dimnames = list("BIOSZEN", "Version")
   )
   restore <- mock_public_package_api(list(
-    .bioszen_installed_version = function() numeric_version("2.1.0"),
+    .bioszen_installed_version = function() numeric_version("2.1.1"),
     .bioszen_available_packages = function(repos) available,
     .bioszen_install_package = function(repos, lib) installed <<- TRUE
   ))

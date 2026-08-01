@@ -521,6 +521,23 @@ server <- function(input, output, session) {
 
   pending_bioszen_update <- reactiveVal(NULL)
 
+  show_bioszen_update_modal <- function(installed, available, lang) {
+    showModal(modalDialog(
+      title = tr_text("app_update_available_title", lang),
+      tags$p(sprintf(tr_text("app_update_available_body", lang), installed, available)),
+      tags$p(class = "text-warning", tr_text("app_update_close_warning", lang)),
+      easyClose = FALSE,
+      footer = tagList(
+        modalButton(tr_text("app_update_cancel", lang)),
+        actionButton(
+          "bioszenConfirmUpdate",
+          label = tagList(icon("download"), tr_text("app_update_confirm", lang)),
+          class = "btn btn-primary"
+        )
+      )
+    ))
+  }
+
   bioszen_package_function <- function(name, exported = TRUE) {
     tryCatch({
       if (!requireNamespace("BIOSZEN", quietly = TRUE)) return(NULL)
@@ -584,22 +601,83 @@ server <- function(input, output, session) {
     }
 
     pending_bioszen_update(list(installed = installed, available = available))
-    showModal(modalDialog(
-      title = tr_text("app_update_available_title", lang),
-      tags$p(sprintf(tr_text("app_update_available_body", lang), installed, available)),
-      tags$p(class = "text-warning", tr_text("app_update_close_warning", lang)),
-      easyClose = FALSE,
-      footer = tagList(
-        modalButton(tr_text("app_update_cancel", lang)),
-        actionButton(
-          "bioszenConfirmUpdate",
-          label = tagList(icon("download"), tr_text("app_update_confirm", lang)),
-          class = "btn btn-primary"
-        )
-      )
-    ))
+    show_bioszen_update_modal(installed, available, lang)
     invisible(TRUE)
   }
+
+  on_session_flushed(function() {
+    if (is_session_closing() || !bioszen_weekly_update_due()) return()
+    installed_version <- get_current_version("BIOSZEN")
+    if (is.null(installed_version) || !nzchar(as.character(installed_version))) return()
+    session$sendCustomMessage(
+      "bioszenWeeklyUpdateConfig",
+      list(
+        installed = as.character(installed_version),
+        endpoint = "https://bioszen.r-universe.dev/BIOSZEN/json",
+        notes_endpoint = "https://raw.githubusercontent.com/bioszen/BIOSZEN/main/inst/update-notes.json",
+        interval_days = 7L,
+        delay_ms = 1500L
+      )
+    )
+  }, once = TRUE)
+
+  observeEvent(input$bioszen_weekly_update_result, {
+    payload <- input$bioszen_weekly_update_result
+    if (!is.list(payload) || is_session_closing()) return()
+    package <- trimws(as.character(payload$package %||% ""))
+    installed <- trimws(as.character(payload$installed %||% ""))
+    available <- trimws(as.character(payload$available %||% ""))
+    if (!identical(package, "BIOSZEN")) return()
+    valid_versions <- tryCatch({
+      numeric_version(installed)
+      numeric_version(available)
+      TRUE
+    }, error = function(e) FALSE)
+    if (!isTRUE(valid_versions)) return()
+    bioszen_record_weekly_update_check()
+    newer <- tryCatch(
+      numeric_version(available) > numeric_version(installed),
+      error = function(e) FALSE
+    )
+    if (!isTRUE(newer)) return()
+
+    pending_bioszen_update(list(installed = installed, available = available))
+    lang <- isolate(input$app_lang %||% i18n_lang)
+    summary_key <- if (identical(tolower(lang), "es")) "summary_es" else "summary_en"
+    release_summary <- trimws(as.character(payload[[summary_key]] %||% payload$summary_en %||% ""))
+    release_summary <- gsub("[\r\n]+", " ", release_summary)
+    release_summary <- substr(release_summary, 1L, 500L)
+    showNotification(
+      tagList(
+        tags$strong(tr_text("app_update_available_title", lang)),
+        tags$div(sprintf(tr_text("app_update_available_body", lang), installed, available)),
+        if (nzchar(release_summary)) {
+          tags$div(class = "bioszen-update-release-summary", release_summary)
+        }
+      ),
+      action = actionButton(
+        "bioszenWeeklyUpdate",
+        tagList(icon("download"), tr_text("app_update_button", lang)),
+        class = "btn btn-primary btn-sm"
+      ),
+      id = "bioszen-weekly-update",
+      type = "message",
+      duration = NULL,
+      closeButton = TRUE,
+      session = session
+    )
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$bioszenWeeklyUpdate, {
+    update_info <- isolate(pending_bioszen_update())
+    if (is.null(update_info) || is_session_closing()) return()
+    removeNotification("bioszen-weekly-update", session = session)
+    show_bioszen_update_modal(
+      update_info$installed,
+      update_info$available,
+      isolate(input$app_lang %||% i18n_lang)
+    )
+  }, ignoreInit = TRUE)
 
   observeEvent(input$bioszenUpdate, {
     check_bioszen_update()
@@ -2308,16 +2386,20 @@ server <- function(input, output, session) {
     if (input$tipo %in% c("Boxplot", "Barras", "Apiladas", "Violin")) {
       meta <- add_row(
         meta,
-        Campo = c("pt_size", "x_angle", "plot_flip", "x_wrap", "x_wrap_lines"),
+        Campo = c("pt_size", "plot_flip"),
         Valor = c(
           as.character(input$pt_size),
-          as.character(input$x_angle),
-          as.character(input$plot_flip %||% FALSE),
-          as.character(input$x_wrap),
-          as.character(input$x_wrap_lines)
+          as.character(input$plot_flip %||% FALSE)
         )
       )
     }
+    axis_metadata <- bioszen_x_axis_metadata_rows(
+      input$tipo,
+      angle = input$x_angle,
+      wrap = input$x_wrap,
+      wrap_lines = input$x_wrap_lines
+    )
+    if (nrow(axis_metadata)) meta <- dplyr::bind_rows(meta, axis_metadata)
     if (input$tipo %in% c("Boxplot", "Barras", "Violin")) {
       meta <- add_row(
         meta,
@@ -2790,7 +2872,23 @@ server <- function(input, output, session) {
       stop("The current chart cannot be converted to an editable PowerPoint object.", call. = FALSE)
     }
 
-    page_size <- if (identical(input$tipo %||% "", "Curvas")) {
+    if (identical(input$tipo %||% "", "Apiladas")) {
+      stack_df <- get_scope_df(scope_sel, strain_sel)
+      stack_params <- resolve_stack_params(df = stack_df)
+      requested_order <- trimws(strsplit(input$orderStack %||% "", ",")[[1]])
+      requested_order <- intersect(requested_order, stack_params)
+      stack_levels <- if (length(requested_order)) requested_order else stack_params
+      plot_obj <- bioszen_prepare_stacked_ppt_plot(
+        plot_obj,
+        stack_levels = stack_levels,
+        colours = palette_for_levels(stack_levels),
+        content_width_px = eff_width,
+        content_height_px = eff_height,
+        flipped = isTRUE(input$plot_flip %||% FALSE)
+      )
+    }
+
+    page_size <- if ((input$tipo %||% "") %in% c("Curvas", "Apiladas")) {
       list(width_px = eff_width, height_px = eff_height)
     } else {
       bioszen_pdf_page_size_from_pixels(eff_width, eff_height)
@@ -13657,10 +13755,18 @@ server <- function(input, output, session) {
             oob = scales::squish
           )
       }
+      heat_x <- bioszen_axis_label_spec(
+        payload$col_labels,
+        angle_input = input$x_angle,
+        wrap = isTRUE(input$x_wrap),
+        wrap_lines = input$x_wrap_lines,
+        default_angle = 45,
+        wrap_fun = wrap_label
+      )
       p <- p +
         scale_x_continuous(
           breaks = col_breaks,
-          labels = payload$col_labels,
+          labels = heat_x$labels,
           limits = c(x_min, x_max),
           expand = c(0, 0)
         ) +
@@ -13679,7 +13785,12 @@ server <- function(input, output, session) {
         theme_minimal(base_size = input$base_size, base_family = "Helvetica") +
         theme(
           plot.title = element_text(size = fs_title, face = "bold"),
-          axis.text.x = element_text(size = fs_axis, angle = 45, hjust = 1, colour = "black"),
+          axis.text.x = element_text(
+            size = fs_axis,
+            angle = heat_x$angle,
+            hjust = heat_x$hjust,
+            colour = "black"
+          ),
           axis.text.y = element_text(size = fs_axis, colour = "black"),
           panel.grid = element_blank()
         )
@@ -13741,7 +13852,17 @@ server <- function(input, output, session) {
             oob = scales::squish
           )
       }
+      corr_x <- bioszen_axis_label_spec(
+        params_plot,
+        angle_input = input$x_angle,
+        wrap = isTRUE(input$x_wrap),
+        wrap_lines = input$x_wrap_lines,
+        default_angle = 45,
+        wrap_fun = wrap_label
+      )
+      names(corr_x$labels) <- params_plot
       p <- p +
+        scale_x_discrete(labels = corr_x$labels) +
         labs(
           title = input$plotTitle,
           x = NULL,
@@ -13750,7 +13871,12 @@ server <- function(input, output, session) {
         theme_minimal(base_size = input$base_size, base_family = "Helvetica") +
         theme(
           plot.title = element_text(size = fs_title, face = "bold"),
-          axis.text.x = element_text(size = fs_axis, angle = 45, hjust = 1, colour = "black"),
+          axis.text.x = element_text(
+            size = fs_axis,
+            angle = corr_x$angle,
+            hjust = corr_x$hjust,
+            colour = "black"
+          ),
           axis.text.y = element_text(size = fs_axis, colour = "black"),
           panel.grid = element_blank()
         )
@@ -16216,10 +16342,21 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("margin_bottom_adj"))) updateNumericInput(session, "margin_bottom_adj", value = as.numeric(v))
     if (!is.null(v <- get_val("margin_left_adj"))) updateNumericInput(session, "margin_left_adj", value = as.numeric(v))
     if (!is.null(v <- get_val("pt_size")))     updateNumericInput(session, "pt_size",     value = as.numeric(v))
-    if (!is.null(v <- get_val("x_angle")))     updateNumericInput(session, "x_angle",     value = as.numeric(v))
+    metadata_plot_type <- as.character(input$tipo %||% get_val("tipo") %||% "")
+    metadata_plot_type <- if (length(metadata_plot_type)) metadata_plot_type[[1]] else ""
+    axis_metadata <- bioszen_x_axis_metadata_state(meta, metadata_plot_type)
+    if (!is.null(axis_metadata)) {
+      if (isTRUE(axis_metadata$angle_present)) {
+        updateNumericInput(session, "x_angle", value = axis_metadata$angle)
+      }
+      if (isTRUE(axis_metadata$wrap_present)) {
+        updateCheckboxInput(session, "x_wrap", value = axis_metadata$wrap)
+      }
+      if (isTRUE(axis_metadata$wrap_lines_present)) {
+        updateNumericInput(session, "x_wrap_lines", value = axis_metadata$wrap_lines)
+      }
+    }
     if (!is.null(v <- get_val("plot_flip")))   updateCheckboxInput(session, "plot_flip", value = parse_bool(v))
-    if (!is.null(v <- get_val("x_wrap")))      updateCheckboxInput(session, "x_wrap", value = tolower(v) == "true")
-    if (!is.null(v <- get_val("x_wrap_lines")))updateNumericInput(session, "x_wrap_lines", value = as.numeric(v))
     if (!is.null(v <- get_val("legend_right"))) updateCheckboxInput(session, "legend_right", value = tolower(v) == "true")
     else if (!is.null(v <- get_val("legend_on_right"))) updateCheckboxInput(session, "legend_right", value = parse_bool(v))
     if (!"legend" %in% restored_style_fields && !is.null(v <- get_val_allow_blank("legend_text_style"))) {

@@ -203,6 +203,289 @@ bioszen_clone_plot <- function(plot) {
   out
 }
 
+bioszen_axis_label_spec <- function(labels,
+                                    angle_input = NA_real_,
+                                    wrap = FALSE,
+                                    wrap_lines = 2L,
+                                    default_angle = 45,
+                                    wrap_fun = NULL) {
+  angle <- suppressWarnings(as.numeric(angle_input)[1])
+  if (!is.finite(angle)) angle <- suppressWarnings(as.numeric(default_angle)[1])
+  if (!is.finite(angle)) angle <- 45
+  angle <- max(0, min(90, angle))
+
+  displayed <- as.character(labels)
+  if (isTRUE(wrap) && is.function(wrap_fun)) {
+    lines <- suppressWarnings(as.integer(wrap_lines)[1])
+    if (!is.finite(lines) || lines < 1L) lines <- 2L
+    displayed <- wrap_fun(displayed, lines = lines)
+  }
+
+  list(
+    labels = displayed,
+    angle = angle,
+    hjust = if (identical(angle, 0)) 0.5 else 1
+  )
+}
+
+bioszen_x_axis_metadata_plot_types <- function() {
+  c("Boxplot", "Barras", "Violin", "Apiladas", "Heatmap", "MatrizCorrelacion")
+}
+
+bioszen_x_axis_metadata_supported <- function(plot_type) {
+  type <- as.character(plot_type)
+  length(type) && !is.na(type[[1]]) &&
+    type[[1]] %in% bioszen_x_axis_metadata_plot_types()
+}
+
+bioszen_x_axis_metadata_rows <- function(plot_type,
+                                         angle = NA_real_,
+                                         wrap = FALSE,
+                                         wrap_lines = 2L) {
+  if (!bioszen_x_axis_metadata_supported(plot_type)) {
+    return(data.frame(Campo = character(0), Valor = character(0)))
+  }
+
+  angle_value <- suppressWarnings(as.numeric(angle)[1])
+  if (is.finite(angle_value)) {
+    angle_value <- as.character(max(0, min(90, angle_value)))
+  } else {
+    angle_value <- "NA"
+  }
+
+  wrap_value <- as.character(wrap)
+  wrap_value <- length(wrap_value) && !is.na(wrap_value[[1]]) &&
+    tolower(trimws(wrap_value[[1]])) %in% c("true", "1", "yes", "y")
+
+  line_value <- suppressWarnings(as.integer(wrap_lines)[1])
+  if (!is.finite(line_value) || line_value < 1L) line_value <- 2L
+
+  data.frame(
+    Campo = c("x_angle", "x_wrap", "x_wrap_lines"),
+    Valor = c(angle_value, as.character(wrap_value), as.character(line_value)),
+    stringsAsFactors = FALSE
+  )
+}
+
+bioszen_x_axis_metadata_state <- function(meta, plot_type) {
+  if (!bioszen_x_axis_metadata_supported(plot_type) ||
+      !is.data.frame(meta) ||
+      !all(c("Campo", "Valor") %in% names(meta))) {
+    return(NULL)
+  }
+
+  value_for <- function(field) {
+    idx <- which(as.character(meta$Campo) == field)
+    if (!length(idx)) return(NULL)
+    value <- as.character(meta$Valor[idx[[1]]])
+    if (!length(value) || is.na(value[[1]])) "" else trimws(value[[1]])
+  }
+
+  angle_raw <- value_for("x_angle")
+  angle_present <- !is.null(angle_raw)
+  angle <- NA_real_
+  if (angle_present && !tolower(angle_raw) %in% c("", "na", "auto")) {
+    angle <- suppressWarnings(as.numeric(angle_raw)[1])
+    if (!is.finite(angle)) angle_present <- FALSE
+    if (angle_present) angle <- max(0, min(90, angle))
+  }
+
+  wrap_raw <- value_for("x_wrap")
+  wrap_present <- !is.null(wrap_raw) &&
+    tolower(wrap_raw) %in% c("true", "false", "1", "0", "yes", "no", "y", "n")
+  wrap <- wrap_present && tolower(wrap_raw) %in% c("true", "1", "yes", "y")
+
+  lines_raw <- value_for("x_wrap_lines")
+  lines <- suppressWarnings(as.integer(lines_raw)[1])
+  lines_present <- !is.null(lines_raw) && is.finite(lines) && lines >= 1L
+
+  list(
+    angle = angle,
+    angle_present = angle_present,
+    wrap = wrap,
+    wrap_present = wrap_present,
+    wrap_lines = if (lines_present) lines else 2L,
+    wrap_lines_present = lines_present
+  )
+}
+
+bioszen_weekly_update_state_path <- function() {
+  file.path(tools::R_user_dir("BIOSZEN", "cache"), "weekly-update-check.rds")
+}
+
+bioszen_weekly_update_due <- function(path = bioszen_weekly_update_state_path(),
+                                      now = Sys.time(),
+                                      interval_days = 7) {
+  if (!file.exists(path)) return(TRUE)
+  checked_at <- tryCatch({
+    state <- suppressWarnings(readRDS(path))
+    suppressWarnings(as.numeric(state$checked_at %||% NA_real_)[1])
+  }, error = function(e) NA_real_)
+  now_value <- suppressWarnings(as.numeric(as.POSIXct(now))[1])
+  interval <- suppressWarnings(as.numeric(interval_days)[1]) * 24 * 60 * 60
+  if (!is.finite(now_value) || !is.finite(interval) || interval <= 0) return(TRUE)
+  !is.finite(checked_at) || (now_value - checked_at) >= interval
+}
+
+bioszen_record_weekly_update_check <- function(path = bioszen_weekly_update_state_path(),
+                                                checked_at = Sys.time()) {
+  checked_value <- suppressWarnings(as.numeric(as.POSIXct(checked_at))[1])
+  if (!is.finite(checked_value)) return(FALSE)
+  parent <- dirname(path)
+  if (!dir.exists(parent) && !dir.create(parent, recursive = TRUE, showWarnings = FALSE)) {
+    return(FALSE)
+  }
+  temporary <- tempfile("bioszen-update-", tmpdir = parent, fileext = ".rds")
+  on.exit(unlink(temporary, force = TRUE), add = TRUE)
+  tryCatch({
+    saveRDS(list(checked_at = checked_value), temporary)
+    isTRUE(file.copy(temporary, path, overwrite = TRUE))
+  }, error = function(e) FALSE)
+}
+
+bioszen_prepare_stacked_ppt_plot <- function(plot, stack_levels, colours,
+                                               content_width_px = 1000,
+                                               content_height_px = 700,
+                                               flipped = FALSE) {
+  if (!inherits(plot, "ggplot")) return(plot)
+  stack_levels <- unique(as.character(stack_levels))
+  stack_levels <- stack_levels[!is.na(stack_levels) & nzchar(stack_levels)]
+  if (!length(stack_levels)) return(plot)
+
+  colour_names <- names(colours)
+  colours <- as.character(colours)
+  names(colours) <- colour_names
+  if (is.null(names(colours))) {
+    if (length(colours) < length(stack_levels)) return(plot)
+    names(colours) <- c(stack_levels, rep("", length(colours) - length(stack_levels)))
+  }
+  colours <- colours[stack_levels]
+  valid_colours <- !is.na(colours) & nzchar(colours)
+  if (!all(valid_colours)) return(plot)
+
+  out <- bioszen_clone_plot(plot)
+  if (is.function(plot$scales$clone)) {
+    out$scales <- plot$scales$clone()
+  }
+  col_layers <- which(vapply(out$layers, function(layer) {
+    "GeomCol" %in% class(layer$geom)
+  }, logical(1)))
+  if (!length(col_layers)) return(out)
+
+  content_width_px <- bioszen_clamp_number(content_width_px, 1000, minimum = 1)
+  content_height_px <- bioszen_clamp_number(content_height_px, 700, minimum = 1)
+  flipped <- isTRUE(flipped)
+  # The generic editable-export pass treats ggplot linewidth values as points.
+  # Store Plotly's CSS-pixel strokes in points here so they are converted once.
+  plotly_linewidth <- 72 / BIOSZEN_CSS_DPI
+  primary <- col_layers[[1]]
+  out$layers[[primary]]$position <- ggplot2::position_stack(reverse = TRUE)
+  out$layers[[primary]]$geom_params$width <- 0.8
+  out$layers[[primary]]$aes_params$width <- 0.8
+  out$layers[[primary]]$aes_params$alpha <- 1
+  if (!is.null(out$layers[[primary]]$aes_params$colour) &&
+      !is.na(out$layers[[primary]]$aes_params$colour)) {
+    out$layers[[primary]]$aes_params$linewidth <- plotly_linewidth
+  }
+
+  if (length(col_layers) > 1L) {
+    for (index in col_layers[-1]) {
+      out$layers[[index]]$geom_params$width <- 0.8
+      out$layers[[index]]$aes_params$width <- 0.8
+      out$layers[[index]]$aes_params$linewidth <- plotly_linewidth
+    }
+  }
+
+  # Plotly draws stacked error bars in CSS pixels: the configured thickness is
+  # multiplied by 1.6 and each cap extends 20 px across the category. Match
+  # those dimensions in the editable clone without touching the source plot.
+  segment_layers <- which(vapply(out$layers, function(layer) {
+    "GeomSegment" %in% class(layer$geom)
+  }, logical(1)))
+  primary_build <- tryCatch(
+    ggplot2::ggplot_build(out)$data[[primary]],
+    error = function(e) NULL
+  )
+  category_count <- if (is.data.frame(primary_build) && "x" %in% names(primary_build)) {
+    length(unique(primary_build$x[is.finite(primary_build$x)]))
+  } else {
+    1L
+  }
+  category_count <- max(1L, category_count)
+  category_span_px <- if (flipped) {
+    max(1, content_height_px - 68 - 52)
+  } else {
+    max(1, content_width_px - 72 - 115)
+  }
+  cap_half_width <- min(0.35, 20 * category_count / category_span_px)
+  plotly_error_line_scale <- 1.6 * (72 / BIOSZEN_CSS_DPI)
+  for (index in segment_layers) {
+    layer <- out$layers[[index]]
+    layer_data <- layer$data
+    if (!is.data.frame(layer_data) ||
+        !all(c("xnum", "yend") %in% names(layer_data)) ||
+        is.null(layer$mapping$y) || is.null(layer$mapping$yend)) {
+      next
+    }
+
+    source_linewidth <- suppressWarnings(as.numeric(
+      layer$aes_params$linewidth %||% layer$aes_params$size
+    ))
+    if (length(source_linewidth) && is.finite(source_linewidth[[1]])) {
+      layer$aes_params$linewidth <- source_linewidth[[1]] * plotly_error_line_scale
+      layer$aes_params$size <- NULL
+    }
+
+    y_expr <- tryCatch(rlang::get_expr(layer$mapping$y), error = function(e) NULL)
+    yend_expr <- tryCatch(rlang::get_expr(layer$mapping$yend), error = function(e) NULL)
+    if (identical(y_expr, yend_expr)) {
+      layer_data$.bioszen_cap_xmin <- layer_data$xnum - cap_half_width
+      layer_data$.bioszen_cap_xmax <- layer_data$xnum + cap_half_width
+      layer$data <- layer_data
+      layer$mapping$x <- rlang::new_quosure(quote(.bioszen_cap_xmin), emptyenv())
+      layer$mapping$xend <- rlang::new_quosure(quote(.bioszen_cap_xmax), emptyenv())
+    }
+    out$layers[[index]] <- layer
+  }
+
+  out$scales$scales <- Filter(function(scale) {
+    !"fill" %in% (scale$aesthetics %||% character(0))
+  }, out$scales$scales)
+  out + ggplot2::scale_x_discrete(
+    expand = ggplot2::expansion(add = 0.5)
+  ) + ggplot2::scale_fill_manual(
+    values = colours,
+    limits = stack_levels,
+    breaks = stack_levels,
+    drop = FALSE,
+    guide = ggplot2::guide_legend(
+      title = NULL,
+      reverse = FALSE,
+      label.position = "right",
+      label.hjust = 0,
+      keywidth = grid::unit(11, "pt"),
+      keyheight = grid::unit(11, "pt")
+    )
+  ) + ggplot2::theme(
+    plot.title = ggplot2::element_text(hjust = 0.5),
+    plot.title.position = "plot",
+    legend.position = "right",
+    legend.justification = c(0, 1),
+    legend.box.just = "top",
+    legend.box.spacing = grid::unit(18, "pt"),
+    legend.key.size = grid::unit(11, "pt"),
+    legend.key.width = grid::unit(11, "pt"),
+    legend.key.height = grid::unit(11, "pt"),
+    legend.key.spacing.x = grid::unit(4, "pt"),
+    legend.key.spacing.y = grid::unit(7, "pt"),
+    legend.text = ggplot2::element_text(
+      hjust = 0,
+      margin = ggplot2::margin(0, 0, 0, 6, unit = "pt")
+    ),
+    legend.margin = ggplot2::margin(12, 0, 0, 0, unit = "pt")
+  )
+}
+
 bioszen_scale_plot_layers <- function(plot, scale) {
   if (!inherits(plot, "ggplot") || !length(plot$layers)) return(plot)
   scale <- bioszen_clamp_number(scale, 1, minimum = 0.01, maximum = 10)
@@ -320,7 +603,8 @@ bioszen_align_editable_plot_panel <- function(plot,
                                                slide_width_px,
                                                slide_height_px,
                                                ppi = BIOSZEN_CSS_DPI,
-                                               iterations = 2L) {
+                                               iterations = 2L,
+                                               target_insets_px = NULL) {
   if (!inherits(plot, "ggplot")) return(plot)
   ppi <- bioszen_clamp_number(ppi, 96, minimum = 1)
   width_in <- bioszen_clamp_number(slide_width_px / ppi, 11, minimum = 1, maximum = 56)
@@ -331,12 +615,26 @@ bioszen_align_editable_plot_panel <- function(plot,
   # Plotly's browser renderer uses automargins measured in CSS pixels. These
   # targets reproduce its single-panel publication layout while leaving the
   # extra printable PDF page area blank.
-  target <- c(
-    left = min(content_width_in * 0.35, 125 / ppi),
-    right = max(1, content_width_in - 117 / ppi),
-    top = min(content_height_in * 0.35, 112 / ppi),
-    bottom = max(1, content_height_in - 9 / ppi)
-  )
+  if (is.null(target_insets_px)) {
+    target <- c(
+      left = min(content_width_in * 0.35, 125 / ppi),
+      right = max(1, content_width_in - 117 / ppi),
+      top = min(content_height_in * 0.35, 112 / ppi),
+      bottom = max(1, content_height_in - 9 / ppi)
+    )
+  } else {
+    target_insets_px <- suppressWarnings(as.numeric(target_insets_px))
+    if (length(target_insets_px) != 4L || any(!is.finite(target_insets_px))) {
+      return(plot)
+    }
+    names(target_insets_px) <- c("top", "right", "bottom", "left")
+    target <- c(
+      left = min(content_width_in * 0.35, target_insets_px[["left"]] / ppi),
+      right = max(1, content_width_in - target_insets_px[["right"]] / ppi),
+      top = min(content_height_in * 0.35, target_insets_px[["top"]] / ppi),
+      bottom = max(1, content_height_in - target_insets_px[["bottom"]] / ppi)
+    )
+  }
   if (target[["right"]] <= target[["left"]] ||
       target[["bottom"]] <= target[["top"]]) return(plot)
 
@@ -453,13 +751,22 @@ bioszen_prepare_editable_plotly_plot <- function(plot,
 
   align_types <- c("Boxplot", "Barras", "Violin", "Apiladas", "Correlacion")
   if (plot_type %in% align_types) {
+    target_insets_px <- if (identical(plot_type, "Apiladas")) {
+      # Match Plotly's default stacked-chart panel at 1000 x 700 CSS px.
+      # Insets are kept in pixels so resized exports retain the same visual
+      # hierarchy while the requested slide dimensions remain unchanged.
+      c(top = 68, right = 115, bottom = 52, left = 72)
+    } else {
+      NULL
+    }
     out <- bioszen_align_editable_plot_panel(
       out,
       content_width_px = content_width_px,
       content_height_px = content_height_px,
       slide_width_px = slide_width_px,
       slide_height_px = slide_height_px,
-      ppi = ppi
+      ppi = ppi,
+      target_insets_px = target_insets_px
     )
   }
   out

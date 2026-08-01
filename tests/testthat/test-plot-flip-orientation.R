@@ -60,7 +60,7 @@ test_that("flip orientation control is scoped to supported plot types and metada
   ))
 
   expect_true(grepl(
-    "Campo\\s*=\\s*c\\(\"pt_size\",\\s*\"x_angle\",\\s*\"plot_flip\",\\s*\"x_wrap\",\\s*\"x_wrap_lines\"\\)",
+    "Campo\\s*=\\s*c\\(\"pt_size\",\\s*\"plot_flip\"\\)",
     srv_txt,
     perl = TRUE
   ))
