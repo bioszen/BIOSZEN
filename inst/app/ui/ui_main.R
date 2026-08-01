@@ -1504,6 +1504,9 @@ ui <- fluidPage(
           if (plotElem && window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === 'function') {
             try { Plotly.Plots.resize(plotElem); } catch (e) {}
           }
+          if (typeof window.BIOSZEN_fitPlotPreviews === 'function') {
+            window.BIOSZEN_fitPlotPreviews();
+          }
           if (window.Shiny && typeof Shiny.setInputValue === 'function') {
             Shiny.setInputValue('mobile_plot_refresh', Date.now(), { priority: 'event' });
           }
@@ -2493,6 +2496,22 @@ ui <- fluidPage(
     tags$style(HTML("
       .plot-loading-wrap {
         position: relative;
+        width: 100%;
+      }
+      .bioszen-plot-preview-viewport {
+        position: relative;
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+        overflow-y: visible;
+      }
+      .bioszen-plot-preview-stage {
+        position: absolute;
+        top: 0;
+        left: 0;
+        max-width: none;
+        zoom: 1;
       }
       .plot-loading-indicator {
         display: none;
@@ -2549,6 +2568,109 @@ ui <- fluidPage(
 
       $(document).on('shiny:disconnected', function () {
         clearPlotLoading();
+      });
+    })();
+  ")),
+  tags$script(HTML("
+    (function () {
+      var previewFitTimer = null;
+
+      function finitePositive(value, fallback) {
+        var number = Number(value);
+        return Number.isFinite(number) && number > 0 ? number : fallback;
+      }
+
+      function supportsLayoutZoom() {
+        return !!(window.CSS && typeof window.CSS.supports === 'function' &&
+          window.CSS.supports('zoom', '0.5'));
+      }
+
+      function resizePlotlyFallback(stage, width, height) {
+        var widthKey = String(Math.round(width * 100) / 100);
+        var heightKey = String(Math.round(height * 100) / 100);
+        if (stage.getAttribute('data-fallback-width') === widthKey &&
+            stage.getAttribute('data-fallback-height') === heightKey) return;
+        stage.setAttribute('data-fallback-width', widthKey);
+        stage.setAttribute('data-fallback-height', heightKey);
+        stage.style.zoom = '';
+        stage.style.width = width + 'px';
+        stage.style.height = height + 'px';
+        var graph = stage.querySelector('.js-plotly-plot');
+        if (graph && window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === 'function') {
+          try { Plotly.Plots.resize(graph); } catch (e) {}
+        }
+      }
+
+      function fitPlotPreview(viewport) {
+        if (!viewport || !viewport.isConnected) return false;
+        var stage = viewport.querySelector('.bioszen-plot-preview-stage');
+        if (!stage) return false;
+
+        var intrinsicWidth = finitePositive(stage.getAttribute('data-plot-width'), stage.offsetWidth);
+        var intrinsicHeight = finitePositive(stage.getAttribute('data-plot-height'), stage.offsetHeight);
+        var availableWidth = finitePositive(viewport.clientWidth, 0);
+        if (!intrinsicWidth || !intrinsicHeight || !availableWidth) return false;
+
+        var rect = viewport.getBoundingClientRect();
+        if (!rect || rect.top >= window.innerHeight) return false;
+        var availableHeight = Math.max(1, window.innerHeight - Math.max(0, rect.top) - 12);
+        var widthScale = availableWidth / intrinsicWidth;
+        var heightScale = availableHeight / intrinsicHeight;
+        var scale = Math.min(1, widthScale, heightScale);
+        if (!Number.isFinite(scale) || scale <= 0) scale = 1;
+
+        var scaledWidth = intrinsicWidth * scale;
+        var scaledHeight = intrinsicHeight * scale;
+        stage.style.left = Math.max(0, (availableWidth - scaledWidth) / 2) + 'px';
+        stage.style.transform = 'none';
+
+        // Layout zoom preserves Plotly pointer coordinates; CSS transforms can offset hover hit-testing.
+        if (supportsLayoutZoom()) {
+          stage.removeAttribute('data-fallback-width');
+          stage.removeAttribute('data-fallback-height');
+          stage.style.width = intrinsicWidth + 'px';
+          stage.style.height = intrinsicHeight + 'px';
+          stage.style.zoom = String(scale);
+        } else {
+          resizePlotlyFallback(stage, scaledWidth, scaledHeight);
+        }
+
+        viewport.style.height = Math.max(1, Math.ceil(scaledHeight)) + 'px';
+        viewport.setAttribute('data-preview-scale', scale.toFixed(6));
+        return true;
+      }
+
+      function fitPlotPreviews() {
+        var viewports = document.querySelectorAll('.bioszen-plot-preview-viewport');
+        Array.prototype.forEach.call(viewports, fitPlotPreview);
+      }
+
+      function schedulePlotPreviewFit(delay) {
+        if (previewFitTimer !== null) window.clearTimeout(previewFitTimer);
+        previewFitTimer = window.setTimeout(function () {
+          previewFitTimer = null;
+          fitPlotPreviews();
+        }, typeof delay === 'number' ? delay : 40);
+      }
+
+      window.BIOSZEN_fitPlotPreviews = fitPlotPreviews;
+      window.BIOSZEN_schedulePlotPreviewFit = schedulePlotPreviewFit;
+
+      window.addEventListener('resize', function () { schedulePlotPreviewFit(60); });
+      window.addEventListener('orientationchange', function () { schedulePlotPreviewFit(80); });
+      document.addEventListener('DOMContentLoaded', function () { schedulePlotPreviewFit(0); });
+      document.addEventListener('bioszen:plot-preview-fit', function () { schedulePlotPreviewFit(0); });
+      document.addEventListener('shown.bs.tab', function () { schedulePlotPreviewFit(20); });
+
+      $(document).on('shown.bs.tab', function () { schedulePlotPreviewFit(20); });
+      $(document).on('shiny:value', function (ev) {
+        var name = ev && ev.name;
+        if (name === 'plotInteractivoUI' || name === 'plotInteractivo') {
+          schedulePlotPreviewFit(name === 'plotInteractivoUI' ? 0 : 30);
+        }
+      });
+      $(document).on('plotly_afterplot', '.js-plotly-plot', function () {
+        schedulePlotPreviewFit(0);
       });
     })();
   ")),

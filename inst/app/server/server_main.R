@@ -14367,18 +14367,24 @@ server <- function(input, output, session) {
     div(
       id = "plot-loading-wrap",
       class = "plot-loading-wrap",
-      style = "overflow-x:auto; overflow-y:visible;",
       div(
         class = "plot-loading-indicator",
         tags$i(class = "fa fa-circle-o-notch fa-spin", `aria-hidden` = "true"),
         tags$span(tr_text("loading_plot_data", lang))
       ),
       div(
-        style = sprintf("width:%spx; max-width:none;", plot_w),
-        plotlyOutput(
-          "plotInteractivo",
-          width  = "100%",
-          height = paste0(plot_h, "px")
+        class = "bioszen-plot-preview-viewport",
+        style = sprintf("height:%spx;", plot_h),
+        div(
+          class = "bioszen-plot-preview-stage",
+          `data-plot-width` = format(plot_w, scientific = FALSE, trim = TRUE),
+          `data-plot-height` = format(plot_h, scientific = FALSE, trim = TRUE),
+          style = sprintf("width:%spx; height:%spx;", plot_w, plot_h),
+          plotlyOutput(
+            "plotInteractivo",
+            width  = "100%",
+            height = "100%"
+          )
         )
       )
     )
