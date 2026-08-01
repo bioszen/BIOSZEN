@@ -469,7 +469,7 @@ test_that("editable PPTX downloads contain one vector slide across plot types", 
     deck <- officer::read_pptx(out)
     expect_equal(length(deck), 1, info = paste("Unexpected slide count for type", tp))
     slide_dims <- officer::slide_size(deck)
-    expected_page <- if (identical(tp, "Curvas")) {
+    expected_page <- if (tp %in% c("Curvas", "Apiladas")) {
       list(width_px = logical_w, height_px = logical_h)
     } else {
       helper_env$bioszen_pdf_page_size_from_pixels(logical_w, logical_h)
