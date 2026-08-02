@@ -121,6 +121,14 @@ bioszen_pptx_runtime_packages <- function() {
   c("Rcpp", "systemfonts", "xml2", "gdtools", "officer", "rvg")
 }
 
+bioszen_runtime_repositories <- function() {
+  # Native graphics binaries must match the running R minor version. CRAN
+  # publishes platform-specific binaries for current R releases; development
+  # R-universe binaries can otherwise satisfy the package version while still
+  # carrying an incompatible graphics ABI.
+  c(CRAN = "https://cloud.r-project.org")
+}
+
 bioszen_pptx_runtime_compatible <- function(libraries = .libPaths(),
                                              required_library = NULL) {
   expected <- bioszen_r_version_key()
@@ -205,10 +213,7 @@ bioszen_runtime_repair_packages <- function(libraries = .libPaths()) {
 
 bioszen_prepare_installed_runtime <- function(
     libraries = .libPaths(),
-    repos = c(
-      Officeverse = "https://davidgohel.r-universe.dev",
-      CRAN = "https://cloud.r-project.org"
-    ),
+    repos = bioszen_runtime_repositories(),
     install_fun = function(packages, lib, repos) {
       utils::install.packages(
         packages,

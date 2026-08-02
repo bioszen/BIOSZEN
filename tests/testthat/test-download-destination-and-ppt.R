@@ -100,6 +100,16 @@ test_that("graphics API mismatch yields a readable PPTX instead of HTTP 500", {
   expect_true(env$bioszen_is_pptx_graphics_api_mismatch("Graphics API version mismatch"))
   expect_false(env$bioszen_is_pptx_graphics_api_mismatch("Unrelated drawing failure"))
 
+  font_plot <- plot_obj + ggplot2::theme(
+    text = ggplot2::element_text(family = "Unavailable test font"),
+    axis.text = ggplot2::element_text(family = "Unavailable test font")
+  )
+  font_plot$layers[[1]]$aes_params$family <- "Unavailable test font"
+  safe_plot <- env$bioszen_prepare_raster_safe_plot(font_plot)
+  expect_identical(safe_plot$theme$text$family, "sans")
+  expect_identical(safe_plot$theme$axis.text$family, "sans")
+  expect_identical(safe_plot$layers[[1]]$aes_params$family, "sans")
+
   unrelated_target <- tempfile(fileext = ".pptx")
   on.exit(unlink(unrelated_target, force = TRUE), add = TRUE)
   expect_error(

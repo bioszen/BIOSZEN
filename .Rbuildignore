@@ -11,6 +11,7 @@
 ^LICENSE$
 ^inst/app/rsconnect$
 ^inst/app/manifest\.json$
+^manifest\.json$
 ^.*Rplots\.pdf$
 ^\.Rhistory$
 ^\.RData$

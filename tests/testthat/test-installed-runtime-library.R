@@ -134,6 +134,19 @@ test_that("native PowerPoint packages must be built for the running R version", 
   ))
 })
 
+test_that("installed runtime repairs use CRAN binaries for the active R version", {
+  repos <- runtime_env$bioszen_runtime_repositories()
+
+  expect_identical(names(repos), "CRAN")
+  expect_identical(unname(repos), "https://cloud.r-project.org")
+  expect_false(any(grepl("r-universe", repos, fixed = TRUE)))
+  expect_identical(
+    eval(formals(runtime_env$bioszen_prepare_installed_runtime)$repos,
+         envir = runtime_env),
+    repos
+  )
+})
+
 test_that("installed runtime audit covers all imported compiled dependencies", {
   root <- tempfile("bioszen-complete-runtime-")
   library <- file.path(root, "win-library", runtime_env$bioszen_r_version_key())

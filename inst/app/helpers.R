@@ -1042,6 +1042,32 @@ bioszen_pptx_runtime_summary <- function() {
   sprintf("R %s; rvg %s (%s)", getRversion(), rvg_version, rvg_built)
 }
 
+bioszen_prepare_raster_safe_plot <- function(plot, family = "sans") {
+  if (!inherits(plot, "ggplot")) return(plot)
+
+  text_parts <- c(
+    "text", "plot.title", "plot.subtitle", "plot.caption", "plot.tag",
+    "axis.title", "axis.title.x", "axis.title.y", "axis.text",
+    "axis.text.x", "axis.text.y", "legend.title", "legend.text",
+    "strip.text", "strip.text.x", "strip.text.y"
+  )
+  overrides <- stats::setNames(
+    lapply(text_parts, function(...) ggplot2::element_text(family = family)),
+    text_parts
+  )
+  plot <- plot + do.call(ggplot2::theme, overrides)
+
+  for (index in seq_along(plot$layers)) {
+    for (slot in c("aes_params", "geom_params", "stat_params")) {
+      params <- plot$layers[[index]][[slot]]
+      if (!is.null(params$family)) {
+        plot$layers[[index]][[slot]]$family <- family
+      }
+    }
+  }
+  plot
+}
+
 bioszen_write_editable_plot_pptx <- function(file, plot, width_px, height_px,
                                                slide_width_px = width_px,
                                               slide_height_px = height_px,
@@ -1107,9 +1133,10 @@ bioszen_write_editable_plot_pptx <- function(file, plot, width_px, height_px,
     raster_file <- tempfile(fileext = ".png")
     on.exit(unlink(raster_file, force = TRUE), add = TRUE)
     raster_dpi <- bioszen_clamp_number(.raster_dpi, 300, minimum = 72, maximum = 600)
+    raster_plot <- bioszen_prepare_raster_safe_plot(ppt_plot)
     ggplot2::ggsave(
       filename = raster_file,
-      plot = ppt_plot,
+      plot = raster_plot,
       device = grDevices::png,
       width = slide_dims$width,
       height = slide_dims$height,
