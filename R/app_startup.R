@@ -37,21 +37,6 @@ bioszen_is_current_versioned_library <- function(
   any(vapply(patterns, grepl, logical(1), x = path, perl = TRUE))
 }
 
-bioszen_managed_runtime_library <- function(
-    version_key = bioszen_r_version_key(),
-    platform = R.version$platform,
-    root = getOption("BIOSZEN.runtime_root", NULL)) {
-  if (is.null(root) || !length(root) || is.na(root[[1]]) || !nzchar(root[[1]])) {
-    root <- tools::R_user_dir("BIOSZEN", which = "data")
-  }
-  file.path(
-    path.expand(as.character(root[[1]])),
-    "runtime-library",
-    version_key,
-    platform
-  )
-}
-
 bioszen_configure_graphics_cache <- function(
     root = getOption("BIOSZEN.graphics_cache_root", NULL)) {
   if (is.null(root) || !length(root) || is.na(root[[1]]) || !nzchar(root[[1]])) {
@@ -153,6 +138,71 @@ bioszen_pptx_runtime_compatible <- function(libraries = .libPaths(),
   }, logical(1)))
 }
 
+bioszen_parse_package_dependencies <- function(value) {
+  if (!length(value) || is.na(value[[1]]) || !nzchar(value[[1]])) {
+    return(character())
+  }
+  dependencies <- unlist(strsplit(gsub("\n", " ", value[[1]], fixed = TRUE), ","))
+  dependencies <- trimws(sub("\\s*\\([^)]*\\)", "", dependencies))
+  unique(dependencies[nzchar(dependencies) & dependencies != "R"])
+}
+
+bioszen_package_dependencies_in_libraries <- function(
+    package,
+    libraries = .libPaths(),
+    fields = c("Depends", "Imports", "LinkingTo")) {
+  package_path <- bioszen_find_package_in_libraries(package, libraries)
+  if (!nzchar(package_path)) return(character())
+
+  description <- read.dcf(file.path(package_path, "DESCRIPTION"))
+  fields <- intersect(fields, colnames(description))
+  if (!length(fields)) return(character())
+  unique(unlist(lapply(fields, function(field) {
+    bioszen_parse_package_dependencies(unname(description[1, field]))
+  })))
+}
+
+bioszen_runtime_dependency_closure <- function(packages,
+                                                libraries = .libPaths()) {
+  pending <- unique(as.character(packages))
+  pending <- pending[!is.na(pending) & nzchar(pending) & pending != "R"]
+  resolved <- character()
+
+  while (length(pending)) {
+    package <- pending[[1]]
+    pending <- pending[-1]
+    if (package %in% resolved) next
+    resolved <- c(resolved, package)
+    dependencies <- bioszen_package_dependencies_in_libraries(package, libraries)
+    pending <- unique(c(pending, setdiff(dependencies, resolved)))
+  }
+  resolved
+}
+
+bioszen_installed_runtime_packages <- function(libraries = .libPaths()) {
+  direct <- bioszen_package_dependencies_in_libraries(
+    "BIOSZEN",
+    libraries,
+    fields = c("Depends", "Imports")
+  )
+  bioszen_runtime_dependency_closure(direct, libraries)
+}
+
+bioszen_runtime_repair_packages <- function(libraries = .libPaths()) {
+  runtime_packages <- bioszen_installed_runtime_packages(libraries)
+  expected <- bioszen_r_version_key()
+  repair <- runtime_packages[vapply(runtime_packages, function(package) {
+    info <- bioszen_package_build_info(package, libraries)
+    !nzchar(info$path) ||
+      (isTRUE(info$compiled) && !identical(info$built_r, expected))
+  }, logical(1))]
+
+  if (!bioszen_pptx_runtime_compatible(libraries)) {
+    repair <- c(bioszen_pptx_runtime_packages(), repair)
+  }
+  unique(repair)
+}
+
 bioszen_prepare_installed_runtime <- function(
     libraries = .libPaths(),
     repos = c(
@@ -171,12 +221,15 @@ bioszen_prepare_installed_runtime <- function(
     loaded_namespaces = loadedNamespaces()) {
   bioszen_configure_graphics_cache()
 
-  if (bioszen_pptx_runtime_compatible(libraries)) {
+  repair_packages <- bioszen_runtime_repair_packages(libraries)
+  if (!length(repair_packages)) {
     return(invisible(list(repaired = FALSE, library = NULL)))
   }
 
-  rvg_info <- bioszen_package_build_info("rvg", libraries)
-  candidate_libraries <- unique(c(rvg_info$library, libraries))
+  package_libraries <- vapply(repair_packages, function(package) {
+    bioszen_package_build_info(package, libraries)$library
+  }, character(1))
+  candidate_libraries <- unique(c(package_libraries, libraries))
   mapped_targets <- Filter(
     Negate(is.null),
     lapply(candidate_libraries[nzchar(candidate_libraries)], bioszen_current_library_from_stale)
@@ -185,18 +238,22 @@ bioszen_prepare_installed_runtime <- function(
     nzchar(candidate_libraries) &
       vapply(candidate_libraries, bioszen_is_current_versioned_library, logical(1))
   ]
+  existing_targets <- candidate_libraries[
+    nzchar(candidate_libraries) &
+      !vapply(candidate_libraries, bioszen_is_stale_user_library, logical(1))
+  ]
   targets <- unique(c(
     mapped_targets,
     current_targets,
-    bioszen_managed_runtime_library()
+    existing_targets
   ))
 
   target <- bioszen_select_writable_library(targets)
   if (!nzchar(target)) {
     warning(
-      "BIOSZEN could not create a writable per-user library for the editable ",
-      "PowerPoint runtime. The app will continue and PowerPoint export will ",
-      "use its compatibility fallback.",
+      "BIOSZEN could not create a writable per-user library for its compiled ",
+      "runtime dependencies. The app will continue; unavailable features will ",
+      "report their normal compatibility error or use their supported fallback.",
       call. = FALSE
     )
     return(invisible(list(
@@ -210,25 +267,31 @@ bioszen_prepare_installed_runtime <- function(
   set_library_paths(runtime_libraries)
   options(BIOSZEN.runtime_lib = target)
 
-  if (bioszen_pptx_runtime_compatible(runtime_libraries, target)) {
+  repair_packages <- bioszen_runtime_repair_packages(runtime_libraries)
+  if (!length(repair_packages)) {
     return(invisible(list(repaired = FALSE, library = target)))
   }
 
   message(
-    "BIOSZEN detected packages from an older R library. Preparing compatible ",
-    "PowerPoint graphics packages for R ", bioszen_r_version_key(), " in ", target, "."
+    "BIOSZEN detected missing packages or compiled packages from another R ",
+    "version. Preparing a compatible runtime for R ", bioszen_r_version_key(),
+    " in ", target, "."
   )
   bioszen_configure_package_download()
   install_error <- tryCatch(
     {
-      install_fun(bioszen_pptx_runtime_packages(), lib = target, repos = repos)
+      install_fun(repair_packages, lib = target, repos = repos)
       NULL
     },
     error = function(e) e
   )
 
-  runtime_ready <- is.null(install_error) &&
-    bioszen_pptx_runtime_compatible(runtime_libraries, target)
+  remaining_repairs <- if (is.null(install_error)) {
+    bioszen_runtime_repair_packages(runtime_libraries)
+  } else {
+    repair_packages
+  }
+  runtime_ready <- is.null(install_error) && !length(remaining_repairs)
   if (!runtime_ready) {
     set_library_paths(libraries)
     options(BIOSZEN.runtime_lib = NULL)
@@ -238,10 +301,10 @@ bioszen_prepare_installed_runtime <- function(
       conditionMessage(install_error)
     }
     warning(
-      "BIOSZEN could not prepare the editable PowerPoint runtime for R ",
+      "BIOSZEN could not prepare all runtime dependencies for R ",
       bioszen_r_version_key(), " (", reason, "). The app will continue; ",
-      "PowerPoint export will use its compatibility fallback until the runtime ",
-      "can be prepared.",
+      "affected features will remain unavailable or use their supported ",
+      "compatibility fallback until the runtime can be prepared.",
       call. = FALSE
     )
     return(invisible(list(
@@ -251,11 +314,11 @@ bioszen_prepare_installed_runtime <- function(
       error = reason
     )))
   }
-  if ("rvg" %in% loaded_namespaces) {
+  loaded_repairs <- intersect(repair_packages, loaded_namespaces)
+  if (length(loaded_repairs)) {
     warning(
-      "A previous rvg binary is already loaded. BIOSZEN installed the compatible ",
-      "runtime in ", target, "; editable PowerPoint export will be available after ",
-      "R is restarted once.",
+      "Previously loaded package binaries were repaired in ", target,
+      ". Restart R once before using: ", paste(loaded_repairs, collapse = ", "), ".",
       call. = FALSE
     )
   }
@@ -263,8 +326,9 @@ bioszen_prepare_installed_runtime <- function(
   invisible(list(
     repaired = TRUE,
     library = target,
-    vector_available = !"rvg" %in% loaded_namespaces,
-    restart_required = "rvg" %in% loaded_namespaces
+    packages = repair_packages,
+    vector_available = !any(bioszen_pptx_runtime_packages() %in% loaded_repairs),
+    restart_required = length(loaded_repairs) > 0L
   ))
 }
 

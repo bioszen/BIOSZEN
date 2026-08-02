@@ -3,18 +3,21 @@ library(testthat)
 runtime_env <- new.env(parent = globalenv())
 sys.source(file.path(app_test_root(), "R", "app_startup.R"), envir = runtime_env)
 
-write_fake_package <- function(library, package, built_r, compiled = TRUE) {
+write_fake_package <- function(library, package, built_r, compiled = TRUE,
+                               depends = NULL, imports = NULL,
+                               linking_to = NULL) {
   package_dir <- file.path(library, package)
   dir.create(package_dir, recursive = TRUE, showWarnings = FALSE)
-  writeLines(
-    c(
-      paste0("Package: ", package),
-      "Version: 1.0.0",
-      paste0("Built: R ", built_r, ".0; test-platform; test-date; test-os"),
-      paste0("NeedsCompilation: ", if (compiled) "yes" else "no")
-    ),
-    file.path(package_dir, "DESCRIPTION")
+  fields <- c(
+    paste0("Package: ", package),
+    "Version: 1.0.0",
+    paste0("Built: R ", built_r, ".0; test-platform; test-date; test-os"),
+    paste0("NeedsCompilation: ", if (compiled) "yes" else "no")
   )
+  if (!is.null(depends)) fields <- c(fields, paste0("Depends: ", depends))
+  if (!is.null(imports)) fields <- c(fields, paste0("Imports: ", imports))
+  if (!is.null(linking_to)) fields <- c(fields, paste0("LinkingTo: ", linking_to))
+  writeLines(fields, file.path(package_dir, "DESCRIPTION"))
   invisible(package_dir)
 }
 
@@ -64,21 +67,6 @@ test_that("versioned R user libraries map to the running R version on every plat
   expect_false(runtime_env$bioszen_is_current_versioned_library(
     "C:/Program Files/R/R-4.6.0/library"
   ))
-})
-
-test_that("the managed runtime path is private, versioned, and platform-specific", {
-  root <- tempfile("bioszen-managed-root-")
-  path <- runtime_env$bioszen_managed_runtime_library(
-    version_key = "4.6",
-    platform = "x86_64-w64-mingw32",
-    root = root
-  )
-
-  expect_identical(
-    path,
-    file.path(root, "runtime-library", "4.6", "x86_64-w64-mingw32")
-  )
-  expect_false(dir.exists(path))
 })
 
 test_that("the graphics cache is writable and process-local", {
@@ -134,6 +122,42 @@ test_that("native PowerPoint packages must be built for the running R version", 
     current_library,
     required_library = current_library
   ))
+})
+
+test_that("installed runtime audit covers all imported compiled dependencies", {
+  root <- tempfile("bioszen-complete-runtime-")
+  library <- file.path(root, "win-library", runtime_env$bioszen_r_version_key())
+  dir.create(library, recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+  current <- runtime_env$bioszen_r_version_key()
+  old <- if (identical(current, "4.4")) "4.3" else "4.4"
+
+  write_fake_runtime(library, current)
+  write_fake_package(
+    library,
+    "BIOSZEN",
+    current,
+    compiled = FALSE,
+    imports = "CompiledParent, PureOld, MissingDirect"
+  )
+  write_fake_package(
+    library,
+    "CompiledParent",
+    current,
+    compiled = FALSE,
+    imports = "NativeLeaf"
+  )
+  write_fake_package(library, "NativeLeaf", old, compiled = TRUE)
+  write_fake_package(library, "PureOld", old, compiled = FALSE)
+
+  expect_setequal(
+    runtime_env$bioszen_runtime_repair_packages(library),
+    c("NativeLeaf", "MissingDirect")
+  )
+
+  write_fake_package(library, "NativeLeaf", current, compiled = TRUE)
+  write_fake_package(library, "MissingDirect", current, compiled = FALSE)
+  expect_length(runtime_env$bioszen_runtime_repair_packages(library), 0L)
 })
 
 test_that("installed launches repair a stale runtime once and reuse it afterwards", {
@@ -249,23 +273,18 @@ test_that("an incompatible binary already in the current user library is rebuilt
   ))
 })
 
-test_that("system-only and custom libraries use a managed per-user runtime", {
+test_that("custom writable libraries are reused without a separate runtime folder", {
   current <- runtime_env$bioszen_r_version_key()
   old <- if (identical(current, "4.4")) "4.3" else "4.4"
   root <- tempfile("bioszen-system-only-")
-  system_library <- file.path(root, "custom-system-library")
-  managed_root <- file.path(root, "user-data")
-  dir.create(system_library, recursive = TRUE)
+  custom_library <- file.path(root, "custom-library")
+  dir.create(custom_library, recursive = TRUE)
   on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
-  write_fake_runtime(system_library, old)
-
-  old_runtime_root <- getOption("BIOSZEN.runtime_root")
-  options(BIOSZEN.runtime_root = managed_root)
-  on.exit(options(BIOSZEN.runtime_root = old_runtime_root), add = TRUE)
+  write_fake_runtime(custom_library, old)
 
   selected_libraries <- character()
   result <- runtime_env$bioszen_prepare_installed_runtime(
-    libraries = system_library,
+    libraries = custom_library,
     repos = "https://example.invalid",
     install_fun = function(packages, lib, repos) {
       write_fake_runtime(lib, current)
@@ -276,24 +295,16 @@ test_that("system-only and custom libraries use a managed per-user runtime", {
     },
     loaded_namespaces = character()
   )
-  expected <- normalizePath(
-    file.path(
-      managed_root,
-      "runtime-library",
-      current,
-      R.version$platform
-    ),
-    winslash = "/",
-    mustWork = TRUE
-  )
+  expected <- normalizePath(custom_library, winslash = "/", mustWork = TRUE)
 
   expect_true(result$repaired)
   expect_identical(result$library, expected)
   expect_identical(selected_libraries[[1]], expected)
   expect_true(runtime_env$bioszen_pptx_runtime_compatible(
-    c(expected, system_library),
+    expected,
     required_library = expected
   ))
+  expect_false(dir.exists(file.path(root, "runtime-library")))
 })
 
 test_that("the updater targets the running R library instead of a stale package library", {

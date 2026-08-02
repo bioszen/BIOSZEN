@@ -1014,19 +1014,18 @@ bioszen_is_pptx_graphics_api_mismatch <- function(condition) {
   } else {
     paste(as.character(condition), collapse = " ")
   }
-  message <- iconv(message, from = "", to = "ASCII//TRANSLIT", sub = "")
-  message <- tolower(message %||% "")
+  message <- enc2utf8(message %||% "")
+  transliterated <- suppressWarnings(
+    iconv(message, from = "UTF-8", to = "ASCII//TRANSLIT", sub = " ")
+  )
+  if (!length(transliterated) || is.na(transliterated[[1]])) {
+    transliterated <- message
+  }
+  normalized <- tolower(paste(message, transliterated, collapse = " "))
 
-  any(vapply(
-    c(
-      "graphics api version mismatch",
-      "graphics api.*incompatible",
-      "version api grafica incompatible",
-      "incompatible graphics api"
-    ),
-    function(pattern) grepl(pattern, message, perl = TRUE),
-    logical(1)
-  ))
+  grepl("api", normalized, fixed = TRUE) &&
+    grepl("graphic|graf|gr.{0,4}fic", normalized, perl = TRUE) &&
+    grepl("incompat|mismatch", normalized, perl = TRUE)
 }
 
 bioszen_pptx_runtime_summary <- function() {
@@ -1076,17 +1075,26 @@ bioszen_write_editable_plot_pptx <- function(file, plot, width_px, height_px,
   }
 
   vector_error <- NULL
-  doc <- tryCatch(
-    suppressWarnings(
-      officer::ph_with(
-        new_document(),
-        .dml_factory(ppt_plot),
-        location = plot_location
+  tryCatch(
+    {
+      doc <- suppressWarnings(
+        officer::ph_with(
+          new_document(),
+          .dml_factory(ppt_plot),
+          location = plot_location
+        )
       )
-    ),
+      doc <- bioszen_remove_pptx_plot_background(
+        doc,
+        left = 0,
+        top = 0,
+        width = slide_dims$width,
+        height = slide_dims$height
+      )
+      print(doc, target = file)
+    },
     error = function(e) {
       vector_error <<- e
-      NULL
     }
   )
   editable <- is.null(vector_error)
@@ -1095,21 +1103,33 @@ bioszen_write_editable_plot_pptx <- function(file, plot, width_px, height_px,
       stop(vector_error)
     }
 
+    unlink(file, force = TRUE)
     raster_file <- tempfile(fileext = ".png")
     on.exit(unlink(raster_file, force = TRUE), add = TRUE)
     raster_dpi <- bioszen_clamp_number(.raster_dpi, 300, minimum = 72, maximum = 600)
-    suppressWarnings(
-      ggplot2::ggsave(
-        filename = raster_file,
-        plot = ppt_plot,
-        width = slide_dims$width,
-        height = slide_dims$height,
-        units = "in",
-        dpi = raster_dpi,
-        limitsize = FALSE,
-        bg = "transparent"
-      )
+    png_args <- list(
+      filename = raster_file,
+      width = max(1L, round(slide_dims$width * raster_dpi)),
+      height = max(1L, round(slide_dims$height * raster_dpi)),
+      units = "px",
+      res = raster_dpi,
+      bg = "transparent"
     )
+    if (isTRUE(capabilities("cairo"))) png_args$type <- "cairo"
+    previous_device <- grDevices::dev.cur()
+    do.call(grDevices::png, png_args)
+    raster_device <- grDevices::dev.cur()
+    on.exit({
+      open_devices <- grDevices::dev.list()
+      if (!is.null(open_devices) && raster_device %in% open_devices) {
+        grDevices::dev.off(raster_device)
+      }
+    }, add = TRUE)
+    print(ppt_plot)
+    grDevices::dev.off(raster_device)
+    if (!identical(grDevices::dev.cur(), previous_device) && previous_device > 1L) {
+      try(grDevices::dev.set(previous_device), silent = TRUE)
+    }
     doc <- officer::ph_with(
       new_document(),
       officer::external_img(
@@ -1119,16 +1139,8 @@ bioszen_write_editable_plot_pptx <- function(file, plot, width_px, height_px,
       ),
       location = plot_location
     )
-  } else {
-    doc <- bioszen_remove_pptx_plot_background(
-      doc,
-      left = 0,
-      top = 0,
-      width = slide_dims$width,
-      height = slide_dims$height
-    )
+    print(doc, target = file)
   }
-  print(doc, target = file)
   invisible(c(
     slide_dims,
     list(
