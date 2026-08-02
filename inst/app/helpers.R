@@ -1107,29 +1107,17 @@ bioszen_write_editable_plot_pptx <- function(file, plot, width_px, height_px,
     raster_file <- tempfile(fileext = ".png")
     on.exit(unlink(raster_file, force = TRUE), add = TRUE)
     raster_dpi <- bioszen_clamp_number(.raster_dpi, 300, minimum = 72, maximum = 600)
-    png_args <- list(
+    ggplot2::ggsave(
       filename = raster_file,
-      width = max(1L, round(slide_dims$width * raster_dpi)),
-      height = max(1L, round(slide_dims$height * raster_dpi)),
-      units = "px",
-      res = raster_dpi,
+      plot = ppt_plot,
+      device = grDevices::png,
+      width = slide_dims$width,
+      height = slide_dims$height,
+      units = "in",
+      dpi = raster_dpi,
+      limitsize = FALSE,
       bg = "transparent"
     )
-    if (isTRUE(capabilities("cairo"))) png_args$type <- "cairo"
-    previous_device <- grDevices::dev.cur()
-    do.call(grDevices::png, png_args)
-    raster_device <- grDevices::dev.cur()
-    on.exit({
-      open_devices <- grDevices::dev.list()
-      if (!is.null(open_devices) && raster_device %in% open_devices) {
-        grDevices::dev.off(raster_device)
-      }
-    }, add = TRUE)
-    print(ppt_plot)
-    grDevices::dev.off(raster_device)
-    if (!identical(grDevices::dev.cur(), previous_device) && previous_device > 1L) {
-      try(grDevices::dev.set(previous_device), silent = TRUE)
-    }
     doc <- officer::ph_with(
       new_document(),
       officer::external_img(

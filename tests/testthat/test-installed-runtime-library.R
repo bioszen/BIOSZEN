@@ -1,7 +1,17 @@
 library(testthat)
 
 runtime_env <- new.env(parent = globalenv())
-sys.source(file.path(app_test_root(), "R", "app_startup.R"), envir = runtime_env)
+runtime_source <- file.path(app_test_root(), "R", "app_startup.R")
+if (file.exists(runtime_source)) {
+  sys.source(runtime_source, envir = runtime_env)
+} else {
+  runtime_namespace <- asNamespace("BIOSZEN")
+  runtime_symbols <- ls(runtime_namespace, pattern = "^bioszen_")
+  list2env(
+    mget(runtime_symbols, envir = runtime_namespace, inherits = FALSE),
+    envir = runtime_env
+  )
+}
 
 write_fake_package <- function(library, package, built_r, compiled = TRUE,
                                depends = NULL, imports = NULL,
@@ -309,7 +319,16 @@ test_that("custom writable libraries are reused without a separate runtime folde
 
 test_that("the updater targets the running R library instead of a stale package library", {
   update_env <- new.env(parent = runtime_env)
-  sys.source(file.path(app_test_root(), "R", "update.R"), envir = update_env)
+  update_source <- file.path(app_test_root(), "R", "update.R")
+  if (file.exists(update_source)) {
+    sys.source(update_source, envir = update_env)
+  } else {
+    update_env$.bioszen_update_library <- get(
+      ".bioszen_update_library",
+      envir = asNamespace("BIOSZEN"),
+      inherits = FALSE
+    )
+  }
 
   current <- runtime_env$bioszen_r_version_key()
   old <- if (identical(current, "4.4")) "4.3" else "4.4"
