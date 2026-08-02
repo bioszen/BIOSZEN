@@ -2908,7 +2908,7 @@ server <- function(input, output, session) {
       )
     }
 
-    bioszen_write_editable_plot_pptx(
+    pptx_result <- bioszen_write_editable_plot_pptx(
       file = file,
       plot = ppt_plot,
       width_px = eff_width,
@@ -2916,7 +2916,21 @@ server <- function(input, output, session) {
       slide_width_px = page_size$width_px,
       slide_height_px = page_size$height_px
     )
-    invisible(TRUE)
+    if (isTRUE(pptx_result$compatibility_fallback)) {
+      lang <- input$app_lang %||% i18n_lang
+      diagnostic <- pptx_result$runtime %||% bioszen_pptx_runtime_summary()
+      message(
+        "BIOSZEN used the PPTX compatibility fallback: ",
+        pptx_result$fallback_reason %||% "graphics API mismatch",
+        " [", diagnostic, "]"
+      )
+      showNotification(
+        sprintf(tr_text("pptx_graphics_api_fallback", lang), diagnostic),
+        type = "warning",
+        duration = 12
+      )
+    }
+    invisible(pptx_result)
   }
 
   observeEvent(input$btn_dark, {
@@ -16763,6 +16777,7 @@ server <- function(input, output, session) {
         width = fit$width,
         height = fit$height
       )
+      vector_error <- NULL
       vector_doc <- tryCatch(
         officer::ph_with(
           doc,
@@ -16770,7 +16785,11 @@ server <- function(input, output, session) {
           location = plot_location
         ),
         error = function(e) {
-          if (!bioszen_is_expected_shiny_condition(e)) {
+          vector_error <<- e
+          if (
+            !bioszen_is_pptx_graphics_api_mismatch(e) &&
+              !bioszen_is_expected_shiny_condition(e)
+          ) {
             record_application_error(
               e = e,
               user_message = tr_text("app_error_generic", input$app_lang %||% i18n_lang),
@@ -16806,11 +16825,26 @@ server <- function(input, output, session) {
           ),
           location = plot_location
         )
-        showNotification(
-          tr_text("combo_pptx_vector_fallback", input$app_lang %||% i18n_lang),
-          type = "warning",
-          duration = 7
-        )
+        lang <- input$app_lang %||% i18n_lang
+        if (bioszen_is_pptx_graphics_api_mismatch(vector_error)) {
+          diagnostic <- bioszen_pptx_runtime_summary()
+          message(
+            "BIOSZEN used the composition PPTX compatibility fallback: ",
+            conditionMessage(vector_error),
+            " [", diagnostic, "]"
+          )
+          showNotification(
+            sprintf(tr_text("pptx_graphics_api_fallback", lang), diagnostic),
+            type = "warning",
+            duration = 12
+          )
+        } else {
+          showNotification(
+            tr_text("combo_pptx_vector_fallback", lang),
+            type = "warning",
+            duration = 7
+          )
+        }
       } else {
         doc <- bioszen_remove_pptx_plot_background(
           vector_doc,

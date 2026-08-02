@@ -1008,9 +1008,46 @@ bioszen_remove_pptx_plot_background <- function(doc, left, top, width, height,
   doc
 }
 
+bioszen_is_pptx_graphics_api_mismatch <- function(condition) {
+  message <- if (inherits(condition, "condition")) {
+    conditionMessage(condition)
+  } else {
+    paste(as.character(condition), collapse = " ")
+  }
+  message <- iconv(message, from = "", to = "ASCII//TRANSLIT", sub = "")
+  message <- tolower(message %||% "")
+
+  any(vapply(
+    c(
+      "graphics api version mismatch",
+      "graphics api.*incompatible",
+      "version api grafica incompatible",
+      "incompatible graphics api"
+    ),
+    function(pattern) grepl(pattern, message, perl = TRUE),
+    logical(1)
+  ))
+}
+
+bioszen_pptx_runtime_summary <- function() {
+  rvg_description <- tryCatch(
+    utils::packageDescription("rvg"),
+    error = function(e) NULL
+  )
+  rvg_version <- if (is.null(rvg_description)) "unavailable" else {
+    as.character(rvg_description$Version %||% "unknown")
+  }
+  rvg_built <- if (is.null(rvg_description)) "unknown build" else {
+    as.character(rvg_description$Built %||% "unknown build")
+  }
+  sprintf("R %s; rvg %s (%s)", getRversion(), rvg_version, rvg_built)
+}
+
 bioszen_write_editable_plot_pptx <- function(file, plot, width_px, height_px,
                                                slide_width_px = width_px,
-                                              slide_height_px = height_px) {
+                                              slide_height_px = height_px,
+                                              .dml_factory = NULL,
+                                              .raster_dpi = 300) {
   if (!inherits(plot, "ggplot")) {
     stop("Expected a ggplot object for editable PowerPoint export.", call. = FALSE)
   }
@@ -1021,30 +1058,87 @@ bioszen_write_editable_plot_pptx <- function(file, plot, width_px, height_px,
   content_dims <- bioszen_pptx_size_from_pixels(width_px, height_px)
   slide_dims <- bioszen_pptx_size_from_pixels(slide_width_px, slide_height_px)
   ppt_plot <- bioszen_prepare_named_pptx_strokes(plot, linewidth_pt = 1)
-  doc <- officer::read_pptx()
-  doc <- bioszen_set_pptx_slide_size(doc, slide_dims$width, slide_dims$height)
-  doc <- officer::add_slide(doc, layout = "Blank", master = "Office Theme")
-  doc <- suppressWarnings(
-    officer::ph_with(
-      doc,
-      rvg::dml(ggobj = ppt_plot, editable = TRUE),
-      location = officer::ph_location(
-        left = 0,
-        top = 0,
-        width = slide_dims$width,
-        height = slide_dims$height
-      )
-    )
-  )
-  doc <- bioszen_remove_pptx_plot_background(
-    doc,
+  new_document <- function() {
+    doc <- officer::read_pptx()
+    doc <- bioszen_set_pptx_slide_size(doc, slide_dims$width, slide_dims$height)
+    officer::add_slide(doc, layout = "Blank", master = "Office Theme")
+  }
+  plot_location <- officer::ph_location(
     left = 0,
     top = 0,
     width = slide_dims$width,
     height = slide_dims$height
   )
+  if (is.null(.dml_factory)) {
+    .dml_factory <- function(ppt_plot) {
+      rvg::dml(ggobj = ppt_plot, editable = TRUE)
+    }
+  }
+
+  vector_error <- NULL
+  doc <- tryCatch(
+    suppressWarnings(
+      officer::ph_with(
+        new_document(),
+        .dml_factory(ppt_plot),
+        location = plot_location
+      )
+    ),
+    error = function(e) {
+      vector_error <<- e
+      NULL
+    }
+  )
+  editable <- is.null(vector_error)
+  if (!editable) {
+    if (!bioszen_is_pptx_graphics_api_mismatch(vector_error)) {
+      stop(vector_error)
+    }
+
+    raster_file <- tempfile(fileext = ".png")
+    on.exit(unlink(raster_file, force = TRUE), add = TRUE)
+    raster_dpi <- bioszen_clamp_number(.raster_dpi, 300, minimum = 72, maximum = 600)
+    suppressWarnings(
+      ggplot2::ggsave(
+        filename = raster_file,
+        plot = ppt_plot,
+        width = slide_dims$width,
+        height = slide_dims$height,
+        units = "in",
+        dpi = raster_dpi,
+        limitsize = FALSE,
+        bg = "transparent"
+      )
+    )
+    doc <- officer::ph_with(
+      new_document(),
+      officer::external_img(
+        raster_file,
+        width = slide_dims$width,
+        height = slide_dims$height
+      ),
+      location = plot_location
+    )
+  } else {
+    doc <- bioszen_remove_pptx_plot_background(
+      doc,
+      left = 0,
+      top = 0,
+      width = slide_dims$width,
+      height = slide_dims$height
+    )
+  }
   print(doc, target = file)
-  invisible(c(slide_dims, list(content_aspect_ratio = content_dims$aspect_ratio)))
+  invisible(c(
+    slide_dims,
+    list(
+      content_aspect_ratio = content_dims$aspect_ratio,
+      editable = editable,
+      compatibility_fallback = !editable,
+      fallback_reason = if (editable) NULL else conditionMessage(vector_error),
+      runtime = if (editable) NULL else bioszen_pptx_runtime_summary()
+    )
+  ))
 }
 
 # Generic helpers to convert matrices to tidy tibbles

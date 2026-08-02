@@ -674,6 +674,7 @@ combo_pptx_margin,Minimum edge margin (in):
 combo_pptx_help,The export always creates one slide and proportionally fits the preview composition inside the selected slide size.
 combo_pptx_small_warning,The selected slide is small; the composition was scaled proportionally to prevent overlap or clipping.
 combo_pptx_vector_fallback,Editable vector rendering was unavailable; PowerPoint was generated with a high-resolution raster composition instead.
+pptx_graphics_api_fallback,"The editable PowerPoint device is incompatible with this R installation. A valid non-editable PowerPoint fallback was downloaded. Update R or reinstall rvg for this R version, restart R, and try again. Technical context: %s"
 combo_preserve_original_style,Preserve each plot's original appearance
 combo_preserve_original_style_help,Enabled by default. Text and axis elements scale only as needed to fit the composition; point sizes and plot geometry remain unchanged. Disable it to apply the global composition style controls.
 combo_override_typography,Apply composition typography to every plot

@@ -4,7 +4,7 @@ public_package_api <- new.env(parent = globalenv())
 public_package_sources <- file.path(
   app_test_root(),
   "R",
-  c("citation.R", "update.R", "browser_launcher.R", "run_app.R")
+  c("citation.R", "app_startup.R", "update.R", "browser_launcher.R", "run_app.R")
 )
 if (all(file.exists(public_package_sources))) {
   for (file in public_package_sources) {

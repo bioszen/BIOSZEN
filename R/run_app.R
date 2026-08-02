@@ -35,6 +35,8 @@ run_app <- function(host = getOption("shiny.host", "127.0.0.1"),
     .libPaths(unique(c(local_lib, .libPaths())))
   }
 
+  bioszen_prepare_installed_runtime()
+
   app_dir <- .bioszen_installed_app_dir()
   if (!nzchar(app_dir) || !dir.exists(app_dir)) {
     stop("The installed BIOSZEN Shiny application could not be found.", call. = FALSE)

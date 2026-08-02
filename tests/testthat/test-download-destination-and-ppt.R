@@ -1,5 +1,10 @@
 library(testthat)
 
+local_cache <- file.path(tempdir(), "BIOSZEN-gdtools-test-cache")
+dir.create(local_cache, recursive = TRUE, showWarnings = FALSE)
+withr::local_options(list(GDTOOLS_CACHE_DIR = local_cache))
+withr::local_envvar(c(GDTOOLS_CACHE_DIR = local_cache))
+
 test_that("single-chart PowerPoint stores editable preview-derived DrawingML shapes", {
   skip_if_not_installed("officer")
   skip_if_not_installed("rvg")
@@ -54,6 +59,61 @@ test_that("single-chart PowerPoint stores editable preview-derived DrawingML sha
     info = "Editable PPT must not contain a white background shape."
   )
   expect_false(any(grepl("^ppt/media/.*\\.(?:png|jpe?g|svg)$", listing$Name, perl = TRUE)))
+})
+
+test_that("graphics API mismatch yields a readable PPTX instead of HTTP 500", {
+  skip_if_not_installed("officer")
+  skip_if_not_installed("ggplot2")
+
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
+  env$BIOSZEN_CSS_DPI <- 96
+  sys.source(app_test_path("helpers.R"), envir = env)
+
+  plot_obj <- ggplot2::ggplot(
+    data.frame(group = c("A", "B"), value = c(2, 3)),
+    ggplot2::aes(group, value)
+  ) +
+    ggplot2::geom_col() +
+    ggplot2::theme_classic()
+  target <- tempfile(fileext = ".pptx")
+  on.exit(unlink(target, force = TRUE), add = TRUE)
+
+  result <- env$bioszen_write_editable_plot_pptx(
+    target,
+    plot_obj,
+    400,
+    300,
+    .dml_factory = function(plot) stop("Versión API gráfica incompatible", call. = FALSE),
+    .raster_dpi = 96
+  )
+  listing <- utils::unzip(target, list = TRUE)
+  deck <- officer::read_pptx(target)
+
+  expect_true(file.exists(target))
+  expect_gt(file.info(target)$size, 1000)
+  expect_length(deck, 1)
+  expect_false(result$editable)
+  expect_true(result$compatibility_fallback)
+  expect_match(result$fallback_reason, "API gráfica incompatible", fixed = TRUE)
+  expect_true(any(grepl("^ppt/media/.*\\.png$", listing$Name, perl = TRUE)))
+  expect_true(env$bioszen_is_pptx_graphics_api_mismatch("Graphics API version mismatch"))
+  expect_false(env$bioszen_is_pptx_graphics_api_mismatch("Unrelated drawing failure"))
+
+  unrelated_target <- tempfile(fileext = ".pptx")
+  on.exit(unlink(unrelated_target, force = TRUE), add = TRUE)
+  expect_error(
+    env$bioszen_write_editable_plot_pptx(
+      unrelated_target,
+      plot_obj,
+      400,
+      300,
+      .dml_factory = function(plot) stop("Unrelated drawing failure", call. = FALSE)
+    ),
+    "Unrelated drawing failure",
+    fixed = TRUE
+  )
+  expect_false(file.exists(unrelated_target))
 })
 
 test_that("editable PPT applies PDF-aligned units without mutating the source plot", {
@@ -447,6 +507,8 @@ test_that("download UI uses editable preview-aligned PPT and prompts for destina
     fixed = TRUE
   )
   expect_match(helpers_txt, "rvg::dml(ggobj = ppt_plot, editable = TRUE)", fixed = TRUE)
+  expect_match(helpers_txt, "bioszen_is_pptx_graphics_api_mismatch", fixed = TRUE)
+  expect_match(server_txt, 'tr_text("pptx_graphics_api_fallback", lang)', fixed = TRUE)
   expect_false(grepl("size = input$errbar_size", stacked_txt, fixed = TRUE))
   expect_gte(
     lengths(regmatches(stacked_txt, gregexpr("linewidth = input$errbar_size", stacked_txt, fixed = TRUE))),
@@ -472,7 +534,7 @@ test_that("new download and shinyFiles labels exist in both languages", {
     "download_save_failed", "download_file_description", "shinyfiles_create_folder",
     "shinyfiles_sort_content", "shinyfiles_directories", "shinyfiles_content",
     "shinyfiles_cancel", "shinyfiles_select", "shinyfiles_no_selection", "growth_folder_created",
-    "growth_folder_create_error"
+    "growth_folder_create_error", "pptx_graphics_api_fallback"
   )
 
   expect_setequal(intersect(required, en$key), required)

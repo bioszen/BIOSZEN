@@ -674,6 +674,7 @@ combo_pptx_margin,Margen mínimo de borde (pulg):
 combo_pptx_help,La exportación siempre crea una diapositiva y ajusta proporcionalmente la composición de la vista previa al tamaño seleccionado.
 combo_pptx_small_warning,La diapositiva seleccionada es pequeña; la composición se ajustó proporcionalmente para evitar superposiciones o cortes.
 combo_pptx_vector_fallback,La representación vectorial editable no estuvo disponible; PowerPoint se generó con una composición raster de alta resolución.
+pptx_graphics_api_fallback,"El dispositivo de PowerPoint editable es incompatible con esta instalación de R. Se descargó un PowerPoint de respaldo válido pero no editable. Actualiza R o reinstala rvg para esta versión de R, reinicia R y vuelve a intentarlo. Contexto técnico: %s"
 combo_preserve_original_style,Conservar la apariencia original de cada gráfico
 combo_preserve_original_style_help,Activado por defecto. Los textos y ejes solo se ajustan lo necesario para caber en la composición; los tamaños de puntos y la geometría permanecen sin cambios. Desactívalo para aplicar los controles globales de estilo de la composición.
 combo_override_typography,Aplicar la tipografía de la composición a todos los gráficos

@@ -13,6 +13,31 @@
   utils::install.packages("BIOSZEN", repos = repos, lib = lib)
 }
 
+.bioszen_update_library <- function(package_path = tryCatch(
+                                      find.package("BIOSZEN"),
+                                      error = function(e) ""
+                                    ),
+                                    libraries = .libPaths()) {
+  package_library <- if (nzchar(package_path)) dirname(package_path) else ""
+  candidates <- unique(c(package_library, libraries))
+  current_candidates <- Filter(
+    Negate(is.null),
+    lapply(candidates[nzchar(candidates)], bioszen_current_library_from_stale)
+  )
+  target <- if (length(current_candidates)) {
+    current_candidates[[1]]
+  } else if (nzchar(package_library)) {
+    package_library
+  } else {
+    libraries[[1]]
+  }
+
+  if (!dir.exists(target) && !dir.create(target, recursive = TRUE, showWarnings = FALSE)) {
+    stop("BIOSZEN could not create the current R package library at ", target, ".", call. = FALSE)
+  }
+  normalizePath(target, winslash = "/", mustWork = TRUE)
+}
+
 .bioszen_installed_version <- function() {
   tryCatch(utils::packageVersion("BIOSZEN"), error = function(e) numeric_version("0"))
 }
@@ -115,8 +140,7 @@ bioszen_update <- function(ask = TRUE, repos = .bioszen_default_repositories()) 
     if (!isTRUE(confirmed)) return(invisible(FALSE))
   }
 
-  package_path <- tryCatch(find.package("BIOSZEN"), error = function(e) "")
-  lib <- if (nzchar(package_path)) dirname(package_path) else .libPaths()[[1]]
+  lib <- .bioszen_update_library()
   .bioszen_install_package(repos = repos, lib = lib)
   message("BIOSZEN was updated. Restart R before launching the app again.")
   invisible(TRUE)
