@@ -674,6 +674,18 @@ main {
   content: "✓";
 }
 
+.input-resources {
+  margin: 1.25rem 0 2rem;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  text-align: justify;
+  text-justify: inter-word;
+}
+
+.input-resources a {
+  font-weight: 750;
+}
+
 .table-wrap {
   max-width: 100%;
   margin-top: 1.5rem;
@@ -946,6 +958,10 @@ html[data-theme="dark"] .parameter-table th {
   .footer-shell {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .input-resources {
+    text-align: left;
   }
 }
 

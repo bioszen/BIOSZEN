@@ -23,6 +23,15 @@ format:
           gtag('js', new Date());
 
           gtag('config', 'G-6WTZT98DLP');
+          document.addEventListener('click', function (event) {
+            var control = event.target.closest('[data-analytics-id]');
+            if (!control || typeof window.gtag !== 'function') return;
+            window.gtag('event', 'bioszen_site_action', {
+              action_id: control.dataset.analyticsId,
+              action_type: control.dataset.analyticsType || 'control',
+              page_section: control.dataset.analyticsSection || 'unknown'
+            });
+          });
         </script>
         <script type="application/ld+json">
         {
@@ -57,9 +66,9 @@ description: "BIOSZEN is an open-source R/Shiny package for biological data anal
 favicon: "https://raw.githubusercontent.com/bioszen/BIOSZEN/main/inst/app/www/logo_light.png"
 website:
   site-url: "https://bioszen.github.io/BIOSZEN/"
-image: "site-assets/bioszen-social-preview.png"
+image: "site-assets/bioszen-social-preview-square.png"
 twitter-card:
-  card-style: summary_large_image
+  card-style: summary
 open-graph: true
 categories:
   - R
@@ -81,10 +90,10 @@ categories:
 
 **BIOSZEN** is an open-source R package with a modular Shiny application for biological data analysis and visualization. It helps researchers turn Excel tables, CSV files, and optical-density time series into statistical results, growth parameters, customizable plots, and reproducible exports without requiring plotting code.
 
-[Install](https://bioszen.r-universe.dev/){.button .button-primary}
-[Try online](https://bioszen-test.share.connect.posit.cloud){.button .button-secondary}
-[Manual](https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md){.button .button-secondary}
-[GitHub](https://github.com/bioszen/BIOSZEN){.button .button-secondary}
+[Install](https://bioszen.r-universe.dev/){.button .button-primary data-analytics-id="install" data-analytics-type="outbound_link" data-analytics-section="hero"}
+[Try online](https://bioszen-test.share.connect.posit.cloud){.button .button-secondary data-analytics-id="try_online" data-analytics-type="outbound_link" data-analytics-section="hero"}
+[Manual](https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md){.button .button-secondary data-analytics-id="manual" data-analytics-type="outbound_link" data-analytics-section="hero"}
+[GitHub](https://github.com/bioszen/BIOSZEN){.button .button-secondary data-analytics-id="github" data-analytics-type="outbound_link" data-analytics-section="hero"}
 :::
 
 ## One workflow, from input to communication
@@ -120,7 +129,7 @@ BIOSZEN::BIOSZEN()
 
 After restarting RStudio, BIOSZEN can also be opened from **Addins > Launch BIOSZEN in Browser**.
 
-The installed application runs locally: files loaded into the local session are processed on the user's computer. The [limited online demo](https://bioszen-test.share.connect.posit.cloud) is useful for exploring the interface; use the local installation for the complete workflow and for sensitive experimental data.
+The installed application runs locally: files loaded into the local session are processed on the user's computer. The [limited online demo](https://bioszen-test.share.connect.posit.cloud){data-analytics-id="try_online" data-analytics-type="outbound_link" data-analytics-section="install"} is useful for exploring the interface; use the local installation for the complete workflow and for sensitive experimental data.
 
 ## Complete analysis workflow
 
@@ -136,6 +145,8 @@ The installed application runs locally: files loaded into the local session are 
 The recommended workflow uses a **Platemap + Curves** structure. The primary workbook contains a `Datos` sheet with experimental observations and a `PlotSettings` sheet describing plotting metadata. A separate curves file contains a `Time` column and well-based measurements such as `A1`, `A2`, and `A3`.
 
 BIOSZEN also supports grouped-parameter workbooks, summary inputs containing mean, standard deviation, and sample size, and CSV input for larger datasets. Example files and templates are included in the repository.
+
+For plate-reader outputs and other parameter tables, the recommended **Platemap** format records biological and technical replicates and helps keep measurements organized. See the [input examples](https://github.com/bioszen/BIOSZEN/tree/main/inst/app/www/reference_files){data-analytics-id="input_examples" data-analytics-type="outbound_link" data-analytics-section="workflow"}, or use the [Platemap and Curves skill](https://github.com/bioszen/BIOSZEN/tree/main/skills/bioszen-platemap-curves){data-analytics-id="platemap_skill" data-analytics-type="outbound_link" data-analytics-section="workflow"} with AI assistants such as Codex, Claude, Google Antigravity, and other compatible agents to convert data from other formats—including curve data—into BIOSZEN-ready files.
 
 For plate-based experiments, the values in the `Well` column must correspond to the curve column names.
 
@@ -217,20 +228,20 @@ BIOSZEN::bioszen_citation()
 ## Availability
 
 - **Project website:** <https://bioszen.github.io/BIOSZEN/>
-- **English user manual:** <https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md>
-- **bio.tools registry:** <https://bio.tools/bioszen>
-- **Source code and issues:** <https://github.com/bioszen/BIOSZEN>
-- **R-universe:** <https://bioszen.r-universe.dev/>
-- **Limited online demo:** <https://bioszen-test.share.connect.posit.cloud>
-- **Complete Zenodo record and version history:** <https://doi.org/10.5281/zenodo.18217210>
+- **English user manual:** [https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md](https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md){data-analytics-id="manual" data-analytics-type="outbound_link" data-analytics-section="availability"}
+- **bio.tools registry:** [https://bio.tools/bioszen](https://bio.tools/bioszen){data-analytics-id="bio_tools" data-analytics-type="outbound_link" data-analytics-section="availability"}
+- **Source code and issues:** [https://github.com/bioszen/BIOSZEN](https://github.com/bioszen/BIOSZEN){data-analytics-id="github" data-analytics-type="outbound_link" data-analytics-section="availability"}
+- **R-universe:** [https://bioszen.r-universe.dev/](https://bioszen.r-universe.dev/){data-analytics-id="install" data-analytics-type="outbound_link" data-analytics-section="availability"}
+- **Limited online demo:** [https://bioszen-test.share.connect.posit.cloud](https://bioszen-test.share.connect.posit.cloud){data-analytics-id="try_online" data-analytics-type="outbound_link" data-analytics-section="availability"}
+- **Complete Zenodo record and version history:** [https://doi.org/10.5281/zenodo.18217210](https://doi.org/10.5281/zenodo.18217210){data-analytics-id="zenodo" data-analytics-type="outbound_link" data-analytics-section="availability"}
 - **License:** GPL-3.0
 
 ## Citation
 
 If you use this version of BIOSZEN in research, please cite:
 
-> Szenfeld, B. (2026). *BIOSZEN* (Version 2.1.1) [Computer software]. Zenodo. <https://doi.org/10.5281/zenodo.21765136>
+> Szenfeld, B. (2026). *BIOSZEN* (Version 2.1.1) [Computer software]. Zenodo. [https://doi.org/10.5281/zenodo.21765136](https://doi.org/10.5281/zenodo.21765136){data-analytics-id="version_doi" data-analytics-type="outbound_link" data-analytics-section="citation"}
 
 ## Feedback and contributions
 
-Bug reports and feature suggestions can be submitted through the [BIOSZEN issue tracker](https://github.com/bioszen/BIOSZEN/issues). Feedback on installation, usability, input compatibility, statistical workflows, growth-curve analysis, and figure export is especially welcome.
+Bug reports and feature suggestions can be submitted through the [BIOSZEN issue tracker](https://github.com/bioszen/BIOSZEN/issues){data-analytics-id="feedback" data-analytics-type="outbound_link" data-analytics-section="feedback"}. Feedback on installation, usability, input compatibility, statistical workflows, growth-curve analysis, and figure export is especially welcome.

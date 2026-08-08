@@ -29,21 +29,22 @@
       document.documentElement.style.colorScheme = theme;
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=2.1.1-20260808h">
+  <link rel="stylesheet" href="styles.css?v=2.1.1-20260808i">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="BIOSZEN">
   <meta property="og:title" content="BIOSZEN | Reproducible biological data analysis">
   <meta property="og:description" content="Analyze biological data, run statistics and growth-curve workflows, and export reproducible, publication-ready scientific figures with BIOSZEN.">
   <meta property="og:url" content="https://bioszen.github.io/BIOSZEN/">
-  <meta property="og:image" content="https://bioszen.github.io/BIOSZEN/site-assets/bioszen-social-preview.png">
-  <meta property="og:image:alt" content="BIOSZEN — Reproducible biological data analysis, statistics, growth curves, and editable scientific figures">
+  <meta property="og:image" content="https://bioszen.github.io/BIOSZEN/site-assets/bioszen-social-preview-square.png">
+  <meta property="og:image:secure_url" content="https://bioszen.github.io/BIOSZEN/site-assets/bioszen-social-preview-square.png">
+  <meta property="og:image:alt" content="BIOSZEN logo with Biological analysis, statistics, growth curves, and scientific figures">
   <meta property="og:image:type" content="image/png">
-  <meta property="og:image:width" content="1728">
-  <meta property="og:image:height" content="910">
-  <meta name="twitter:card" content="summary_large_image">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="1200">
+  <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="BIOSZEN | Reproducible biological data analysis">
   <meta name="twitter:description" content="Open-source biological data analysis, statistics, growth curves, and publication-ready scientific figures in R/Shiny.">
-  <meta name="twitter:image" content="https://bioszen.github.io/BIOSZEN/site-assets/bioszen-social-preview.png">
+  <meta name="twitter:image" content="https://bioszen.github.io/BIOSZEN/site-assets/bioszen-social-preview-square.png">
   <meta name="twitter:image:alt" content="BIOSZEN social preview card">
   <script type="application/ld+json">
   {
@@ -79,19 +80,19 @@
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="site-header">
     <nav class="nav-shell" aria-label="Primary navigation">
-      <a class="brand" href="#top" aria-label="BIOSZEN home">
+      <a class="brand" href="#top" aria-label="BIOSZEN home" data-analytics-id="home" data-analytics-type="navigation" data-analytics-section="header">
         <img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/inst/app/www/logo_light.png" alt="" width="96" height="96">
         <span>BIOSZEN</span>
       </a>
       <div class="nav-actions">
         <ul class="nav-links">
-          <li><a href="#overview">Overview</a></li>
-          <li><a href="#install">Install</a></li>
-          <li><a href="#workflow">Workflow</a></li>
-          <li><a href="#growth">Growth curves</a></li>
-          <li><a href="#availability">Availability</a></li>
+          <li><a href="#overview" data-analytics-id="overview" data-analytics-type="navigation" data-analytics-section="header">Overview</a></li>
+          <li><a href="#install" data-analytics-id="install_section" data-analytics-type="navigation" data-analytics-section="header">Install</a></li>
+          <li><a href="#workflow" data-analytics-id="workflow" data-analytics-type="navigation" data-analytics-section="header">Workflow</a></li>
+          <li><a href="#growth" data-analytics-id="growth_curves" data-analytics-type="navigation" data-analytics-section="header">Growth curves</a></li>
+          <li><a href="#availability" data-analytics-id="availability" data-analytics-type="navigation" data-analytics-section="header">Availability</a></li>
         </ul>
-        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Use dark mode" aria-pressed="false"><span id="theme-label">Dark</span></button>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Use dark mode" aria-pressed="false" data-analytics-id="theme_toggle" data-analytics-type="interface" data-analytics-section="header"><span id="theme-label">Dark</span></button>
       </div>
     </nav>
   </header>
@@ -105,10 +106,10 @@
           <p class="hero-byline">Benjamín Szenfeld · BIOSZEN 2.1.1 · August 2026</p>
           <p class="lead"><strong>BIOSZEN</strong> helps researchers turn Excel tables, CSV files, and optical-density time series into statistical results, growth parameters, customizable plots, and reproducible exports—without requiring plotting code.</p>
           <div class="cta-group" aria-label="BIOSZEN links">
-            <a class="button button-primary" href="https://bioszen.r-universe.dev/" aria-label="Install BIOSZEN from R-universe">Install</a>
-            <a class="button button-secondary" href="https://bioszen-test.share.connect.posit.cloud" aria-label="Try the limited BIOSZEN online demo">Try online</a>
-            <a class="button button-secondary" href="https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md" aria-label="Read the BIOSZEN user manual in English">Manual</a>
-            <a class="button button-secondary" href="https://github.com/bioszen/BIOSZEN" aria-label="Open the BIOSZEN source code on GitHub">GitHub</a>
+            <a class="button button-primary" href="https://bioszen.r-universe.dev/" aria-label="Install BIOSZEN from R-universe" data-analytics-id="install" data-analytics-type="outbound_link" data-analytics-section="hero">Install</a>
+            <a class="button button-secondary" href="https://bioszen-test.share.connect.posit.cloud" aria-label="Try the limited BIOSZEN online demo" data-analytics-id="try_online" data-analytics-type="outbound_link" data-analytics-section="hero">Try online</a>
+            <a class="button button-secondary" href="https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md" aria-label="Read the BIOSZEN user manual in English" data-analytics-id="manual" data-analytics-type="outbound_link" data-analytics-section="hero">Manual</a>
+            <a class="button button-secondary" href="https://github.com/bioszen/BIOSZEN" aria-label="Open the BIOSZEN source code on GitHub" data-analytics-id="github" data-analytics-type="outbound_link" data-analytics-section="hero">GitHub</a>
           </div>
           <div class="hero-meta" aria-label="Project facts">
             <span class="pill">R 4.1+</span>
@@ -117,7 +118,7 @@
           </div>
         </div>
         <figure class="hero-visual">
-          <a class="hero-screenshot-link" href="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/01_app_home_overview.png" target="_blank" rel="noopener" aria-label="Open the BIOSZEN home screen at full resolution">
+          <a class="hero-screenshot-link" href="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/01_app_home_overview.png" target="_blank" rel="noopener" aria-label="Open the BIOSZEN home screen at full resolution" data-analytics-id="home_screenshot" data-analytics-type="image_link" data-analytics-section="hero">
             <img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/01_app_home_overview.png" alt="BIOSZEN application home screen showing its biological data analysis workspace" width="2014" height="884">
           </a>
           <figcaption>BIOSZEN home workspace. Select the image to view it at full resolution.</figcaption>
@@ -166,7 +167,7 @@
             <p>BIOSZEN is distributed through R-universe. After installation, launch it from R or from the BIOSZEN RStudio Addin.</p>
           </div>
           <div class="code-card">
-            <div class="code-label"><span>R</span><button class="copy-code" type="button" aria-label="Copy the R installation commands" title="Copy code"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg></button></div>
+            <div class="code-label"><span>R</span><button class="copy-code" type="button" aria-label="Copy the R installation commands" title="Copy code" data-analytics-id="copy_install_code" data-analytics-type="copy" data-analytics-section="install"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg></button></div>
             <pre><code>install.packages(
   "BIOSZEN",
   repos = c(
@@ -214,6 +215,7 @@ BIOSZEN::BIOSZEN()</code></pre>
           </div>
           <figure class="screenshot"><img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/03_filter_media_conditions.png" alt="BIOSZEN filters for experimental groups and media" loading="lazy"></figure>
         </div>
+        <p class="input-resources">For plate-reader outputs and other parameter tables, the recommended Platemap format records biological and technical replicates and helps keep measurements organized. See the <a href="https://github.com/bioszen/BIOSZEN/tree/main/inst/app/www/reference_files" data-analytics-id="input_examples" data-analytics-type="outbound_link" data-analytics-section="workflow">input examples</a>, or use the <a href="https://github.com/bioszen/BIOSZEN/tree/main/skills/bioszen-platemap-curves" data-analytics-id="platemap_skill" data-analytics-type="outbound_link" data-analytics-section="workflow">Platemap and Curves skill</a> with AI assistants such as Codex, Claude, Google Antigravity, and other compatible agents to convert data from other formats—including curve data—into BIOSZEN-ready files.</p>
         <div class="gallery">
           <figure><img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/plots/01_Boxplot.png" alt="Boxplot generated by BIOSZEN" loading="lazy"><figcaption>Customizable group comparison figures.</figcaption></figure>
           <figure><img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/plots/05_stacked.png" alt="Stacked plot generated by BIOSZEN" loading="lazy"><figcaption>Stacked compositions for multi-component results.</figcaption></figure>
@@ -250,7 +252,7 @@ BIOSZEN::BIOSZEN()</code></pre>
         <div class="split">
           <figure class="screenshot"><img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/13_growth_parameters_workflow.png" alt="BIOSZEN growth parameter extraction workflow" loading="lazy"></figure>
           <div class="code-card">
-            <div class="code-label"><span>Scriptable growth analysis</span><button class="copy-code" type="button" aria-label="Copy the growth analysis command" title="Copy code"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg></button></div>
+            <div class="code-label"><span>Scriptable growth analysis</span><button class="copy-code" type="button" aria-label="Copy the growth analysis command" title="Copy code" data-analytics-id="copy_growth_code" data-analytics-type="copy" data-analytics-section="growth"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg></button></div>
             <pre><code>growth_results &lt;- BIOSZEN::growth_parameters(
   "Curvas.xlsx",
   max_time = 48,
@@ -322,16 +324,16 @@ BIOSZEN::bioszen_citation()</code></pre>
           <p>Choose the route that fits your goal: install the package, read the manual, explore the demo, inspect the source, or cite the archived release.</p>
         </div>
         <div class="resource-grid">
-          <article class="resource-card"><h3>R-universe</h3><p>Install BIOSZEN and inspect its package build and documentation.</p><a href="https://bioszen.r-universe.dev/" aria-label="Install BIOSZEN from R-universe">Install</a></article>
-          <article class="resource-card"><h3>Documentation and source</h3><p>Read the English user manual or inspect the complete source code.</p><div class="resource-links"><a href="https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md" aria-label="Read the BIOSZEN user manual in English">Manual</a><a href="https://github.com/bioszen/BIOSZEN" aria-label="Open the BIOSZEN GitHub repository">GitHub</a></div></article>
-          <article class="resource-card"><h3>Online demo</h3><p>Explore a limited hosted version of the interface before installing locally.</p><a href="https://bioszen-test.share.connect.posit.cloud" aria-label="Try the limited BIOSZEN online demo">Try online</a></article>
-          <article class="resource-card"><h3>bio.tools</h3><p>Discover BIOSZEN in the community-driven life-science software registry.</p><a href="https://bio.tools/bioszen" aria-label="View the BIOSZEN bio.tools registry entry">bio.tools</a></article>
-          <article class="resource-card"><h3>Zenodo</h3><p>Access the complete BIOSZEN archive, DOI, and version history.</p><a href="https://doi.org/10.5281/zenodo.18217210" aria-label="Open the complete BIOSZEN Zenodo record">Zenodo</a></article>
-          <article class="resource-card"><h3>License</h3><p>BIOSZEN is open-source software distributed under the GPL-3.0 license.</p><a href="https://github.com/bioszen/BIOSZEN/blob/main/LICENSE" aria-label="Read the BIOSZEN GPL-3.0 license">License</a></article>
+          <article class="resource-card"><h3>R-universe</h3><p>Install BIOSZEN and inspect its package build and documentation.</p><a href="https://bioszen.r-universe.dev/" aria-label="Install BIOSZEN from R-universe" data-analytics-id="install" data-analytics-type="outbound_link" data-analytics-section="availability">Install</a></article>
+          <article class="resource-card"><h3>Documentation and source</h3><p>Read the English user manual or inspect the complete source code.</p><div class="resource-links"><a href="https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md" aria-label="Read the BIOSZEN user manual in English" data-analytics-id="manual" data-analytics-type="outbound_link" data-analytics-section="availability">Manual</a><a href="https://github.com/bioszen/BIOSZEN" aria-label="Open the BIOSZEN GitHub repository" data-analytics-id="github" data-analytics-type="outbound_link" data-analytics-section="availability">GitHub</a></div></article>
+          <article class="resource-card"><h3>Online demo</h3><p>Explore a limited hosted version of the interface before installing locally.</p><a href="https://bioszen-test.share.connect.posit.cloud" aria-label="Try the limited BIOSZEN online demo" data-analytics-id="try_online" data-analytics-type="outbound_link" data-analytics-section="availability">Try online</a></article>
+          <article class="resource-card"><h3>bio.tools</h3><p>Discover BIOSZEN in the community-driven life-science software registry.</p><a href="https://bio.tools/bioszen" aria-label="View the BIOSZEN bio.tools registry entry" data-analytics-id="bio_tools" data-analytics-type="outbound_link" data-analytics-section="availability">bio.tools</a></article>
+          <article class="resource-card"><h3>Zenodo</h3><p>Access the complete BIOSZEN archive, DOI, and version history.</p><a href="https://doi.org/10.5281/zenodo.18217210" aria-label="Open the complete BIOSZEN Zenodo record" data-analytics-id="zenodo" data-analytics-type="outbound_link" data-analytics-section="availability">Zenodo</a></article>
+          <article class="resource-card"><h3>License</h3><p>BIOSZEN is open-source software distributed under the GPL-3.0 license.</p><a href="https://github.com/bioszen/BIOSZEN/blob/main/LICENSE" aria-label="Read the BIOSZEN GPL-3.0 license" data-analytics-id="license" data-analytics-type="outbound_link" data-analytics-section="availability">License</a></article>
         </div>
         <div class="citation" style="margin-top: 2rem;">
           <h3>Citation</h3>
-          <p>Szenfeld, B. (2026). <em>BIOSZEN</em> (Version 2.1.1) [Computer software]. Zenodo. <a href="https://doi.org/10.5281/zenodo.21765136">https://doi.org/10.5281/zenodo.21765136</a></p>
+          <p>Szenfeld, B. (2026). <em>BIOSZEN</em> (Version 2.1.1) [Computer software]. Zenodo. <a href="https://doi.org/10.5281/zenodo.21765136" data-analytics-id="version_doi" data-analytics-type="outbound_link" data-analytics-section="citation">https://doi.org/10.5281/zenodo.21765136</a></p>
         </div>
       </div>
     </section>
@@ -339,7 +341,7 @@ BIOSZEN::bioszen_citation()</code></pre>
   <footer class="site-footer">
     <div class="footer-shell">
       <p><strong>BIOSZEN</strong> · Biological data analysis and visualization in R/Shiny</p>
-      <p><a href="https://github.com/bioszen/BIOSZEN/issues">Feedback and issue tracker</a></p>
+      <p><a href="https://github.com/bioszen/BIOSZEN/issues" data-analytics-id="feedback" data-analytics-type="outbound_link" data-analytics-section="footer">Feedback and issue tracker</a></p>
     </div>
   </footer>
   <script>
@@ -375,6 +377,15 @@ BIOSZEN::bioszen_citation()</code></pre>
         if (!copied) throw new Error("Copy command failed");
       }
 
+      function trackSiteAction(control) {
+        if (!control || typeof window.gtag !== "function") return;
+        window.gtag("event", "bioszen_site_action", {
+          action_id: control.dataset.analyticsId,
+          action_type: control.dataset.analyticsType || "control",
+          page_section: control.dataset.analyticsSection || "unknown"
+        });
+      }
+
       document.querySelectorAll(".copy-code").forEach(function (button) {
         var defaultLabel = button.getAttribute("aria-label");
         var resetTimer;
@@ -405,15 +416,23 @@ BIOSZEN::bioszen_citation()</code></pre>
             : Promise.resolve().then(function () { fallbackCopy(code); });
           copy.then(function () {
             showCopyState("copied");
+            trackSiteAction(button);
           }).catch(function () {
             try {
               fallbackCopy(code);
               showCopyState("copied");
+              trackSiteAction(button);
             } catch (error) {
               showCopyState("error");
             }
           });
         });
+      });
+
+      document.addEventListener("click", function (event) {
+        var control = event.target.closest("[data-analytics-id]");
+        if (!control || control.dataset.analyticsType === "copy") return;
+        trackSiteAction(control);
       });
     })();
   </script>
