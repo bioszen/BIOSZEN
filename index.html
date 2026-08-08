@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BIOSZEN | Reproducible biological data analysis</title>
+  <meta name="description" content="BIOSZEN is an open-source R/Shiny package for biological data analysis, statistics, microbial growth curves, reproducible workflows, and publication-ready figures.">
+  <meta name="author" content="Benjamín Szenfeld">
+  <meta name="theme-color" content="#12678f">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <link rel="canonical" href="https://bioszen.github.io/BIOSZEN/">
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/inst/app/www/logo_light.png">
+  <script>
+    (function () {
+      var savedTheme = null;
+      try { savedTheme = localStorage.getItem("bioszen-theme"); } catch (error) {}
+      var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var theme = savedTheme === "dark" || savedTheme === "light" ? savedTheme : (prefersDark ? "dark" : "light");
+      document.documentElement.dataset.theme = theme;
+      document.documentElement.style.colorScheme = theme;
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css?v=2.1.1-20260808h">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="BIOSZEN">
+  <meta property="og:title" content="BIOSZEN | Reproducible biological data analysis">
+  <meta property="og:description" content="Analyze biological data, run statistics and growth-curve workflows, and export reproducible, publication-ready scientific figures with BIOSZEN.">
+  <meta property="og:url" content="https://bioszen.github.io/BIOSZEN/">
+  <meta property="og:image" content="https://bioszen.github.io/BIOSZEN/site-assets/bioszen-social-preview.png">
+  <meta property="og:image:alt" content="BIOSZEN — Reproducible biological data analysis, statistics, growth curves, and editable scientific figures">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1728">
+  <meta property="og:image:height" content="910">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="BIOSZEN | Reproducible biological data analysis">
+  <meta name="twitter:description" content="Open-source biological data analysis, statistics, growth curves, and publication-ready scientific figures in R/Shiny.">
+  <meta name="twitter:image" content="https://bioszen.github.io/BIOSZEN/site-assets/bioszen-social-preview.png">
+  <meta name="twitter:image:alt" content="BIOSZEN social preview card">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "BIOSZEN",
+    "applicationCategory": "ScienceApplication",
+    "applicationSubCategory": "Biological data analysis and visualization",
+    "softwareVersion": "2.1.1",
+    "datePublished": "2026-08-08",
+    "operatingSystem": "Windows, macOS, Linux",
+    "softwareRequirements": "R >= 4.1",
+    "description": "Open-source R/Shiny software for biological data analysis, statistical workflows, microbial growth curves, reproducible exports, and scientific visualization.",
+    "url": "https://bioszen.github.io/BIOSZEN/",
+    "sameAs": [
+      "https://github.com/bioszen/BIOSZEN",
+      "https://bio.tools/bioszen",
+      "https://bioszen.r-universe.dev/"
+    ],
+    "downloadUrl": "https://bioszen.r-universe.dev/",
+    "codeRepository": "https://github.com/bioszen/BIOSZEN",
+    "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+    "author": {
+      "@type": "Person",
+      "name": "Benjamín Szenfeld",
+      "identifier": "https://orcid.org/0009-0003-4702-4149"
+    },
+    "citation": "https://doi.org/10.5281/zenodo.21765136"
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <header class="site-header">
+    <nav class="nav-shell" aria-label="Primary navigation">
+      <a class="brand" href="#top" aria-label="BIOSZEN home">
+        <img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/inst/app/www/logo_light.png" alt="" width="96" height="96">
+        <span>BIOSZEN</span>
+      </a>
+      <div class="nav-actions">
+        <ul class="nav-links">
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#install">Install</a></li>
+          <li><a href="#workflow">Workflow</a></li>
+          <li><a href="#growth">Growth curves</a></li>
+          <li><a href="#availability">Availability</a></li>
+        </ul>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Use dark mode" aria-pressed="false"><span id="theme-label">Dark</span></button>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main-content">
+    <section class="hero" id="top">
+      <div class="hero-shell">
+        <div class="hero-copy">
+          <span class="eyebrow">Open-source R/Shiny software</span>
+          <h1>From experimental data to reproducible analysis and editable scientific figures</h1>
+          <p class="hero-byline">Benjamín Szenfeld · BIOSZEN 2.1.1 · August 2026</p>
+          <p class="lead"><strong>BIOSZEN</strong> helps researchers turn Excel tables, CSV files, and optical-density time series into statistical results, growth parameters, customizable plots, and reproducible exports—without requiring plotting code.</p>
+          <div class="cta-group" aria-label="BIOSZEN links">
+            <a class="button button-primary" href="https://bioszen.r-universe.dev/" aria-label="Install BIOSZEN from R-universe">Install</a>
+            <a class="button button-secondary" href="https://bioszen-test.share.connect.posit.cloud" aria-label="Try the limited BIOSZEN online demo">Try online</a>
+            <a class="button button-secondary" href="https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md" aria-label="Read the BIOSZEN user manual in English">Manual</a>
+            <a class="button button-secondary" href="https://github.com/bioszen/BIOSZEN" aria-label="Open the BIOSZEN source code on GitHub">GitHub</a>
+          </div>
+          <div class="hero-meta" aria-label="Project facts">
+            <span class="pill">R 4.1+</span>
+            <span class="pill">GPL-3.0</span>
+            <span class="pill">Local-first workflow</span>
+          </div>
+        </div>
+        <figure class="hero-visual">
+          <a class="hero-screenshot-link" href="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/01_app_home_overview.png" target="_blank" rel="noopener" aria-label="Open the BIOSZEN home screen at full resolution">
+            <img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/01_app_home_overview.png" alt="BIOSZEN application home screen showing its biological data analysis workspace" width="2014" height="884">
+          </a>
+          <figcaption>BIOSZEN home workspace. Select the image to view it at full resolution.</figcaption>
+        </figure>
+      </div>
+      <div class="trust-strip" aria-label="BIOSZEN at a glance">
+        <div class="trust-item"><strong>R/Shiny</strong><span>Guided analysis</span></div>
+        <div class="trust-item"><strong>R-universe</strong><span>Package distribution</span></div>
+        <div class="trust-item"><strong>Zenodo</strong><span>Archived and citable</span></div>
+        <div class="trust-item"><strong>bio.tools</strong><span>Life-science registry</span></div>
+      </div>
+    </section>
+
+    <section class="section" id="overview">
+      <div class="section-shell">
+        <div class="section-heading">
+          <span class="eyebrow">Why BIOSZEN</span>
+          <h2>One workflow, from input to scientific communication</h2>
+          <p>BIOSZEN brings data preparation, exploratory visualization, statistical analysis, growth-curve analysis, figure assembly, and reproducibility records into one guided local workflow.</p>
+        </div>
+        <div class="card-grid">
+          <article class="card"><span class="card-number">01</span><h3>Accessible analysis</h3><p>Work through a graphical interface while retaining scriptable R functions for repeatable pipelines.</p></article>
+          <article class="card"><span class="card-number">02</span><h3>Biological statistics</h3><p>Use normalization, replicate-aware quality control, normality tests, significance tests, post hoc comparisons, and multiple-testing correction.</p></article>
+          <article class="card"><span class="card-number">03</span><h3>Scientific figures</h3><p>Create boxplots, bar plots, violin plots, curves, stacked plots, heatmaps, correlation plots, and correlation matrices.</p></article>
+          <article class="card"><span class="card-number">04</span><h3>Reproducible outputs</h3><p>Export processed data, statistics, metadata, plots, composition panels, and reusable ZIP bundles.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="audience-section" id="audience" aria-labelledby="audience-title">
+      <div class="section-shell audience-shell">
+        <div>
+          <span class="eyebrow">Audience</span>
+          <h2 id="audience-title">Who is BIOSZEN for?</h2>
+        </div>
+        <p>Experimental biologists, microbiologists, students, and research teams that want guided biological data analysis with reproducible R workflows and publication-ready outputs.</p>
+      </div>
+    </section>
+
+    <section class="section section-tint" id="install">
+      <div class="section-shell split">
+        <div>
+          <div class="section-heading">
+            <span class="eyebrow">Install and launch</span>
+            <h2>Start locally with R 4.1 or later</h2>
+            <p>BIOSZEN is distributed through R-universe. After installation, launch it from R or from the BIOSZEN RStudio Addin.</p>
+          </div>
+          <div class="code-card">
+            <div class="code-label"><span>R</span><button class="copy-code" type="button" aria-label="Copy the R installation commands" title="Copy code"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg></button></div>
+            <pre><code>install.packages(
+  "BIOSZEN",
+  repos = c(
+    "https://bioszen.r-universe.dev",
+    "https://cloud.r-project.org"
+  )
+)
+
+BIOSZEN::BIOSZEN()</code></pre>
+          </div>
+        </div>
+        <div>
+          <div class="note-card"><strong>Local installation</strong><p>The complete workflow runs on the user's computer. Files loaded into the local session are processed locally.</p></div>
+          <div class="note-card"><strong>RStudio Addin</strong><p>After installation and an RStudio restart, select <b>Addins &gt; Launch BIOSZEN in Browser</b>.</p></div>
+          <div class="note-card"><strong>Limited online demo</strong><p>Use the hosted demo to explore the interface. Prefer the local installation for the complete workflow and for sensitive experimental data.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="workflow">
+      <div class="section-shell">
+        <div class="section-heading">
+          <span class="eyebrow">Complete workflow</span>
+          <h2>Move from raw observations to reusable results</h2>
+          <p>The recommended Platemap + Curves workflow combines a structured experimental workbook with optional well-based time-series measurements.</p>
+        </div>
+        <div class="workflow">
+          <article class="step"><span class="step-label">Step 1</span><h3>Prepare</h3><p>Use Platemap + Curves, grouped parameters, summary tables, or CSV input.</p></article>
+          <article class="step"><span class="step-label">Step 2</span><h3>Load</h3><p>Import the primary experimental file and, when needed, the well-based time series.</p></article>
+          <article class="step"><span class="step-label">Step 3</span><h3>Inspect</h3><p>Validate groups, parameters, replicates, and well mappings before analysis.</p></article>
+          <article class="step"><span class="step-label">Step 4</span><h3>Visualize</h3><p>Configure plot families, labels, axes, fonts, colors, legends, and annotations.</p></article>
+          <article class="step"><span class="step-label">Step 5</span><h3>Analyze</h3><p>Normalize against controls, run statistical tests, and inspect significance results.</p></article>
+          <article class="step"><span class="step-label">Step 6</span><h3>Export</h3><p>Save plots, tables, metadata, PowerPoint figures, and reproducibility bundles.</p></article>
+        </div>
+        <div class="split" style="margin-top: 3rem;">
+          <div>
+            <h3>Flexible experimental inputs</h3>
+            <p>The recommended primary workbook contains a <code>Datos</code> sheet with observations and a <code>PlotSettings</code> sheet with plotting metadata. A separate curves file can provide a <code>Time</code> column and well measurements such as <code>A1</code>, <code>A2</code>, and <code>A3</code>.</p>
+            <ul class="check-list">
+              <li>Grouped-parameter workbooks</li>
+              <li>Summary inputs with mean, standard deviation, and sample size</li>
+              <li>CSV input for larger datasets</li>
+              <li>Biological and technical replicate information</li>
+            </ul>
+          </div>
+          <figure class="screenshot"><img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/03_filter_media_conditions.png" alt="BIOSZEN filters for experimental groups and media" loading="lazy"></figure>
+        </div>
+        <div class="gallery">
+          <figure><img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/plots/01_Boxplot.png" alt="Boxplot generated by BIOSZEN" loading="lazy"><figcaption>Customizable group comparison figures.</figcaption></figure>
+          <figure><img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/plots/05_stacked.png" alt="Stacked plot generated by BIOSZEN" loading="lazy"><figcaption>Stacked compositions for multi-component results.</figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-tint">
+      <div class="section-shell split">
+        <div>
+          <div class="section-heading">
+            <span class="eyebrow">Statistics</span>
+            <h2>Normalize, test, compare, and annotate</h2>
+            <p>BIOSZEN supports control-based normalization with replicate-aware behavior and provides a guided route from assumption checks to significance results.</p>
+          </div>
+          <ul class="check-list">
+            <li>Shapiro-Wilk, Kolmogorov-Smirnov, and Anderson-Darling normality tests</li>
+            <li>ANOVA, Kruskal-Wallis, Student's t-test, and Wilcoxon tests</li>
+            <li>Post hoc comparisons and multiple-testing correction: Holm, FDR (Benjamini-Hochberg), Bonferroni, or none</li>
+            <li>Significance tables and annotations for supported plot types</li>
+          </ul>
+        </div>
+        <figure class="screenshot"><img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/09_significance_tests_setup.png" alt="Statistical test configuration in BIOSZEN" loading="lazy"></figure>
+      </div>
+    </section>
+
+    <section class="section" id="growth">
+      <div class="section-shell">
+        <div class="section-heading">
+          <span class="eyebrow">Growth curves</span>
+          <h2>Extract biologically useful parameters from time series</h2>
+          <p>The growth module plots trajectories and calculates parameters independently for each well or curve. It uses a robust exponential-phase detector first and a permissive detector only to complete estimates that remain missing.</p>
+        </div>
+        <div class="split">
+          <figure class="screenshot"><img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/13_growth_parameters_workflow.png" alt="BIOSZEN growth parameter extraction workflow" loading="lazy"></figure>
+          <div class="code-card">
+            <div class="code-label"><span>Scriptable growth analysis</span><button class="copy-code" type="button" aria-label="Copy the growth analysis command" title="Copy code"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg></button></div>
+            <pre><code>growth_results &lt;- BIOSZEN::growth_parameters(
+  "Curvas.xlsx",
+  max_time = 48,
+  time_interval = 0.5,
+  output_dir = "growth_results",
+  overwrite = FALSE
+)</code></pre>
+          </div>
+        </div>
+        <div class="table-wrap" role="region" aria-label="Growth parameter definitions" tabindex="0">
+          <table class="parameter-table">
+            <thead><tr><th>Parameter</th><th>What it represents</th><th>How to interpret it</th></tr></thead>
+            <tbody>
+              <tr><td><code>µMax</code></td><td>Maximum specific growth rate estimated during the detected exponential-growth interval.</td><td>Higher values indicate faster exponential growth; units are inverse time.</td></tr>
+              <tr><td><code>max_percap_time</code></td><td>Mean time of the interval used to estimate <code>µMax</code>.</td><td>Locates the strongest exponential-growth interval on the time axis.</td></tr>
+              <tr><td><code>doub_time</code></td><td>Estimated doubling time, calculated as <code>log(2) / µMax</code>.</td><td>Lower values indicate faster growth.</td></tr>
+              <tr><td><code>lag_time</code></td><td>Estimated start of the detected exponential phase.</td><td>Larger values indicate a longer delay before rapid growth.</td></tr>
+              <tr><td><code>ODmax</code></td><td>Highest observed optical-density value.</td><td>Maximum recorded density during the experiment.</td></tr>
+              <tr><td><code>max_time</code></td><td>First time at which <code>ODmax</code> is observed.</td><td>Indicates when the maximum recorded density is reached.</td></tr>
+              <tr><td><code>AUC</code></td><td>Area under the complete OD-versus-time curve.</td><td>Summarizes accumulated growth across the experiment.</td></tr>
+              <tr><td><code>OD0</code></td><td>First valid measurement after observations are ordered by time.</td><td>Describes starting density or baseline OD.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="callout"><strong>Units:</strong> time-related parameters inherit the unit used in the input <code>Time</code> column.</p>
+      </div>
+    </section>
+
+    <section class="section section-tint" id="exports">
+      <div class="section-shell split">
+        <div>
+          <div class="section-heading">
+            <span class="eyebrow">Export and reproduce</span>
+            <h2>Prepare figures while preserving the analysis behind them</h2>
+            <p>Export individual plots, multi-plot composition panels, processed workbooks, statistical tables, metadata, and reusable analysis bundles.</p>
+          </div>
+          <ul class="check-list">
+            <li>PNG and PDF figures</li>
+            <li>Processed Excel workbooks and statistical tables</li>
+            <li>PowerPoint figures and composition panels</li>
+            <li>Metadata import/export and ZIP bundles</li>
+          </ul>
+        </div>
+        <div>
+          <div class="code-card">
+            <div class="code-label"><span>BIOSZEN from R scripts</span></div>
+            <pre><code># Launch the app
+BIOSZEN::BIOSZEN()
+
+# Extract growth parameters
+results &lt;- BIOSZEN::growth_parameters("Curvas.xlsx")
+
+# Check or install an approved update
+BIOSZEN::bioszen_update_available()
+BIOSZEN::bioszen_update()
+
+# Display the official citation
+BIOSZEN::bioszen_citation()</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="availability">
+      <div class="section-shell">
+        <div class="section-heading">
+          <span class="eyebrow">Availability</span>
+          <h2>Open, citable, and easy to discover</h2>
+          <p>Choose the route that fits your goal: install the package, read the manual, explore the demo, inspect the source, or cite the archived release.</p>
+        </div>
+        <div class="resource-grid">
+          <article class="resource-card"><h3>R-universe</h3><p>Install BIOSZEN and inspect its package build and documentation.</p><a href="https://bioszen.r-universe.dev/" aria-label="Install BIOSZEN from R-universe">Install</a></article>
+          <article class="resource-card"><h3>Documentation and source</h3><p>Read the English user manual or inspect the complete source code.</p><div class="resource-links"><a href="https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md" aria-label="Read the BIOSZEN user manual in English">Manual</a><a href="https://github.com/bioszen/BIOSZEN" aria-label="Open the BIOSZEN GitHub repository">GitHub</a></div></article>
+          <article class="resource-card"><h3>Online demo</h3><p>Explore a limited hosted version of the interface before installing locally.</p><a href="https://bioszen-test.share.connect.posit.cloud" aria-label="Try the limited BIOSZEN online demo">Try online</a></article>
+          <article class="resource-card"><h3>bio.tools</h3><p>Discover BIOSZEN in the community-driven life-science software registry.</p><a href="https://bio.tools/bioszen" aria-label="View the BIOSZEN bio.tools registry entry">bio.tools</a></article>
+          <article class="resource-card"><h3>Zenodo</h3><p>Access the complete BIOSZEN archive, DOI, and version history.</p><a href="https://doi.org/10.5281/zenodo.18217210" aria-label="Open the complete BIOSZEN Zenodo record">Zenodo</a></article>
+          <article class="resource-card"><h3>License</h3><p>BIOSZEN is open-source software distributed under the GPL-3.0 license.</p><a href="https://github.com/bioszen/BIOSZEN/blob/main/LICENSE" aria-label="Read the BIOSZEN GPL-3.0 license">License</a></article>
+        </div>
+        <div class="citation" style="margin-top: 2rem;">
+          <h3>Citation</h3>
+          <p>Szenfeld, B. (2026). <em>BIOSZEN</em> (Version 2.1.1) [Computer software]. Zenodo. <a href="https://doi.org/10.5281/zenodo.21765136">https://doi.org/10.5281/zenodo.21765136</a></p>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="footer-shell">
+      <p><strong>BIOSZEN</strong> · Biological data analysis and visualization in R/Shiny</p>
+      <p><a href="https://github.com/bioszen/BIOSZEN/issues">Feedback and issue tracker</a></p>
+    </div>
+  </footer>
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var toggle = document.getElementById("theme-toggle");
+      var label = document.getElementById("theme-label");
+      function updateToggle() {
+        var dark = root.dataset.theme === "dark";
+        label.textContent = dark ? "Light" : "Dark";
+        toggle.setAttribute("aria-label", dark ? "Use light mode" : "Use dark mode");
+        toggle.setAttribute("aria-pressed", String(dark));
+      }
+      toggle.addEventListener("click", function () {
+        var next = root.dataset.theme === "dark" ? "light" : "dark";
+        root.dataset.theme = next;
+        root.style.colorScheme = next;
+        try { localStorage.setItem("bioszen-theme", next); } catch (error) {}
+        updateToggle();
+      });
+      updateToggle();
+
+      function fallbackCopy(text) {
+        var field = document.createElement("textarea");
+        field.value = text;
+        field.setAttribute("readonly", "");
+        field.style.position = "fixed";
+        field.style.opacity = "0";
+        document.body.appendChild(field);
+        field.select();
+        var copied = document.execCommand("copy");
+        document.body.removeChild(field);
+        if (!copied) throw new Error("Copy command failed");
+      }
+
+      document.querySelectorAll(".copy-code").forEach(function (button) {
+        var defaultLabel = button.getAttribute("aria-label");
+        var resetTimer;
+        function showCopyState(state) {
+          window.clearTimeout(resetTimer);
+          delete button.dataset.copied;
+          delete button.dataset.error;
+          if (state === "copied") {
+            button.dataset.copied = "true";
+            button.setAttribute("aria-label", "Copied to clipboard");
+            button.title = "Copied";
+          } else {
+            button.dataset.error = "true";
+            button.setAttribute("aria-label", "Copy failed; try again");
+            button.title = "Try again";
+          }
+          resetTimer = window.setTimeout(function () {
+            delete button.dataset.copied;
+            delete button.dataset.error;
+            button.setAttribute("aria-label", defaultLabel);
+            button.title = "Copy code";
+          }, 1600);
+        }
+        button.addEventListener("click", function () {
+          var code = button.closest(".code-card").querySelector("code").textContent;
+          var copy = navigator.clipboard && window.isSecureContext
+            ? navigator.clipboard.writeText(code)
+            : Promise.resolve().then(function () { fallbackCopy(code); });
+          copy.then(function () {
+            showCopyState("copied");
+          }).catch(function () {
+            try {
+              fallbackCopy(code);
+              showCopyState("copied");
+            } catch (error) {
+              showCopyState("error");
+            }
+          });
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

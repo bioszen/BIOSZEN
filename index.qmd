@@ -1,0 +1,227 @@
+---
+title: "BIOSZEN | Reproducible biological data analysis"
+author: "Benjamín Szenfeld"
+date: "2026-08-08"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    smooth-scroll: true
+    code-copy: true
+    embed-resources: true
+    theme:
+      light: cosmo
+      dark: darkly
+    css: styles.css
+    include-in-header:
+      text: |
+        <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          "name": "BIOSZEN",
+          "applicationCategory": "ScienceApplication",
+          "applicationSubCategory": "Biological data analysis and visualization",
+          "softwareVersion": "2.1.1",
+          "datePublished": "2026-08-08",
+          "operatingSystem": "Windows, macOS, Linux",
+          "softwareRequirements": "R >= 4.1",
+          "description": "Open-source R/Shiny software for biological data analysis, statistical workflows, microbial growth curves, reproducible exports, and scientific visualization.",
+          "url": "https://bioszen.github.io/BIOSZEN/",
+          "sameAs": [
+            "https://github.com/bioszen/BIOSZEN",
+            "https://bio.tools/bioszen",
+            "https://bioszen.r-universe.dev/"
+          ],
+          "downloadUrl": "https://bioszen.r-universe.dev/",
+          "codeRepository": "https://github.com/bioszen/BIOSZEN",
+          "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+          "author": {
+            "@type": "Person",
+            "name": "Benjamín Szenfeld",
+            "identifier": "https://orcid.org/0009-0003-4702-4149"
+          },
+          "citation": "https://doi.org/10.5281/zenodo.21765136"
+        }
+        </script>
+description: "BIOSZEN is an open-source R/Shiny package for biological data analysis, statistics, microbial growth curves, reproducible workflows, and publication-ready figures."
+favicon: "https://raw.githubusercontent.com/bioszen/BIOSZEN/main/inst/app/www/logo_light.png"
+website:
+  site-url: "https://bioszen.github.io/BIOSZEN/"
+image: "site-assets/bioszen-social-preview.png"
+twitter-card:
+  card-style: summary_large_image
+open-graph: true
+categories:
+  - R
+  - Shiny
+  - data visualization
+  - statistics
+  - microbiology
+  - reproducible research
+---
+
+<!-- index.qmd is the editable website source. index.html is the static GitHub Pages output. -->
+
+::: {.hero}
+![](https://raw.githubusercontent.com/bioszen/BIOSZEN/main/inst/app/www/logo_light.png){fig-alt="BIOSZEN logo" width=220}
+
+# From experimental data to reproducible analysis and editable scientific figures
+
+<p class="hero-byline">Benjamín Szenfeld · BIOSZEN 2.1.1 · August 2026</p>
+
+**BIOSZEN** is an open-source R package with a modular Shiny application for biological data analysis and visualization. It helps researchers turn Excel tables, CSV files, and optical-density time series into statistical results, growth parameters, customizable plots, and reproducible exports without requiring plotting code.
+
+[Install](https://bioszen.r-universe.dev/){.button .button-primary}
+[Try online](https://bioszen-test.share.connect.posit.cloud){.button .button-secondary}
+[Manual](https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md){.button .button-secondary}
+[GitHub](https://github.com/bioszen/BIOSZEN){.button .button-secondary}
+:::
+
+## One workflow, from input to communication
+
+BIOSZEN brings data preparation, exploratory visualization, statistical analysis, growth-curve analysis, figure assembly, and reproducibility records into one guided local workflow.
+
+- **Accessible analysis:** work through a graphical interface while retaining scriptable R functions for repeatable pipelines.
+- **Biological statistics:** use control-based normalization, replicate-aware quality control, normality tests, significance tests, post hoc comparisons, and multiple-testing correction.
+- **Scientific figures:** create boxplots, bar plots, violin plots, curves, stacked plots, heatmaps, correlation plots, and correlation matrices.
+- **Reproducible outputs:** export processed data, statistics, metadata, plots, composition panels, and reusable ZIP bundles.
+
+![](https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/01_app_home_overview.png){fig-alt="BIOSZEN application overview" .screenshot}
+
+## Who is BIOSZEN for?
+
+Experimental biologists, microbiologists, students, and research teams that want guided biological data analysis with reproducible R workflows and publication-ready outputs.
+
+## Install and launch
+
+BIOSZEN is available from R-universe and requires R 4.1 or later.
+
+```r
+install.packages(
+  "BIOSZEN",
+  repos = c(
+    "https://bioszen.r-universe.dev",
+    "https://cloud.r-project.org"
+  )
+)
+
+BIOSZEN::BIOSZEN()
+```
+
+After restarting RStudio, BIOSZEN can also be opened from **Addins > Launch BIOSZEN in Browser**.
+
+The installed application runs locally: files loaded into the local session are processed on the user's computer. The [limited online demo](https://bioszen-test.share.connect.posit.cloud) is useful for exploring the interface; use the local installation for the complete workflow and for sensitive experimental data.
+
+## Complete analysis workflow
+
+1. **Prepare:** use a Platemap + Curves workbook structure, grouped parameters, summary tables, or CSV input.
+2. **Load:** import the primary experimental file and, when needed, the well-based time series.
+3. **Inspect:** validate groups, parameters, replicates, and well mappings before analysis.
+4. **Visualize:** choose a plot family and configure labels, axes, fonts, colors, legends, and annotations.
+5. **Analyze:** normalize against controls, run statistical tests, and inspect significance results.
+6. **Export:** save plots, tables, metadata, PowerPoint figures, and reproducibility bundles.
+
+### Prepare and validate the experiment
+
+The recommended workflow uses a **Platemap + Curves** structure. The primary workbook contains a `Datos` sheet with experimental observations and a `PlotSettings` sheet describing plotting metadata. A separate curves file contains a `Time` column and well-based measurements such as `A1`, `A2`, and `A3`.
+
+BIOSZEN also supports grouped-parameter workbooks, summary inputs containing mean, standard deviation, and sample size, and CSV input for larger datasets. Example files and templates are included in the repository.
+
+For plate-based experiments, the values in the `Well` column must correspond to the curve column names.
+
+### Filter, visualize, and compare
+
+Users can select groups, media or conditions, parameters, and replicates. Biological and technical replicate information can support manual quality control and reproducibility-oriented filtering.
+
+![](https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/03_filter_media_conditions.png){fig-alt="Filtering experimental conditions in BIOSZEN" .screenshot}
+
+Plot settings include labels, axes, fonts, colors, legends, annotations, dimensions, and output resolution.
+
+::: {.gallery}
+![](https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/plots/01_Boxplot.png){fig-alt="Boxplot generated by BIOSZEN"}
+![](https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/plots/05_stacked.png){fig-alt="Stacked plot generated by BIOSZEN"}
+:::
+
+### Normalize and run statistical analyses
+
+BIOSZEN supports control-based normalization while retaining replicate-aware behavior. It provides Shapiro-Wilk, Kolmogorov-Smirnov, and Anderson-Darling normality tests. Depending on the design and data structure, users can run ANOVA, Kruskal-Wallis, Student's t-test, or Wilcoxon tests, together with post hoc comparisons and multiple-testing correction using Holm, FDR (Benjamini-Hochberg), Bonferroni, or no correction.
+
+Significance results can be reviewed as tables and incorporated into supported plot types.
+
+![](https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/09_significance_tests_setup.png){fig-alt="Statistical test configuration in BIOSZEN" .screenshot}
+
+## Analyze microbial growth curves
+
+The growth module plots optical-density trajectories and extracts biologically useful parameters for each well or curve. BIOSZEN first applies its robust exponential-phase detector and uses the permissive detector only to complete values that the robust method could not estimate.
+
+![](https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/13_growth_parameters_workflow.png){fig-alt="BIOSZEN growth parameter workflow" .screenshot}
+
+```r
+growth_results <- BIOSZEN::growth_parameters(
+  "Curvas.xlsx",
+  max_time = 48,
+  time_interval = 0.5,
+  output_dir = "growth_results",
+  overwrite = FALSE
+)
+```
+
+| Parameter | What it represents | Interpretation |
+|---|---|---|
+| `µMax` | Maximum specific growth rate estimated during the detected exponential-growth interval. | Higher values indicate faster exponential growth; units are inverse time. |
+| `max_percap_time` | Mean time of the interval used to estimate `µMax`. | Locates the strongest exponential-growth interval on the time axis. |
+| `doub_time` | Estimated doubling time, calculated as `log(2) / µMax`. | Lower values indicate faster growth. |
+| `lag_time` | Estimated start of the detected exponential phase. | Larger values indicate a longer delay before rapid growth. |
+| `ODmax` | Highest observed optical-density value. | Maximum recorded density during the experiment. |
+| `max_time` | First time at which `ODmax` is observed. | Indicates when the maximum recorded density is reached. |
+| `AUC` | Area under the complete OD-versus-time curve. | Summarizes accumulated growth across the experiment. |
+| `OD0` | First valid measurement after observations are ordered by time. | Describes starting density or baseline OD. |
+
+Time-related parameters inherit the unit used in the input `Time` column.
+
+## Export publication-ready results
+
+Individual plots and multi-plot composition panels can be exported for analysis records, manuscripts, posters, presentations, and reports. BIOSZEN supports PNG, PDF, processed Excel workbooks, statistical tables, metadata, ZIP bundles, and PowerPoint files.
+
+## Preserve and reuse the analysis
+
+Once the analysis is configured, users can export its metadata and create a ZIP bundle containing the relevant outputs. Metadata can later be imported to restore the analysis state and reproduce the figure-generation workflow.
+
+The app is the primary interactive interface, while exported package commands support scripts and automated pipelines:
+
+```r
+# Launch BIOSZEN
+BIOSZEN::BIOSZEN()
+
+# Extract growth parameters
+results <- BIOSZEN::growth_parameters("Curvas.xlsx")
+
+# Check for and install an approved update
+BIOSZEN::bioszen_update_available()
+BIOSZEN::bioszen_update()
+
+# Display the official citation
+BIOSZEN::bioszen_citation()
+```
+
+## Availability
+
+- **Project website:** <https://bioszen.github.io/BIOSZEN/>
+- **English user manual:** <https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md>
+- **bio.tools registry:** <https://bio.tools/bioszen>
+- **Source code and issues:** <https://github.com/bioszen/BIOSZEN>
+- **R-universe:** <https://bioszen.r-universe.dev/>
+- **Limited online demo:** <https://bioszen-test.share.connect.posit.cloud>
+- **Complete Zenodo record and version history:** <https://doi.org/10.5281/zenodo.18217210>
+- **License:** GPL-3.0
+
+## Citation
+
+If you use this version of BIOSZEN in research, please cite:
+
+> Szenfeld, B. (2026). *BIOSZEN* (Version 2.1.1) [Computer software]. Zenodo. <https://doi.org/10.5281/zenodo.21765136>
+
+## Feedback and contributions
+
+Bug reports and feature suggestions can be submitted through the [BIOSZEN issue tracker](https://github.com/bioszen/BIOSZEN/issues). Feedback on installation, usability, input compatibility, statistical workflows, growth-curve analysis, and figure export is especially welcome.

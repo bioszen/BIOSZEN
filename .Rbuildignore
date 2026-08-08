@@ -38,6 +38,13 @@
 ^\.local-tools$
 ^inst/launchers/bioszen_r\.log$
 ^setup\.sh$
+^index\.html$
+^index\.qmd$
+^styles\.css$
+^site-assets$
+^robots\.txt$
+^sitemap\.xml$
+^_site$
 ^%$
 ^reflog\.txt$
 ^renderui_lines\.txt$

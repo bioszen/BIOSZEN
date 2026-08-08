@@ -5,6 +5,8 @@
 
 **Biological data analysis and visualization in R/Shiny**  
 From data import to reproducible plots, statistics, metadata, and bundle exports.
+
+[Project website](https://bioszen.github.io/BIOSZEN/) · [English manual](inst/app/www/MANUAL_EN.md) · [bio.tools](https://bio.tools/bioszen) · [R-universe](https://bioszen.r-universe.dev/) · [Zenodo](https://doi.org/10.5281/zenodo.18217210)
 </div>
 
 ![BIOSZEN home overview](Gallery/screenshots/app/01_app_home_overview.png)
@@ -18,6 +20,7 @@ From data import to reproducible plots, statistics, metadata, and bundle exports
 ## Table of Contents
 
 - [Why BIOSZEN](#why-bioszen)
+- [Availability and Discovery](#availability-and-discovery)
 - [Core Capabilities](#core-capabilities)
 - [Quick Start](#quick-start)
 - [R Commands](#r-commands)
@@ -35,15 +38,27 @@ From data import to reproducible plots, statistics, metadata, and bundle exports
 
 BIOSZEN is an R package with a modular Shiny app focused on biological experiment analysis. It helps you go from raw data to publication-ready visualizations while preserving reproducibility through metadata and bundle exports.
 
+## Availability and Discovery
+
+- **Project website:** <https://bioszen.github.io/BIOSZEN/>
+- **English user manual:** [MANUAL_EN.md](inst/app/www/MANUAL_EN.md)
+- **bio.tools registry:** <https://bio.tools/bioszen>
+- **R-universe package page:** <https://bioszen.r-universe.dev/>
+- **Limited online demo:** <https://bioszen-test.share.connect.posit.cloud>
+- **Complete Zenodo record and version history:** <https://doi.org/10.5281/zenodo.18217210>
+
+The bio.tools listing gives BIOSZEN a dedicated, persistent entry in the
+community-driven registry of software and data resources for the life sciences.
+
 ## Core Capabilities
 
 - Plot families: **Boxplot**, **Barplot**, **Violin**, **Curves**, **Stacked**, **Correlation**, **Heatmap**, **Correlation Matrix**.
-- Statistical workflows: normality checks, significance testing, post hoc comparisons, p-value correction.
+- Statistical workflows: normality checks, significance testing, post hoc comparisons, and multiple-testing correction with Holm, FDR (Benjamini-Hochberg), Bonferroni, or no correction.
 - Control-based normalization with replicate-aware behavior.
 - Biological and technical replicate QC (manual + automatic strategies).
 - Composition panel for multi-plot layouts and export (`PNG`, `PDF`, `PPTX`).
 - Reproducibility features: metadata export/import and ZIP bundles.
-- Growth module with extracted metrics: `uMax`, `doub_time`, `lag_time`, `AUC`, `ODmax`, and related fields.
+- Growth module with extracted metrics: `µMax`, `doub_time`, `lag_time`, `AUC`, `ODmax`, and related fields.
 
 ## Quick Start
 
@@ -131,6 +146,8 @@ result <- BIOSZEN::growth_parameters("Curvas.xlsx")
 # Optional workbook output; no file is written when output_dir is NULL
 result <- BIOSZEN::growth_parameters(
   "Curvas.xlsx",
+  max_time = 48,
+  time_interval = 0.5,
   output_dir = "growth_results",
   overwrite = FALSE
 )
@@ -229,7 +246,7 @@ permissive fallback as the Shiny module and returns the same parameter columns.
 
 ## Documentation
 
-- Main English manual: `inst/app/www/MANUAL_EN.md`
+- [Main English user manual](inst/app/www/MANUAL_EN.md)
 - Main Spanish manual: `inst/app/www/MANUAL_ES.md`
 - PDF manuals:
   - `inst/app/www/MANUAL_EN.pdf`
@@ -285,7 +302,7 @@ not change the BIOSZEN Shiny application.
 
 ## Citation
 
-Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210
+Szenfeld, B. (2026). BIOSZEN (Version 2.1.1) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.21765136
 
 In R:
 

@@ -12,6 +12,7 @@
 .agents/
 .codex-tmp/
 outputs/
+_site/
 
 # Local helper tools kept outside release/repo scope
 .local-tools/

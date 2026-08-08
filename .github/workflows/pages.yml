@@ -1,0 +1,57 @@
+name: Deploy BIOSZEN website to GitHub Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - index.html
+      - styles.css
+      - robots.txt
+      - sitemap.xml
+      - site-assets/**
+      - .github/workflows/pages.yml
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Assemble website-only artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site/site-assets
+          cp index.html styles.css robots.txt sitemap.xml _site/
+          cp site-assets/bioszen-social-preview.png _site/site-assets/
+          touch _site/.nojekyll
+          test -s _site/index.html
+          test -s _site/styles.css
+          test -s _site/site-assets/bioszen-social-preview.png
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

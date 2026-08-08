@@ -111,7 +111,9 @@ configure_shiny_upload_limit()
 
 sys.source(file.path(app_dir, "config.R"), envir = app_env)          # constantes compartidas
 
-sys.source(file.path(app_dir, "global.R"), envir = app_env)          # paquetes y configuraciones generales
+suppressPackageStartupMessages(
+  sys.source(file.path(app_dir, "global.R"), envir = app_env)
+)                                                                    # paquetes y configuraciones generales
 
 sys.source(file.path(app_dir, "helpers.R"), envir = app_env)         # funciones compartidas
 

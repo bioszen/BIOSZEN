@@ -211,6 +211,12 @@ test_that("direct source launchers emit the BIOSZEN startup citation", {
   expect_match(embedded_launcher, "\\.bioszen_emit_app_startup_citation\\s*<-\\s*function", perl = TRUE)
   expect_match(embedded_launcher, "\\.bioszen_startup_citation_text\\(\\)", perl = TRUE)
   expect_match(embedded_launcher, "BIOSZEN_LAUNCHER_CITATION_SHOWN", fixed = TRUE)
+  expect_match(
+    embedded_launcher,
+    "suppressPackageStartupMessages\\(\\s*sys\\.source\\(file\\.path\\(app_dir, \"global\\.R\"\\)",
+    perl = TRUE,
+    info = "Dependency attachment chatter should be hidden without suppressing warnings or errors."
+  )
   expect_match(embedded_launcher, "schedule_fun\\(function\\(\\) packageStartupMessage\\(citation_message\\), delay = 0\\)", perl = TRUE)
   expect_match(embedded_launcher, "\\.bioszen_emit_app_startup_citation\\(\\)", perl = TRUE)
   expect_match(
