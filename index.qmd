@@ -16,13 +16,13 @@ format:
     include-in-header:
       text: |
         <!-- Google tag (gtag.js) -->
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-HEDN1THD14"></script>
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-6WTZT98DLP"></script>
         <script>
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
           gtag('js', new Date());
 
-          gtag('config', 'G-HEDN1THD14');
+          gtag('config', 'G-6WTZT98DLP');
         </script>
         <script type="application/ld+json">
         {
