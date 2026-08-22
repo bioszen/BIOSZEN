@@ -28,6 +28,20 @@ test_that("inst/app/app.R can be sourced from the package root", {
   expect_s3_class(app, "shiny.appobj")
 })
 
+test_that("package-root runApp does not autoload package R files", {
+  root <- normalizePath(app_test_root(), winslash = "/", mustWork = TRUE)
+  marker <- file.path(root, "R", "_disable_autoload.R")
+
+  expect_true(file.exists(marker))
+
+  support_env <- new.env(parent = globalenv())
+  expect_warning(
+    shiny:::loadSupport(root, renv = support_env, globalrenv = NULL),
+    NA
+  )
+  expect_length(ls(support_env, all.names = TRUE), 0L)
+})
+
 test_that("shared helpers are defined only in helpers.R", {
   global_file <- app_test_path( "global.R")
   helpers_file <- app_test_path( "helpers.R")

@@ -5,6 +5,9 @@
 # 3) Use a local ./R_libs/<R major.minor>
 # 4) Install BIOSZEN from embedded/nearby archives or extracted sources if needed
 
+# Keep launcher-only helpers and temporary values out of the user's workspace.
+local({
+
 options(
   shiny.host = "127.0.0.1",
   shiny.port = 4321
@@ -1269,5 +1272,12 @@ if (restart_in_clean_process) {
   if ("launch.browser" %in% fm) args$launch.browser <- open_app_browser
 
   cat("\nLaunching BIOSZEN::run_app() ...\n")
-  do.call(run_fun, args)
+  local({
+    previous_launch_mode <- getOption("BIOSZEN.launch_mode", NULL)
+    on.exit(options(BIOSZEN.launch_mode = previous_launch_mode), add = TRUE)
+    options(BIOSZEN.launch_mode = "standalone_bundle")
+    do.call(run_fun, args)
+  })
 }
+
+})

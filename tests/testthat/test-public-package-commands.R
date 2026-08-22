@@ -290,6 +290,177 @@ test_that("the app can request an update only while it is running", {
   expect_true(isTRUE(getOption("BIOSZEN.update_after_app", FALSE)))
 })
 
+test_that("only a running standalone app can request first package installation", {
+  old_running <- getOption("BIOSZEN.app_running", NULL)
+  old_update <- getOption("BIOSZEN.update_after_app", NULL)
+  old_install <- getOption("BIOSZEN.install_after_app", NULL)
+  old_mode <- getOption("BIOSZEN.launch_mode", NULL)
+  on.exit(options(
+    BIOSZEN.app_running = old_running,
+    BIOSZEN.update_after_app = old_update,
+    BIOSZEN.install_after_app = old_install,
+    BIOSZEN.launch_mode = old_mode
+  ), add = TRUE)
+
+  options(
+    BIOSZEN.app_running = TRUE,
+    BIOSZEN.update_after_app = TRUE,
+    BIOSZEN.install_after_app = FALSE,
+    BIOSZEN.launch_mode = "r_package"
+  )
+  expect_false(public_package_api$.bioszen_request_install_after_app())
+  expect_false(isTRUE(getOption("BIOSZEN.install_after_app", FALSE)))
+
+  options(BIOSZEN.launch_mode = "standalone_bundle")
+  expect_true(public_package_api$.bioszen_request_install_after_app())
+  expect_true(isTRUE(getOption("BIOSZEN.install_after_app", FALSE)))
+  expect_false(isTRUE(getOption("BIOSZEN.update_after_app", FALSE)))
+})
+
+test_that("standalone package detection excludes its private library", {
+  standalone <- tempfile("bioszen-standalone-lib-")
+  user_library <- tempfile("bioszen-user-lib-")
+  dir.create(file.path(standalone, "BIOSZEN"), recursive = TRUE)
+  dir.create(user_library, recursive = TRUE)
+  writeLines(
+    c("Package: BIOSZEN", "Version: 2.1.1"),
+    file.path(standalone, "BIOSZEN", "DESCRIPTION")
+  )
+  on.exit(unlink(c(standalone, user_library), recursive = TRUE, force = TRUE), add = TRUE)
+
+  status <- public_package_api$.bioszen_standard_package_status(
+    libraries = c(standalone, user_library),
+    standalone_library = standalone,
+    user_libraries = user_library
+  )
+  expect_false(status$installed)
+
+  dir.create(file.path(user_library, "BIOSZEN"), recursive = TRUE)
+  writeLines(
+    c("Package: BIOSZEN", "Version: 2.1.1"),
+    file.path(user_library, "BIOSZEN", "DESCRIPTION")
+  )
+  status <- public_package_api$.bioszen_standard_package_status(
+    libraries = c(standalone, user_library),
+    standalone_library = standalone,
+    user_libraries = user_library
+  )
+  expect_true(status$installed)
+  expect_equal(
+    status$path,
+    normalizePath(file.path(user_library, "BIOSZEN"), winslash = "/", mustWork = TRUE)
+  )
+})
+
+test_that("first package installation targets the personal library", {
+  user_library <- tempfile("bioszen-user-install-")
+  dir.create(user_library)
+  on.exit(unlink(user_library, recursive = TRUE, force = TRUE), add = TRUE)
+  installed_library <- ""
+  restore <- mock_public_package_api(list(
+    .bioszen_install_package = function(repos, lib) {
+      installed_library <<- lib
+      dir.create(file.path(lib, "BIOSZEN"), recursive = TRUE)
+      writeLines(
+        c("Package: BIOSZEN", "Version: 2.1.1"),
+        file.path(lib, "BIOSZEN", "DESCRIPTION")
+      )
+    }
+  ))
+  on.exit(restore(), add = TRUE)
+
+  old_running <- getOption("BIOSZEN.app_running", NULL)
+  on.exit(options(BIOSZEN.app_running = old_running), add = TRUE)
+  options(BIOSZEN.app_running = FALSE)
+
+  expect_message(
+    public_package_api$.bioszen_install_user_package(
+      repos = "https://example.invalid",
+      lib = user_library
+    ),
+    "BIOSZEN::BIOSZEN"
+  )
+  expect_identical(
+    installed_library,
+    normalizePath(user_library, winslash = "/", mustWork = TRUE)
+  )
+})
+
+test_that("run_app performs first package installation only after standalone Shiny stops", {
+  installed <- FALSE
+  running_during_install <- NA
+  restore <- mock_public_package_api(list(
+    .bioszen_installed_app_dir = function() tempdir(),
+    .bioszen_run_shiny_app = function(app_dir, ...) {
+      expect_true(public_package_api$.bioszen_request_install_after_app())
+      "app-closed"
+    },
+    .bioszen_install_user_package = function(...) {
+      running_during_install <<- isTRUE(getOption("BIOSZEN.app_running", FALSE))
+      installed <<- TRUE
+      TRUE
+    }
+  ))
+  on.exit(restore(), add = TRUE)
+
+  old_running <- getOption("BIOSZEN.app_running", NULL)
+  old_update <- getOption("BIOSZEN.update_after_app", NULL)
+  old_install <- getOption("BIOSZEN.install_after_app", NULL)
+  old_mode <- getOption("BIOSZEN.launch_mode", NULL)
+  on.exit(options(
+    BIOSZEN.app_running = old_running,
+    BIOSZEN.update_after_app = old_update,
+    BIOSZEN.install_after_app = old_install,
+    BIOSZEN.launch_mode = old_mode
+  ), add = TRUE)
+  options(
+    BIOSZEN.app_running = FALSE,
+    BIOSZEN.update_after_app = FALSE,
+    BIOSZEN.install_after_app = FALSE,
+    BIOSZEN.launch_mode = "standalone_bundle"
+  )
+
+  expect_identical(public_package_api$run_app(launch.browser = FALSE), "app-closed")
+  expect_true(installed)
+  expect_false(running_during_install)
+})
+
+test_that("a failed first package installation leaves the standalone result intact", {
+  restore <- mock_public_package_api(list(
+    .bioszen_installed_app_dir = function() tempdir(),
+    .bioszen_run_shiny_app = function(app_dir, ...) {
+      public_package_api$.bioszen_request_install_after_app()
+      "app-closed"
+    },
+    .bioszen_install_user_package = function(...) stop("personal library is locked")
+  ))
+  on.exit(restore(), add = TRUE)
+
+  old_running <- getOption("BIOSZEN.app_running", NULL)
+  old_update <- getOption("BIOSZEN.update_after_app", NULL)
+  old_install <- getOption("BIOSZEN.install_after_app", NULL)
+  old_mode <- getOption("BIOSZEN.launch_mode", NULL)
+  on.exit(options(
+    BIOSZEN.app_running = old_running,
+    BIOSZEN.update_after_app = old_update,
+    BIOSZEN.install_after_app = old_install,
+    BIOSZEN.launch_mode = old_mode
+  ), add = TRUE)
+  options(
+    BIOSZEN.app_running = FALSE,
+    BIOSZEN.update_after_app = FALSE,
+    BIOSZEN.install_after_app = FALSE,
+    BIOSZEN.launch_mode = "standalone_bundle"
+  )
+
+  expect_warning(
+    result <- public_package_api$run_app(launch.browser = FALSE),
+    "personal library is locked"
+  )
+  expect_identical(result, "app-closed")
+  expect_false(isTRUE(getOption("BIOSZEN.app_running", FALSE)))
+})
+
 test_that("run_app installs a confirmed update only after Shiny stops", {
   updated <- FALSE
   running_during_install <- NA

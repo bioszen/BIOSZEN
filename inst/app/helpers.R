@@ -343,6 +343,121 @@ bioszen_record_weekly_update_check <- function(path = bioszen_weekly_update_stat
   }, error = function(e) FALSE)
 }
 
+bioszen_draw_ppt_legend_square <- function(data, params, size) {
+  fill <- as.character(data$fill %||% "grey20")
+  fill <- if (length(fill) && !is.na(fill[[1]]) && nzchar(fill[[1]])) {
+    fill[[1]]
+  } else {
+    "grey20"
+  }
+  alpha <- suppressWarnings(as.numeric(data$alpha %||% 1)[1])
+  if (!is.finite(alpha)) alpha <- 1
+  alpha <- max(0, min(1, alpha))
+
+  grid::rectGrob(
+    width = grid::unit(10.8, "pt"),
+    height = grid::unit(10.8, "pt"),
+    gp = grid::gpar(
+      col = "#000000",
+      fill = scales::alpha(fill, alpha),
+      lwd = 1.28,
+      linejoin = "mitre"
+    )
+  )
+}
+
+bioszen_prepare_discrete_ppt_legend <- function(plot, plot_type) {
+  if (!inherits(plot, "ggplot") ||
+      !as.character(plot_type %||% "") %in% c("Boxplot", "Barras")) {
+    return(plot)
+  }
+
+  complete_theme <- ggplot2::theme_get() + plot$theme
+  legend_position <- complete_theme$legend.position %||% "right"
+  if (is.character(legend_position) &&
+      length(legend_position) == 1L &&
+      identical(tolower(legend_position), "none")) {
+    return(plot)
+  }
+
+  legend_layers <- which(vapply(plot$layers, function(layer) {
+    geom_classes <- class(layer$geom)
+    if (!any(geom_classes %in% c("GeomBoxplot", "GeomCol", "GeomBar"))) {
+      return(FALSE)
+    }
+    show_legend <- layer$show.legend
+    if (identical(show_legend, FALSE)) return(FALSE)
+    if (!is.null(names(show_legend)) &&
+        "fill" %in% names(show_legend) &&
+        identical(unname(show_legend[["fill"]]), FALSE)) {
+      return(FALSE)
+    }
+    TRUE
+  }, logical(1)))
+  if (!length(legend_layers)) return(plot)
+
+  legend_alpha <- suppressWarnings(as.numeric(
+    plot$layers[[legend_layers[[1]]]]$aes_params$alpha %||% 1
+  )[1])
+  if (!is.finite(legend_alpha)) legend_alpha <- 1
+  legend_alpha <- max(0, min(1, legend_alpha))
+  legend_text <- tryCatch(
+    ggplot2::calc_element("legend.text", complete_theme),
+    error = function(e) ggplot2::element_text()
+  )
+  legend_text$hjust <- 0
+  legend_text$margin <- ggplot2::margin(0, 0, 0, 8, unit = "pt")
+
+  out <- bioszen_clone_plot(plot)
+  for (index in legend_layers) {
+    # The original rect key loses its PNG geometry in editable rvg output.
+    # Use a canonical geom parent plus a fixed editable square key so the
+    # source geom is not mutated and no recursive ggproto chain is created.
+    geom_classes <- class(out$layers[[index]]$geom)
+    if ("GeomBoxplot" %in% geom_classes) {
+      out$layers[[index]]$geom <- ggplot2::ggproto(
+        "BioszenPptLegendBoxplot",
+        ggplot2::GeomBoxplot,
+        draw_key = bioszen_draw_ppt_legend_square
+      )
+    } else if ("GeomCol" %in% geom_classes) {
+      out$layers[[index]]$geom <- ggplot2::ggproto(
+        "BioszenPptLegendCol",
+        ggplot2::GeomCol,
+        draw_key = bioszen_draw_ppt_legend_square
+      )
+    } else {
+      out$layers[[index]]$geom <- ggplot2::ggproto(
+        "BioszenPptLegendBar",
+        ggplot2::GeomBar,
+        draw_key = bioszen_draw_ppt_legend_square
+      )
+    }
+  }
+
+  out +
+    ggplot2::guides(
+      fill = ggplot2::guide_legend(
+        title = NULL,
+        label.position = "right",
+        label.hjust = 0,
+        keywidth = grid::unit(10.8, "pt"),
+        keyheight = grid::unit(10.8, "pt"),
+        override.aes = list(
+          colour = "#000000",
+          alpha = legend_alpha
+        )
+      )
+    ) +
+    ggplot2::theme(
+      legend.key.size = grid::unit(10.8, "pt"),
+      legend.key.width = grid::unit(10.8, "pt"),
+      legend.key.height = grid::unit(10.8, "pt"),
+      legend.key.spacing.y = grid::unit(14.5, "pt"),
+      legend.text = legend_text
+    )
+}
+
 bioszen_prepare_stacked_ppt_plot <- function(plot, stack_levels, colours,
                                                content_width_px = 1000,
                                                content_height_px = 700,
@@ -675,7 +790,8 @@ bioszen_prepare_editable_plotly_plot <- function(plot,
   plot_type <- as.character(plot_type %||% "")
   if (identical(plot_type, "Curvas")) return(plot)
 
-  out <- bioszen_clone_plot(plot)
+  out <- bioszen_prepare_discrete_ppt_legend(plot, plot_type = plot_type)
+  if (identical(out, plot)) out <- bioszen_clone_plot(plot)
   complete_theme <- ggplot2::theme_get() + out$theme
   css_text_scale <- 72 / bioszen_clamp_number(ppi, 96, minimum = 1)
   ggplot_line_to_plotly <- 1 / 2.834646
@@ -2807,4 +2923,19 @@ filter_curve_wide_for_export <- function(curve_wide, meta_df) {
   wells <- wells[!is.na(wells) & nzchar(wells)]
   keep_cols <- c("Time", intersect(names(curve_wide), wells))
   curve_wide[, keep_cols, drop = FALSE]
+}
+bioszen_analytics_launch_mode <- function() {
+  allowed <- c("r_package", "standalone_bundle", "hosted", "direct_source")
+  configured <- trimws(as.character(getOption("BIOSZEN.launch_mode", ""))[1])
+  if (configured %in% allowed) return(configured)
+
+  hosted_markers <- c(
+    "CONNECT_SERVER",
+    "CONNECT_CONTENT_GUID",
+    "RSCONNECT_SERVER",
+    "RSCONNECT_CONTENT_GUID",
+    "SHINY_SERVER_VERSION"
+  )
+  hosted <- any(nzchar(trimws(Sys.getenv(hosted_markers, unset = ""))))
+  if (hosted) "hosted" else "direct_source"
 }

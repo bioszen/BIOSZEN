@@ -1,3 +1,19 @@
+standalone_launcher_expressions <- function(path) {
+  exprs <- as.list(parse(path))
+  if (length(exprs) != 1L ||
+      !is.call(exprs[[1]]) ||
+      !identical(exprs[[1]][[1]], as.symbol("local"))) {
+    return(exprs)
+  }
+
+  body <- exprs[[1]][[2]]
+  if (!is.call(body) || !identical(body[[1]], as.symbol("{"))) {
+    return(exprs)
+  }
+
+  as.list(body)[-1L]
+}
+
 load_launcher_functions <- function(function_names) {
   root <- app_test_root()
   launcher_candidates <- c(
@@ -11,7 +27,7 @@ load_launcher_functions <- function(function_names) {
     stop("Unable to resolve standalone launcher App.R path for tests.", call. = FALSE)
   }
   launcher <- launcher_matches[[1]]
-  exprs <- parse(launcher)
+  exprs <- standalone_launcher_expressions(launcher)
   env <- new.env(parent = globalenv())
 
   for (expr in exprs) {
@@ -42,6 +58,15 @@ launcher_source_path <- function() {
   }
   matches[[1]]
 }
+
+test_that("standalone launcher isolates its temporary R objects", {
+  launcher <- launcher_source_path()
+  exprs <- as.list(parse(launcher))
+
+  expect_length(exprs, 1L)
+  expect_true(is.call(exprs[[1]]))
+  expect_identical(exprs[[1]][[1]], as.symbol("local"))
+})
 
 root_launcher_source_paths <- function() {
   root <- app_test_root()

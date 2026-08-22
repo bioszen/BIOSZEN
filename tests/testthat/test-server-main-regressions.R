@@ -1213,6 +1213,25 @@ test_that("statistics builders resolve scoped data and tolerate transient blank 
     info = "Statistics downloads should not rebuild a separate filter path from raw grouped data."
   )
 
+  save_version_section <- extract_section(
+    server_txt,
+    "observeEvent\\(input\\$save_bundle_version",
+    "write_bundle_zip <- function"
+  )
+  expect_match(save_version_section, "plot_raw <- tryCatch\\(\\s*capture_raw\\(", perl = TRUE)
+  expect_match(save_version_section, "plot_pdf_raw <- tryCatch\\(\\s*capture_raw\\(", perl = TRUE)
+  expect_match(save_version_section, "plot_pptx_raw <- tryCatch\\(\\s*capture_raw\\(", perl = TRUE)
+  expect_match(save_version_section, "include_bundle_selection = TRUE", fixed = TRUE)
+  expect_match(save_version_section, "archive_stem  = archive_stem", fixed = TRUE)
+  expect_false(
+    grepl('slot = "plot_(png|pdf|pptx)"', save_version_section, perl = TRUE),
+    info = "Saved bundle versions must capture their current plot instead of reusing an earlier cache entry."
+  )
+  expect_match(server_txt, "current_plot_selection_signature()", fixed = TRUE)
+  expect_match(server_txt, "stackParams = as.character(input$stackParams", fixed = TRUE)
+  expect_match(server_txt, "heat_params = as.character(input$heat_params", fixed = TRUE)
+  expect_match(server_txt, "corrm_params = as.character(input$corrm_params", fixed = TRUE)
+
   bundle_section <- extract_section(
     server_txt,
     "write_bundle_zip <- function",
@@ -1220,6 +1239,16 @@ test_that("statistics builders resolve scoped data and tolerate transient blank 
   )
   expect_match(bundle_section, "zip::zipr", fixed = TRUE)
   expect_match(bundle_section, "mode = \"mirror\"", fixed = TRUE)
+  expect_match(bundle_section, 'versions_dir <- file.path\\(tmpdir, "versions"\\)', perl = TRUE)
+  expect_match(bundle_section, 'png = file.path\\(versions_dir, "png"\\)', perl = TRUE)
+  expect_match(bundle_section, 'pdf = file.path\\(versions_dir, "pdf"\\)', perl = TRUE)
+  expect_match(bundle_section, 'ppt = file.path\\(versions_dir, "ppt"\\)', perl = TRUE)
+  expect_match(bundle_section, 'metadata = file.path\\(versions_dir, "metadata"\\)', perl = TRUE)
+  expect_match(bundle_section, 'file.path\\(versions_dir, "manifest.csv"\\)', perl = TRUE)
+  expect_match(bundle_section, "duplicated(tolower(archive_names))", fixed = TRUE)
+  expect_match(bundle_section, "root = tmpdir", fixed = TRUE)
+  expect_false(grepl('file.path\\(tmpdir, "versiones"\\)', bundle_section, perl = TRUE))
+  expect_false(grepl("_INFO.txt", bundle_section, fixed = TRUE))
 })
 
 test_that("normalized parameter switching does not preserve stale unavailable parameters", {

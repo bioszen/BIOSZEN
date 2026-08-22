@@ -1,10 +1,20 @@
-.bioszen_map_wells <- function(keys, fn, should_abort = NULL, progress_callback = NULL) {
+.bioszen_map_wells <- function(keys,
+                               fn,
+                               should_abort = NULL,
+                               progress_callback = NULL,
+                               row_callback = NULL) {
   .bioszen_abort_if_requested(should_abort)
   out <- vector("list", length(keys))
   n_keys <- length(keys)
   for (i in seq_along(keys)) {
     .bioszen_abort_if_requested(should_abort)
     out[[i]] <- fn(keys[[i]])
+    if (is.function(row_callback)) {
+      try(
+        row_callback(result = out[[i]], done = i, total = n_keys, well = keys[[i]]),
+        silent = TRUE
+      )
+    }
     if (is.function(progress_callback)) {
       try(progress_callback(done = i, total = n_keys, well = keys[[i]]), silent = TRUE)
     }
@@ -184,7 +194,8 @@
 .bioszen_calculate_growth_rates_robust <- function(
     df,
     should_abort = NULL,
-    progress_callback = NULL) {
+    progress_callback = NULL,
+    row_callback = NULL) {
   .bioszen_abort_if_requested(should_abort)
   well_order <- unique(df$Well)
 
@@ -233,7 +244,16 @@
     well_order,
     do_one,
     should_abort = should_abort,
-    progress_callback = progress_callback
+    progress_callback = progress_callback,
+    row_callback = if (is.function(row_callback)) {
+      function(result, done, total, well) {
+        names(result)[names(result) == "uMax"] <- "\u00B5Max"
+        result$Well <- factor(result$Well, levels = well_order)
+        row_callback(result = result, done = done, total = total, well = well)
+      }
+    } else {
+      NULL
+    }
   )
   .bioszen_abort_if_requested(should_abort)
   out <- dplyr::bind_rows(res_list)
@@ -245,7 +265,8 @@
 .bioszen_calculate_growth_rates_permissive <- function(
     df,
     should_abort = NULL,
-    progress_callback = NULL) {
+    progress_callback = NULL,
+    row_callback = NULL) {
   .bioszen_abort_if_requested(should_abort)
   well_order <- unique(df$Well)
 
@@ -294,7 +315,16 @@
     well_order,
     do_one,
     should_abort = should_abort,
-    progress_callback = progress_callback
+    progress_callback = progress_callback,
+    row_callback = if (is.function(row_callback)) {
+      function(result, done, total, well) {
+        names(result)[names(result) == "uMax"] <- "\u00B5Max"
+        result$Well <- factor(result$Well, levels = well_order)
+        row_callback(result = result, done = done, total = total, well = well)
+      }
+    } else {
+      NULL
+    }
   )
   .bioszen_abort_if_requested(should_abort)
   out <- dplyr::bind_rows(res_list)
@@ -337,13 +367,22 @@
 )
 
 .bioszen_empty_growth_results <- function() {
-  out <- as.data.frame(stats::setNames(
+  values <- stats::setNames(
     replicate(length(.bioszen_growth_result_columns), logical(0), simplify = FALSE),
     .bioszen_growth_result_columns
-  ))
+  )
+  out <- structure(values, class = "data.frame", row.names = integer(0))
   out$Well <- character(0)
   for (col in setdiff(.bioszen_growth_result_columns, "Well")) out[[col]] <- numeric(0)
   out
+}
+
+.bioszen_emit_growth_results <- function(callback, results) {
+  if (!is.function(callback) || is.null(results) || !is.data.frame(results) || !nrow(results)) {
+    return(invisible(FALSE))
+  }
+  try(callback(results), silent = TRUE)
+  invisible(TRUE)
 }
 
 .bioszen_growth_od0_lookup <- function(tidy_df) {
@@ -376,11 +415,26 @@
 .bioszen_compute_growth_results_batch_core <- function(
     tidy_df,
     should_abort = NULL,
-    progress_callback = NULL) {
+    progress_callback = NULL,
+    result_callback = NULL) {
   .bioszen_abort_if_requested(should_abort)
   wells <- unique(tidy_df$Well)
   tidy_df$Well <- factor(tidy_df$Well, levels = wells)
   tidy_df$Time <- as.numeric(tidy_df$Time)
+
+  finalized <- .bioszen_empty_growth_results()
+  robust_rows <- list()
+  emit_finalized_row <- function(row) {
+    if (!is.function(result_callback) || is.null(row) || !is.data.frame(row) || !nrow(row)) {
+      return(invisible(FALSE))
+    }
+    row <- row[, .bioszen_growth_result_columns, drop = FALSE]
+    finalized <<- dplyr::bind_rows(finalized, row)
+    finalized$Well <<- factor(as.character(finalized$Well), levels = wells)
+    finalized <<- finalized[!duplicated(as.character(finalized$Well)), , drop = FALSE]
+    finalized <<- finalized[order(finalized$Well), , drop = FALSE]
+    .bioszen_emit_growth_results(result_callback, finalized)
+  }
 
   robust <- .bioszen_calculate_growth_rates_robust(
     tidy_df,
@@ -389,6 +443,23 @@
       if (is.function(progress_callback)) {
         progress_callback(stage = "robust", done = done, total = total, well = well)
       }
+    },
+    row_callback = if (is.function(result_callback)) {
+      function(result, done, total, well) {
+        well_key <- as.character(well)
+        robust_rows[[well_key]] <<- result
+        fill_cols <- setdiff(names(result), "Well")
+        needs_permissive <- length(fill_cols) && any(vapply(fill_cols, function(col) {
+          any(.bioszen_is_empty_growth_value(result[[col]]))
+        }, logical(1)))
+        if (!isTRUE(needs_permissive)) {
+          permissive_row <- result
+          for (col in fill_cols) permissive_row[[col]] <- rep(NA_real_, nrow(permissive_row))
+          emit_finalized_row(.bioszen_combine_growth_results(result, permissive_row))
+        }
+      }
+    } else {
+      NULL
     }
   )
   .bioszen_abort_if_requested(should_abort)
@@ -413,6 +484,16 @@
         if (is.function(progress_callback)) {
           progress_callback(stage = "permissive", done = done, total = total, well = well)
         }
+      },
+      row_callback = if (is.function(result_callback)) {
+        function(result, done, total, well) {
+          robust_row <- robust_rows[[as.character(well)]]
+          if (!is.null(robust_row)) {
+            emit_finalized_row(.bioszen_combine_growth_results(robust_row, result))
+          }
+        }
+      } else {
+        NULL
       }
     )
     idx <- match(as.character(permissive$Well), as.character(permissive_subset$Well))
@@ -441,5 +522,9 @@
   out <- .bioszen_combine_growth_results(robust, permissive)
   out$Well <- factor(out$Well, levels = wells)
   out <- out[order(out$Well), , drop = FALSE]
-  out[, .bioszen_growth_result_columns, drop = FALSE]
+  out <- out[, .bioszen_growth_result_columns, drop = FALSE]
+  if (is.function(result_callback) && nrow(finalized) < nrow(out)) {
+    .bioszen_emit_growth_results(result_callback, out)
+  }
+  out
 }

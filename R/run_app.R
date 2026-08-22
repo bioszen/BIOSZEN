@@ -29,6 +29,17 @@ BIOSZEN <- function(host = getOption("shiny.host", "127.0.0.1"),
 run_app <- function(host = getOption("shiny.host", "127.0.0.1"),
                     port = getOption("shiny.port", 4321),
                     launch.browser = getOption("shiny.launch.browser", TRUE)) {
+  previous_launch_mode <- getOption("BIOSZEN.launch_mode", NULL)
+  launch_mode <- if (is.null(previous_launch_mode) || !length(previous_launch_mode)) {
+    ""
+  } else {
+    trimws(as.character(previous_launch_mode[[1]]))
+  }
+  if (!(launch_mode %in% c("standalone_bundle", "hosted"))) {
+    options(BIOSZEN.launch_mode = "r_package")
+  }
+  on.exit(options(BIOSZEN.launch_mode = previous_launch_mode), add = TRUE)
+
   local_lib <- getOption("BIOSZEN.local_lib", Sys.getenv("BIOSZEN_LOCAL_LIB", ""))
   if (is.character(local_lib) && length(local_lib) && nzchar(local_lib[[1]]) && dir.exists(local_lib[[1]])) {
     local_lib <- normalizePath(local_lib[[1]], winslash = "/", mustWork = TRUE)
@@ -44,14 +55,17 @@ run_app <- function(host = getOption("shiny.host", "127.0.0.1"),
 
   previous_running <- getOption("BIOSZEN.app_running", NULL)
   previous_update_request <- getOption("BIOSZEN.update_after_app", NULL)
+  previous_install_request <- getOption("BIOSZEN.install_after_app", NULL)
   options(
     BIOSZEN.app_running = TRUE,
-    BIOSZEN.update_after_app = FALSE
+    BIOSZEN.update_after_app = FALSE,
+    BIOSZEN.install_after_app = FALSE
   )
   on.exit({
     options(
       BIOSZEN.app_running = previous_running,
-      BIOSZEN.update_after_app = previous_update_request
+      BIOSZEN.update_after_app = previous_update_request,
+      BIOSZEN.install_after_app = previous_install_request
     )
   }, add = TRUE)
 
@@ -64,11 +78,26 @@ run_app <- function(host = getOption("shiny.host", "127.0.0.1"),
   )
 
   update_requested <- isTRUE(getOption("BIOSZEN.update_after_app", FALSE))
+  install_requested <- isTRUE(getOption("BIOSZEN.install_after_app", FALSE))
   options(
     BIOSZEN.app_running = previous_running,
-    BIOSZEN.update_after_app = FALSE
+    BIOSZEN.update_after_app = FALSE,
+    BIOSZEN.install_after_app = FALSE
   )
-  if (update_requested) {
+  if (install_requested) {
+    tryCatch(
+      .bioszen_install_user_package(),
+      error = function(e) {
+        warning(
+          "BIOSZEN closed, but the R package could not be installed: ",
+          conditionMessage(e),
+          ". The standalone launcher remains available.",
+          call. = FALSE
+        )
+        FALSE
+      }
+    )
+  } else if (update_requested) {
     tryCatch(
       bioszen_update(ask = FALSE),
       error = function(e) {

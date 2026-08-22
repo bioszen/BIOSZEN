@@ -520,6 +520,30 @@ server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   pending_bioszen_update <- reactiveVal(NULL)
+  pending_bioszen_install <- reactiveVal(NULL)
+
+  bioszen_standalone_install_mode <- function() {
+    identical(bioszen_analytics_launch_mode(), "standalone_bundle")
+  }
+
+  bioszen_update_button_spec <- function(lang) {
+    if (bioszen_standalone_install_mode()) {
+      return(list(icon = "download", key = "app_install_package_button"))
+    }
+    list(icon = "arrows-rotate", key = "app_update_button")
+  }
+
+  update_bioszen_action_buttons <- function(lang) {
+    spec <- bioszen_update_button_spec(lang)
+    for (button_id in c("bioszenUpdate", "bioszenUpdateGrowth")) {
+      updateActionButton(
+        session,
+        button_id,
+        label = tagList(icon(spec$icon), tr_text(spec$key, lang))
+      )
+    }
+    invisible(TRUE)
+  }
 
   show_bioszen_update_modal <- function(installed, available, lang) {
     showModal(modalDialog(
@@ -538,6 +562,24 @@ server <- function(input, output, session) {
     ))
   }
 
+  show_bioszen_install_modal <- function(available, lang) {
+    showModal(modalDialog(
+      title = tr_text("app_install_package_title", lang),
+      tags$p(sprintf(tr_text("app_install_package_body", lang), available)),
+      tags$p(class = "text-warning", tr_text("app_install_package_close_warning", lang)),
+      tags$pre("BIOSZEN::BIOSZEN()"),
+      easyClose = FALSE,
+      footer = tagList(
+        modalButton(tr_text("app_update_cancel", lang)),
+        actionButton(
+          "bioszenConfirmPackageInstall",
+          label = tagList(icon("download"), tr_text("app_install_package_confirm", lang)),
+          class = "btn btn-primary"
+        )
+      )
+    ))
+  }
+
   bioszen_package_function <- function(name, exported = TRUE) {
     tryCatch({
       if (!requireNamespace("BIOSZEN", quietly = TRUE)) return(NULL)
@@ -549,8 +591,76 @@ server <- function(input, output, session) {
     }, error = function(e) NULL)
   }
 
+  check_bioszen_package_install <- function() {
+    if (is_session_closing()) return(invisible(FALSE))
+    lang <- isolate(input$app_lang %||% i18n_lang)
+    status_fun <- bioszen_package_function(
+      ".bioszen_standard_package_status",
+      exported = FALSE
+    )
+    check_fun <- bioszen_package_function("bioszen_update_available")
+    if (!is.function(status_fun) || !is.function(check_fun)) {
+      bioszen_safe_show_notification(
+        tr_text("app_install_package_unavailable", lang),
+        type = "warning",
+        duration = 8,
+        session = session
+      )
+      return(invisible(FALSE))
+    }
+
+    normal_install <- tryCatch(status_fun(), error = function(e) NULL)
+    if (is.list(normal_install) && isTRUE(normal_install$installed)) {
+      installed <- as.character(normal_install$version %||% "unknown")
+      if (!length(installed) || is.na(installed[[1]]) || !nzchar(installed[[1]])) {
+        installed <- "unknown"
+      }
+      bioszen_safe_show_notification(
+        sprintf(tr_text("app_install_package_already", lang), installed[[1]]),
+        type = "message",
+        duration = 10,
+        session = session
+      )
+      return(invisible(TRUE))
+    }
+
+    shinyjs::disable("bioszenUpdate")
+    shinyjs::disable("bioszenUpdateGrowth")
+    on.exit({
+      if (!is_session_closing()) {
+        shinyjs::enable("bioszenUpdate")
+        shinyjs::enable("bioszenUpdateGrowth")
+      }
+    }, add = TRUE)
+
+    repository_status <- withProgress(
+      message = tr_text("app_install_package_checking", lang),
+      value = 0.35,
+      check_fun(quiet = TRUE)
+    )
+    available <- as.character(attr(repository_status, "available_version") %||% "")
+    if (length(repository_status) != 1L || is.na(repository_status) ||
+        !length(available) || is.na(available[[1]]) || !nzchar(available[[1]])) {
+      bioszen_safe_show_notification(
+        tr_text("app_install_package_check_failed", lang),
+        type = "warning",
+        duration = 8,
+        session = session
+      )
+      return(invisible(FALSE))
+    }
+
+    pending_bioszen_update(NULL)
+    pending_bioszen_install(list(available = available[[1]]))
+    show_bioszen_install_modal(available[[1]], lang)
+    invisible(TRUE)
+  }
+
   check_bioszen_update <- function() {
     if (is_session_closing()) return(invisible(FALSE))
+    if (bioszen_standalone_install_mode()) {
+      return(check_bioszen_package_install())
+    }
     lang <- isolate(input$app_lang %||% i18n_lang)
     check_fun <- bioszen_package_function("bioszen_update_available")
     if (!is.function(check_fun)) {
@@ -606,7 +716,13 @@ server <- function(input, output, session) {
   }
 
   on_session_flushed(function() {
-    if (is_session_closing() || !bioszen_weekly_update_due()) return()
+    if (is_session_closing()) return()
+    update_bioszen_action_buttons(isolate(input$app_lang %||% i18n_lang))
+  }, once = TRUE)
+
+  on_session_flushed(function() {
+    if (is_session_closing() || bioszen_standalone_install_mode() ||
+        !bioszen_weekly_update_due()) return()
     installed_version <- get_current_version("BIOSZEN")
     if (is.null(installed_version) || !nzchar(as.character(installed_version))) return()
     session$sendCustomMessage(
@@ -623,7 +739,8 @@ server <- function(input, output, session) {
 
   observeEvent(input$bioszen_weekly_update_result, {
     payload <- input$bioszen_weekly_update_result
-    if (!is.list(payload) || is_session_closing()) return()
+    if (!is.list(payload) || is_session_closing() ||
+        bioszen_standalone_install_mode()) return()
     package <- trimws(as.character(payload$package %||% ""))
     installed <- trimws(as.character(payload$installed %||% ""))
     available <- trimws(as.character(payload$available %||% ""))
@@ -708,6 +825,38 @@ server <- function(input, output, session) {
     pending_bioszen_update(NULL)
     bioszen_safe_show_notification(
       tr_text("app_update_closing", lang),
+      type = "message",
+      duration = NULL,
+      session = session
+    )
+    schedule_session_callback(function() shiny::stopApp(), delay = 0.35)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$bioszenConfirmPackageInstall, {
+    install_info <- isolate(pending_bioszen_install())
+    if (is.null(install_info) || is_session_closing() ||
+        !bioszen_standalone_install_mode()) return()
+    lang <- isolate(input$app_lang %||% i18n_lang)
+    request_fun <- bioszen_package_function(
+      ".bioszen_request_install_after_app",
+      exported = FALSE
+    )
+    if (!is.function(request_fun) || !isTRUE(request_fun())) {
+      removeModal()
+      pending_bioszen_install(NULL)
+      bioszen_safe_show_notification(
+        tr_text("app_install_package_launcher_required", lang),
+        type = "warning",
+        duration = 9,
+        session = session
+      )
+      return()
+    }
+
+    removeModal()
+    pending_bioszen_install(NULL)
+    bioszen_safe_show_notification(
+      tr_text("app_install_package_closing", lang),
       type = "message",
       duration = NULL,
       session = session
@@ -2669,7 +2818,7 @@ server <- function(input, output, session) {
     apply_theme_mode(input$mode %||% "light")
   })
 
-  write_metadata_xlsx <- function(file){
+  write_metadata_xlsx <- function(file, include_bundle_selection = FALSE){
     wb <- createWorkbook()
     addWorksheet(wb, "Metadata")
     meta <- collect_metadata_tbl()
@@ -2683,6 +2832,15 @@ server <- function(input, output, session) {
     addWorksheet(wb, "TextStyle")
     writeData(wb, "TextStyle", text_style,
               headerStyle = createStyle(textDecoration = "bold"))
+    if (isTRUE(include_bundle_selection)) {
+      addWorksheet(wb, "Selection")
+      writeData(
+        wb,
+        "Selection",
+        current_plot_selection_tbl(),
+        headerStyle = createStyle(textDecoration = "bold")
+      )
+    }
     saveWorkbook(wb, file, overwrite = TRUE)
   }
 
@@ -3445,16 +3603,7 @@ server <- function(input, output, session) {
       updateTextInput(session, "bundle_label", placeholder = tr_text("bundle_label_placeholder", lang))
     }
 
-    updateActionButton(
-      session,
-      "bioszenUpdate",
-      label = tagList(icon("arrows-rotate"), tr_text("app_update_button", lang))
-    )
-    updateActionButton(
-      session,
-      "bioszenUpdateGrowth",
-      label = tagList(icon("arrows-rotate"), tr_text("app_update_button", lang))
-    )
+    update_bioszen_action_buttons(lang)
 
     if (!is.null(input$ov_tipo)) {
       updateSelectInput(
@@ -15295,6 +15444,44 @@ server <- function(input, output, session) {
     paste(capture.output(str(x, give.attr = FALSE)), collapse = "")
   }
 
+  current_plot_selection_values <- function() {
+    selection_snapshot <- current_export_selection_snapshot()
+    list(
+      scope = as.character(input$scope %||% ""),
+      strain = as.character(input$strain %||% ""),
+      tipo = as.character(input$tipo %||% ""),
+      param = as.character(input$param %||% ""),
+      stackParams = as.character(input$stackParams %||% character(0)),
+      orderStack = as.character(input$orderStack %||% ""),
+      heat_params = as.character(input$heat_params %||% character(0)),
+      corr_param_x = as.character(input$corr_param_x %||% ""),
+      corr_param_y = as.character(input$corr_param_y %||% ""),
+      corr_adv_anchor = as.character(input$corr_adv_anchor %||% ""),
+      corrm_params = as.character(input$corrm_params %||% character(0)),
+      curve_stats_methods = as.character(input$curve_stats_methods %||% character(0)),
+      reps_strain_map = selection_snapshot$reps_strain_map,
+      reps_group_map = selection_snapshot$reps_group_map,
+      drop_all = selection_snapshot$drop_all,
+      tech_selection_map = selection_snapshot$tech_selection_map,
+      tech_selection_by_param = selection_snapshot$tech_selection_by_param,
+      selected_groups = selection_snapshot$selected_groups,
+      selected_medias = selection_snapshot$selected_medias
+    )
+  }
+
+  current_plot_selection_signature <- function() {
+    stable_key_value(current_plot_selection_values())
+  }
+
+  current_plot_selection_tbl <- function() {
+    values <- current_plot_selection_values()
+    data.frame(
+      Campo = names(values),
+      Valor = vapply(values, stable_key_value, character(1)),
+      stringsAsFactors = FALSE
+    )
+  }
+
   input_file_stamp <- function() {
     f <- isolate(input$dataFile)
     if (is.null(f) || !nrow(f)) return("NO_FILE")
@@ -15334,22 +15521,26 @@ server <- function(input, output, session) {
     invisible(NULL)
   }
 
-  cache_capture_raw <- function(slot, key, ext, writer, max_entries = 6L) {
-    cached <- cache_get_raw(slot, key)
-    if (!is.null(cached)) return(cached)
+  capture_raw <- function(ext, writer) {
     tmp <- tempfile(fileext = ext)
     on.exit(unlink(tmp), add = TRUE)
     writer(tmp)
     size <- file.info(tmp)$size
     if (is.na(size) || size <= 0) return(raw(0))
-    out <- readBin(tmp, "raw", n = size)
+    readBin(tmp, "raw", n = size)
+  }
+
+  cache_capture_raw <- function(slot, key, ext, writer, max_entries = 6L) {
+    cached <- cache_get_raw(slot, key)
+    if (!is.null(cached)) return(cached)
+    out <- capture_raw(ext, writer)
     cache_set_raw(slot, key, out, max_entries = max_entries)
     out
   }
 
   plot_export_key <- function(kind, width, height) {
     meta <- collect_metadata_tbl()
-    export_renderer_version <- "preview_match_v2"
+    export_renderer_version <- "preview_match_v3"
     paste(
       kind,
       export_renderer_version,
@@ -15365,6 +15556,7 @@ server <- function(input, output, session) {
       stable_key_value(as.character(input$rm_reps_all %||% character(0))),
       stable_key_value(qc_tech_selected()),
       stable_key_value(qc_tech_selected_by_param()),
+      current_plot_selection_signature(),
       paste(meta$Campo, meta$Valor, sep = "=", collapse = ";"),
       sep = "||"
     )
@@ -15412,6 +15604,7 @@ server <- function(input, output, session) {
       stable_key_value(as.character(input$rm_reps_all %||% character(0))),
       stable_key_value(qc_tech_selected()),
       stable_key_value(qc_tech_selected_by_param()),
+      current_plot_selection_signature(),
       sep = "||"
     )
   }
@@ -15427,6 +15620,39 @@ server <- function(input, output, session) {
     )
   }
 
+  bundle_archive_component <- function(value, fallback = "file", max_chars = 80L) {
+    value <- as.character(value %||% "")
+    value <- if (length(value) && !is.na(value[[1]])) value[[1]] else ""
+    ascii <- suppressWarnings(iconv(value, from = "", to = "ASCII//TRANSLIT", sub = "_"))
+    if (is.na(ascii) || !nzchar(ascii)) ascii <- value
+    out <- gsub("[^A-Za-z0-9._-]+", "_", ascii)
+    out <- gsub("_+", "_", out)
+    out <- gsub("^[ ._-]+|[ ._-]+$", "", out)
+    if (!nzchar(out)) out <- fallback
+    if (grepl("^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])([.]|$)", toupper(out), perl = TRUE)) {
+      out <- paste0("file_", out)
+    }
+    max_chars <- suppressWarnings(as.integer(max_chars %||% 80L))
+    if (!length(max_chars) || is.na(max_chars) || max_chars < 16L) max_chars <- 80L
+    out <- substr(out, 1L, max_chars)
+    out <- gsub("[ ._-]+$", "", out)
+    if (nzchar(out)) out else fallback
+  }
+
+  bundle_unique_component <- function(value, existing, max_chars = 96L) {
+    value <- bundle_archive_component(value, fallback = "version", max_chars = max_chars)
+    existing <- tolower(as.character(existing %||% character(0)))
+    if (!tolower(value) %in% existing) return(value)
+    index <- 2L
+    repeat {
+      suffix <- paste0("_", index)
+      base <- substr(value, 1L, max(1L, max_chars - nchar(suffix)))
+      candidate <- paste0(base, suffix)
+      if (!tolower(candidate) %in% existing) return(candidate)
+      index <- index + 1L
+    }
+  }
+
   bundle_export_key <- function() {
     versions <- bundle_store$versions
     if (!length(versions)) return("bundle-empty")
@@ -15436,11 +15662,12 @@ server <- function(input, output, session) {
         as.character(v$dataset %||% ""),
         as.character(v$tipo %||% ""),
         as.character(v$dir_label %||% ""),
+        as.character(v$archive_stem %||% ""),
         as.character(v$stats_hash %||% ""),
-        as.character(length(v$plot_raw %||% raw(0))),
-        as.character(length(v$plot_pdf_raw %||% raw(0))),
-        as.character(length(v$plot_pptx_raw %||% raw(0))),
-        as.character(length(v$metadata_raw %||% raw(0))),
+        as.character(md5_raw(v$plot_raw %||% raw(0)) %||% ""),
+        as.character(md5_raw(v$plot_pdf_raw %||% raw(0)) %||% ""),
+        as.character(md5_raw(v$plot_pptx_raw %||% raw(0)) %||% ""),
+        as.character(md5_raw(v$metadata_raw %||% raw(0)) %||% ""),
         as.character(v$created %||% ""),
         sep = "~"
       )
@@ -15828,16 +16055,11 @@ server <- function(input, output, session) {
     lang <- input$app_lang %||% i18n_lang
     width <- input$plot_w %||% 900
     height <- input$plot_h %||% 700
-    eff_width <- effective_plot_width(width)
-    eff_height <- effective_plot_height(height)
 
     plot_raw <- tryCatch(
-      cache_capture_raw(
-        slot = "plot_png",
-        key = plot_export_key("png", eff_width, eff_height),
+      capture_raw(
         ext = ".png",
-        writer = function(tmp) write_current_plot_png(tmp, width = width, height = height),
-        max_entries = 8L
+        writer = function(tmp) write_current_plot_png(tmp, width = width, height = height)
       ),
       error = function(e) {
         msg <- sprintf(
@@ -15854,12 +16076,9 @@ server <- function(input, output, session) {
       return()
     }
     plot_pdf_raw <- tryCatch(
-      cache_capture_raw(
-        slot = "plot_pdf",
-        key = plot_export_key("pdf", eff_width, eff_height),
+      capture_raw(
         ext = ".pdf",
-        writer = function(tmp) write_current_plot_pdf(tmp, width = width, height = height),
-        max_entries = 8L
+        writer = function(tmp) write_current_plot_pdf(tmp, width = width, height = height)
       ),
       error = function(e) {
         msg <- sprintf(
@@ -15876,12 +16095,9 @@ server <- function(input, output, session) {
       return()
     }
     plot_pptx_raw <- tryCatch(
-      cache_capture_raw(
-        slot = "plot_pptx",
-        key = plot_export_key("pptx", eff_width, eff_height),
+      capture_raw(
         ext = ".pptx",
-        writer = function(tmp) write_current_plot_pptx(tmp, width = width, height = height),
-        max_entries = 8L
+        writer = function(tmp) write_current_plot_pptx(tmp, width = width, height = height)
       ),
       error = function(e) {
         msg <- sprintf(
@@ -15898,12 +16114,9 @@ server <- function(input, output, session) {
       return()
     }
     metadata_raw <- tryCatch(
-      cache_capture_raw(
-        slot = "metadata",
-        key = metadata_export_key(),
+      capture_raw(
         ext = ".xlsx",
-        writer = write_metadata_xlsx,
-        max_entries = 10L
+        writer = function(tmp) write_metadata_xlsx(tmp, include_bundle_selection = TRUE)
       ),
       error = function(e) {
         msg <- sprintf(
@@ -15983,18 +16196,33 @@ server <- function(input, output, session) {
     timestamp <- Sys.time()
     scope_sel <- if (input$scope == "Combinado") "Combinado" else "Por Cepa"
     strain_val <- if (scope_sel == "Por Cepa") (input$strain %||% "") else ""
-    version_suffix <- paste0("_", version_idx)
-    plot_png_name <- paste0("grafico_", type_label, version_suffix, ".png")
-    plot_pdf_name <- paste0("grafico_", type_label, version_suffix, ".pdf")
-    plot_pptx_name <- paste0("grafico_", type_label, version_suffix, ".pptx")
-    metadata_name <- paste0("metadata_", type_label, version_suffix, ".xlsx")
+    bundle_index <- length(existing_versions) + 1L
+    archive_label <- bundle_archive_component(label_input, fallback = "", max_chars = 48L)
+    archive_stem_parts <- c(sprintf("%03d", bundle_index), type_label)
+    if (nzchar(archive_label)) archive_stem_parts <- c(archive_stem_parts, archive_label)
+    existing_stems <- vapply(
+      existing_versions,
+      function(v) as.character(v$archive_stem %||% ""),
+      character(1)
+    )
+    archive_stem <- bundle_unique_component(
+      paste(archive_stem_parts, collapse = "_"),
+      existing = existing_stems,
+      max_chars = 96L
+    )
+    plot_png_name <- paste0(archive_stem, ".png")
+    plot_pdf_name <- paste0(archive_stem, ".pdf")
+    plot_pptx_name <- paste0(archive_stem, ".pptx")
+    metadata_name <- paste0(archive_stem, ".xlsx")
 
     version_record <- list(
-      id            = paste0("v_", format(timestamp, "%Y%m%d%H%M%S")),
+      id            = paste0("v_", format(timestamp, "%Y%m%d%H%M%S"), "_", bundle_index),
       dataset       = dataset_key,
       dataset_name  = dataset_name,
       label_input   = label_input,
       dir_label     = dir_label,
+      archive_stem  = archive_stem,
+      bundle_index  = bundle_index,
       created       = timestamp,
       scope         = scope_sel,
       strain        = strain_val,
@@ -16031,17 +16259,61 @@ server <- function(input, output, session) {
 
     tmpdir <- tempfile("bioszen_bundle_")
     dir.create(tmpdir, recursive = TRUE)
-    datasets_dir  <- file.path(tmpdir, "datasets");  dir.create(datasets_dir, recursive = TRUE)
-    versions_dir  <- file.path(tmpdir, "versiones"); dir.create(versions_dir, recursive = TRUE)
+    on.exit(unlink(tmpdir, recursive = TRUE, force = TRUE), add = TRUE)
+
+    datasets_dir <- file.path(tmpdir, "datasets")
+    versions_dir <- file.path(tmpdir, "versions")
+    version_dirs <- list(
+      png = file.path(versions_dir, "png"),
+      pdf = file.path(versions_dir, "pdf"),
+      ppt = file.path(versions_dir, "ppt"),
+      metadata = file.path(versions_dir, "metadata")
+    )
+    dir.create(datasets_dir, recursive = TRUE)
+    for (path in version_dirs) dir.create(path, recursive = TRUE)
+
+    archive_path <- function(...) {
+      paste(..., sep = "/")
+    }
+    archive_filename <- function(filename, fallback = "file") {
+      extension <- tolower(tools::file_ext(filename %||% ""))
+      stem <- tools::file_path_sans_ext(basename(filename %||% ""))
+      stem <- bundle_archive_component(stem, fallback = fallback, max_chars = 72L)
+      if (nzchar(extension)) paste0(stem, ".", extension) else stem
+    }
+    write_bundle_raw <- function(raw, path, label) {
+      if (!is.raw(raw) || !length(raw)) {
+        stop(sprintf("The bundle artifact '%s' is empty.", label), call. = FALSE)
+      }
+      if (file.exists(path)) {
+        stop(sprintf("Duplicate bundle path detected for '%s'.", label), call. = FALSE)
+      }
+      dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+      writeBin(raw, path)
+      size <- file.info(path)$size
+      if (is.na(size) || size <= 0) {
+        stop(sprintf("The bundle artifact '%s' could not be staged.", label), call. = FALSE)
+      }
+      invisible(path)
+    }
 
     used_dataset_keys <- unique(vapply(versions, function(v) v$dataset, character(1)))
     dataset_dirs <- list()
+    dataset_stats_paths <- list()
+    used_dataset_names <- character(0)
 
     for (ds_key in used_dataset_keys) {
       ds <- bundle_store$datasets[[ds_key]]
       if (is.null(ds)) next
-      ds_dir_name <- paste0(format(ds$created, "%Y%m%d-%H%M%S"), "_", ds$dir_label)
-      dataset_dirs[[ds_key]] <- file.path("datasets", ds_dir_name)
+      ds_label <- bundle_archive_component(ds$dir_label, fallback = "dataset", max_chars = 64L)
+      ds_dir_name <- bundle_unique_component(
+        paste0(format(ds$created, "%Y%m%d-%H%M%S"), "_", ds_label),
+        existing = used_dataset_names,
+        max_chars = 88L
+      )
+      used_dataset_names <- c(used_dataset_names, ds_dir_name)
+      dataset_dirs[[ds_key]] <- archive_path("datasets", ds_dir_name)
+      dataset_stats_paths[[ds_key]] <- list()
       ds_dir <- file.path(datasets_dir, ds_dir_name)
       dir.create(ds_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -16050,10 +16322,10 @@ server <- function(input, output, session) {
         paste("Identificador:", ds$key),
         paste("Creado:", format(ds$created, "%Y-%m-%d %H:%M:%S"))
       )
-      writeLines(info_lines, file.path(ds_dir, "INFO.txt"))
 
       for (entry in ds$files) {
-        writeBin(entry$raw, file.path(ds_dir, entry$name))
+        entry_name <- archive_filename(entry$name, fallback = "dataset_file")
+        write_bundle_raw(entry$raw, file.path(ds_dir, entry_name), entry_name)
       }
 
       if (!is.null(ds$stats) && length(ds$stats)) {
@@ -16061,87 +16333,122 @@ server <- function(input, output, session) {
         dir.create(stats_dir, showWarnings = FALSE)
         for (hash in names(ds$stats)) {
           entry <- ds$stats[[hash]]
-          writeBin(entry$raw, file.path(stats_dir, entry$name))
-          info_path <- file.path(
-            stats_dir,
-            paste0(tools::file_path_sans_ext(entry$name), "_INFO.txt")
-          )
-          writeLines(
-            c(
-              paste("Hash:", hash),
-              paste("Creado:", format(entry$created, "%Y-%m-%d %H:%M:%S"))
-            ),
-            info_path
+          stat_name <- archive_filename(entry$name, fallback = "statistics")
+          write_bundle_raw(entry$raw, file.path(stats_dir, stat_name), stat_name)
+          stat_ref <- archive_path(dataset_dirs[[ds_key]], "estadisticas", stat_name)
+          dataset_stats_paths[[ds_key]][[hash]] <- stat_ref
+          info_lines <- c(
+            info_lines,
+            paste(
+              "Estadísticas:",
+              stat_name,
+              paste0("(hash ", hash, "; ", format(entry$created, "%Y-%m-%d %H:%M:%S"), ")")
+            )
           )
         }
       }
+      writeLines(info_lines, file.path(ds_dir, "INFO.txt"), useBytes = TRUE)
     }
 
-    for (v in versions) {
-      ds_ref <- bundle_store$datasets[[v$dataset]]
-      dir_label <- if (nzchar(v$dir_label)) v$dir_label else "version"
-      ver_dir_name <- paste0(format(v$created, "%Y%m%d-%H%M%S"), "_", dir_label)
-      ver_dir <- file.path(versions_dir, ver_dir_name)
-      dir.create(ver_dir, recursive = TRUE, showWarnings = FALSE)
+    manifest_rows <- vector("list", length(versions))
+    used_version_stems <- character(0)
+    for (index in seq_along(versions)) {
+      v <- versions[[index]]
+      fallback_stem <- tools::file_path_sans_ext(v$plot_png_name %||% paste0("version_", index))
+      archive_stem <- bundle_unique_component(
+        v$archive_stem %||% fallback_stem,
+        existing = used_version_stems,
+        max_chars = 96L
+      )
+      used_version_stems <- c(used_version_stems, archive_stem)
 
-      png_name <- v$plot_png_name %||% "grafico.png"
-      writeBin(v$plot_raw, file.path(ver_dir, png_name))
+      png_name <- paste0(archive_stem, ".png")
+      pdf_name <- paste0(archive_stem, ".pdf")
+      ppt_name <- paste0(archive_stem, ".pptx")
+      metadata_name <- paste0(archive_stem, ".xlsx")
 
+      write_bundle_raw(v$plot_raw, file.path(version_dirs$png, png_name), png_name)
       if (!is.null(v$plot_pdf_raw) && length(v$plot_pdf_raw) > 0) {
-        pdf_name <- v$plot_pdf_name %||% sub("\\.png$", ".pdf", png_name)
-        writeBin(v$plot_pdf_raw, file.path(ver_dir, pdf_name))
+        write_bundle_raw(v$plot_pdf_raw, file.path(version_dirs$pdf, pdf_name), pdf_name)
       }
-
       if (!is.null(v$plot_pptx_raw) && length(v$plot_pptx_raw) > 0) {
-        pptx_name <- v$plot_pptx_name %||% sub("\\.png$", ".pptx", png_name)
-        writeBin(v$plot_pptx_raw, file.path(ver_dir, pptx_name))
+        write_bundle_raw(v$plot_pptx_raw, file.path(version_dirs$ppt, ppt_name), ppt_name)
       }
-
-      meta_name <- v$metadata_name %||% "metadata.xlsx"
-      writeBin(v$metadata_raw, file.path(ver_dir, meta_name))
+      write_bundle_raw(v$metadata_raw, file.path(version_dirs$metadata, metadata_name), metadata_name)
 
       dataset_ref <- dataset_dirs[[v$dataset]] %||% ""
-      stats_ref <- NULL
-      if (!is.null(v$stats_hash) && !is.null(ds_ref) && !is.null(ds_ref$stats[[v$stats_hash]])) {
-        stats_entry <- ds_ref$stats[[v$stats_hash]]
-        stats_ref <- file.path(dataset_ref, "estadisticas", stats_entry$name)
+      stats_ref <- ""
+      if (!is.null(v$stats_hash) && !is.null(dataset_stats_paths[[v$dataset]])) {
+        stats_ref <- dataset_stats_paths[[v$dataset]][[v$stats_hash]] %||% ""
       }
+      manifest_rows[[index]] <- data.frame(
+        Version = as.integer(v$bundle_index %||% index),
+        Label = as.character(v$label_input %||% ""),
+        Type = as.character(v$tipo %||% ""),
+        Scope = as.character(v$scope %||% ""),
+        Strain = as.character(v$strain %||% ""),
+        Created = format(v$created, "%Y-%m-%d %H:%M:%S"),
+        Dataset = dataset_ref,
+        Statistics = stats_ref,
+        PNG = archive_path("versions", "png", png_name),
+        PDF = if (!is.null(v$plot_pdf_raw) && length(v$plot_pdf_raw)) {
+          archive_path("versions", "pdf", pdf_name)
+        } else "",
+        PPT = if (!is.null(v$plot_pptx_raw) && length(v$plot_pptx_raw)) {
+          archive_path("versions", "ppt", ppt_name)
+        } else "",
+        Metadata = archive_path("versions", "metadata", metadata_name),
+        stringsAsFactors = FALSE
+      )
+    }
+    utils::write.csv(
+      do.call(rbind, manifest_rows),
+      file.path(versions_dir, "manifest.csv"),
+      row.names = FALSE,
+      na = "",
+      fileEncoding = "UTF-8"
+    )
 
-      info_lines <- c(
-        paste("Etiqueta:", if (nzchar(v$label_input)) v$label_input else "(sin etiqueta)"),
-        paste("Tipo:", v$tipo),
-        paste("Ámbito:", v$scope)
+    archive_files <- sort(list.files(
+      tmpdir,
+      recursive = TRUE,
+      full.names = FALSE,
+      include.dirs = FALSE
+    ))
+    archive_names <- chartr("\\", "/", archive_files)
+    duplicate_names <- unique(archive_names[duplicated(tolower(archive_names))])
+    if (length(duplicate_names)) {
+      stop(
+        paste("Duplicate case-insensitive ZIP paths:", paste(duplicate_names, collapse = ", ")),
+        call. = FALSE
       )
-      if (nzchar(v$strain)) {
-        info_lines <- c(info_lines, paste("Cepa:", v$strain))
-      }
-      info_lines <- c(
-        info_lines,
-        paste("Dimensiones:", sprintf("%d x %d px", v$width, v$height))
+    }
+    long_names <- archive_names[nchar(archive_names, type = "bytes") > 180L]
+    if (length(long_names)) {
+      stop(
+        paste("ZIP paths exceed the Windows-safe internal limit:", paste(long_names, collapse = ", ")),
+        call. = FALSE
       )
-      if (nzchar(dataset_ref)) {
-        info_lines <- c(info_lines, paste("Dataset asociado:", dataset_ref))
-      }
-      if (!is.null(stats_ref)) {
-        info_lines <- c(info_lines, paste("Estadísticas:", stats_ref))
-      }
-      writeLines(info_lines, file.path(ver_dir, "INFO.txt"))
     }
 
-    old_wd <- getwd()
-    on.exit({
-      setwd(old_wd)
-      unlink(tmpdir, recursive = TRUE, force = TRUE)
-    }, add = TRUE)
-
-    setwd(tmpdir)
-    # Preserve dataset/version directories. The default cherry-pick mode flattens
-    # paths and can overwrite repeated names such as INFO.txt on extraction.
     zip::zipr(
       zipfile = file,
-      files = list.files(".", recursive = TRUE),
+      files = archive_files,
+      root = tmpdir,
       mode = "mirror"
     )
+
+    zip_listing <- chartr("\\", "/", utils::unzip(file, list = TRUE)$Name)
+    if (anyDuplicated(tolower(zip_listing))) {
+      stop("The generated ZIP contains duplicate case-insensitive entries.", call. = FALSE)
+    }
+    missing_entries <- setdiff(archive_names, zip_listing)
+    if (length(missing_entries)) {
+      stop(
+        paste("The generated ZIP is missing staged files:", paste(missing_entries, collapse = ", ")),
+        call. = FALSE
+      )
+    }
   }
 
   output$downloadBundleZip <- downloadHandler(

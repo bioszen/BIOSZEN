@@ -63,7 +63,15 @@ test_that("standalone launcher emits the approved citation block", {
   if (!file.exists(launcher_file)) {
     skip("The standalone launcher is a repository file and is not installed in the package.")
   }
-  launcher_exprs <- parse(launcher_file)
+  launcher_exprs <- as.list(parse(launcher_file))
+  if (length(launcher_exprs) == 1L &&
+      is.call(launcher_exprs[[1]]) &&
+      identical(launcher_exprs[[1]][[1]], as.symbol("local"))) {
+    launcher_body <- launcher_exprs[[1]][[2]]
+    if (is.call(launcher_body) && identical(launcher_body[[1]], as.symbol("{"))) {
+      launcher_exprs <- as.list(launcher_body)[-1L]
+    }
+  }
   citation_assignment <- Filter(function(expr) {
     is.call(expr) &&
       identical(expr[[1]], as.name("<-")) &&

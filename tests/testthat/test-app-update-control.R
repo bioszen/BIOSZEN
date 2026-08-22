@@ -18,11 +18,17 @@ test_that("the bilingual app update control is wired to the safe lifecycle", {
 
   expect_match(server_text, 'bioszen_update_available', fixed = TRUE)
   expect_match(server_text, '.bioszen_request_update_after_app', fixed = TRUE)
+  expect_match(server_text, '.bioszen_request_install_after_app', fixed = TRUE)
+  expect_match(server_text, 'identical(bioszen_analytics_launch_mode(), "standalone_bundle")', fixed = TRUE)
+  expect_match(server_text, 'app_install_package_button', fixed = TRUE)
   expect_match(server_text, 'pending_bioszen_update', fixed = TRUE)
+  expect_match(server_text, 'pending_bioszen_install', fixed = TRUE)
   expect_match(server_text, 'schedule_session_callback(function() shiny::stopApp()', fixed = TRUE)
 
   expect_identical(en$en[match("app_update_button", en$key)], "Update")
   expect_identical(es$es[match("app_update_button", es$key)], "Actualizar")
+  expect_identical(en$en[match("app_install_package_button", en$key)], "Install package")
+  expect_identical(es$es[match("app_install_package_button", es$key)], "Instalar paquete")
 })
 
 test_that("update validation states are not treated as application bugs", {

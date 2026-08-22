@@ -4114,26 +4114,53 @@ ui <- fluidPage(
                     value = "",
                     placeholder = tr_text("growth_output_dir_placeholder", i18n_lang)
                   ),
-                  bioszen_dir_button(
-                    "browseGrowthOutputDir",
-                    label = tr("growth_browse_dir"),
-                    title = tr_text("growth_browse_dir_caption", i18n_lang)
-                  ),
-                  helpText(tr("growth_output_dir_help")),
-                  br(),
-                  numericInput(
-                    "maxTime",
-                    tr("growth_max_time"),
-                   value = 48,
-                   min = 0
-                 ),
-                 numericInput(
-                   "timeInterval",
-                   tr("growth_interval"),
-                   value = 0.5,
-                   min = 0.01
-                 ),
-                  actionButton(
+                   bioszen_dir_button(
+                     "browseGrowthOutputDir",
+                     label = tr("growth_browse_dir"),
+                     title = tr_text("growth_browse_dir_caption", i18n_lang)
+                   ),
+                   actionButton(
+                     "clearGrowthOutputDir",
+                     tr("growth_clear_output_dir"),
+                     class = "btn btn-default"
+                   ),
+                   helpText(tr("growth_output_dir_help")),
+                   br(),
+                   radioButtons(
+                     "growthTimeMode",
+                     tr("growth_time_mode"),
+                     choices = named_choices(
+                       c("fixed", "irregular"),
+                       list(tr("growth_time_fixed"), tr("growth_time_irregular"))
+                     ),
+                     selected = "fixed"
+                   ),
+                   conditionalPanel(
+                     condition = "input.growthTimeMode === 'fixed'",
+                     numericInput(
+                       "maxTime",
+                       tr("growth_max_time"),
+                       value = 48,
+                       min = 0
+                     ),
+                     numericInput(
+                       "timeInterval",
+                       tr("growth_interval"),
+                       value = 0.5,
+                       min = 0.01
+                     )
+                   ),
+                   conditionalPanel(
+                     condition = "input.growthTimeMode === 'irregular'",
+                     textInput(
+                       "growthTimeColumn",
+                       tr("growth_time_column"),
+                       value = "",
+                       placeholder = tr_text("growth_time_column_placeholder", i18n_lang)
+                     ),
+                     helpText(tr("growth_time_column_help"))
+                   ),
+                   actionButton(
                     "runGrowth",
                     tr("growth_run"),
                     class = "btn btn-primary"
@@ -4161,6 +4188,15 @@ ui <- fluidPage(
                       if (window.__bioszen_growth_close_hook_installed) return;
                       window.__bioszen_growth_close_hook_installed = true;
                       window.__bioszen_growth_running = false;
+                      function notifyGrowthTableReady() {
+                        if (window.Shiny && typeof Shiny.setInputValue === 'function') {
+                          Shiny.setInputValue(
+                            'growthTableReady',
+                            { nonce: Date.now() },
+                            { priority: 'event' }
+                          );
+                        }
+                      }
 
                       function clearGrowthFileInput() {
                         var input = document.getElementById('growthFiles');
@@ -4173,6 +4209,29 @@ ui <- fluidPage(
                         if (files) files.value = '';
                         var nameNode = label.querySelector('.shiny-file-input-progress, .shiny-file-input-name');
                         if (nameNode) nameNode.textContent = '';
+                      }
+
+                      function applyGrowthTableRows(payload) {
+                        window.__bioszen_growth_pending_rows = payload || { rows: [] };
+                        var tableNode = document.querySelector('#growthTable table');
+                        var isDataTable = window.jQuery && $.fn.dataTable && $.fn.dataTable.isDataTable;
+                        if (!tableNode || !isDataTable || !isDataTable(tableNode)) return false;
+
+                        var table = $(tableNode).DataTable();
+                        var currentPage = table.page();
+                        var rows = Array.isArray(window.__bioszen_growth_pending_rows.rows)
+                          ? window.__bioszen_growth_pending_rows.rows
+                          : [];
+                        table.clear();
+                        if (rows.length) table.rows.add(rows);
+                        table.draw(false);
+
+                        var pageInfo = table.page.info();
+                        if (pageInfo.pages > 0 && currentPage < pageInfo.pages) {
+                          table.page(currentPage).draw(false);
+                        }
+                        window.__bioszen_growth_pending_rows = null;
+                        return true;
                       }
 
                       function registerGrowthHandlers() {
@@ -4196,8 +4255,28 @@ ui <- fluidPage(
                             stopButton.setAttribute('aria-disabled', running ? 'false' : 'true');
                           }
                         });
+                        Shiny.addCustomMessageHandler('bioszen-growth-table-data', function (payload) {
+                          applyGrowthTableRows(payload);
+                        });
                         return true;
                       }
+
+                      $(document).on('init.dt', '#growthTable table', function () {
+                        if (window.__bioszen_growth_pending_rows) {
+                          applyGrowthTableRows(window.__bioszen_growth_pending_rows);
+                        }
+                        notifyGrowthTableReady();
+                      });
+                      $(document).on('shiny:value', function (event) {
+                        if (event && event.name === 'growthTable') {
+                          window.setTimeout(function () {
+                            if (window.__bioszen_growth_pending_rows) {
+                              applyGrowthTableRows(window.__bioszen_growth_pending_rows);
+                            }
+                            notifyGrowthTableReady();
+                          }, 0);
+                        }
+                      });
 
                       if (!registerGrowthHandlers()) {
                         $(document).one('shiny:connected', function () {

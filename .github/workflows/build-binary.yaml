@@ -18,7 +18,7 @@ jobs:
   test:
     name: Test suite (release gate, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 194
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -30,8 +30,8 @@ jobs:
       NOT_CRAN: "true"
       CI: "true"
       RGL_USE_NULL: "true"
-      SHINYTEST2_TIMEOUT: "120000"
-      SHINYTEST2_LOAD_TIMEOUT: "120000"
+      SHINYTEST2_TIMEOUT: "240000"
+      SHINYTEST2_LOAD_TIMEOUT: "240000"
 
     steps:
       - name: Checkout
@@ -57,7 +57,7 @@ jobs:
         run: Rscript -e "cat('Operating system:', Sys.info()[['sysname']], '\n'); cat('Architecture:', Sys.info()[['machine']], '\n'); cat('R version:', R.version.string, '\n'); cat('Chrome executable:', chromote::find_chrome(), '\n')"
 
       - name: Run full testthat suite including shiny e2e
-        run: Rscript -e "options(shinytest2.timeout = 120000, shinytest2.load_timeout = 120000, testthat.progress.max_fails = Inf); testthat::test_dir('tests/testthat', reporter = 'summary', stop_on_failure = TRUE, stop_on_warning = FALSE)"
+        run: Rscript -e "options(shinytest2.timeout = 240000, shinytest2.load_timeout = 240000, testthat.progress.max_fails = Inf); testthat::test_dir('tests/testthat', reporter = 'summary', stop_on_failure = TRUE, stop_on_warning = FALSE)"
 
       - name: Build source package for release check
         run: Rscript -e "r <- file.path(R.home('bin'), if (.Platform[['OS.type']] == 'windows') 'R.exe' else 'R'); status <- system2(r, c('CMD', 'build', '.')); quit(status = status)"

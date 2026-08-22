@@ -142,9 +142,24 @@ growth_selection_cleared,Growth file selection cleared.
 growth_need_selected_files,Select at least one growth file to process.
 growth_output_dir,Autosave output folder (optional)
 growth_output_dir_placeholder,C:/Users/name/Documents/BIOSZEN_growth_results
-growth_output_dir_help,"Optional. If you do not want autosave, leave this blank and download results at the end. If set, choose an existing folder; BIOSZEN will ask you to correct the path if it does not exist. Final files are also saved there. Per-well checkpoints are kept only after an interrupted run and are deleted after a successful completion or resume."
+growth_output_dir_help,"Optional. If you do not want autosave, leave this blank and download results at the end. On desktop installations, an existing selected folder is remembered for the next app restart; hosted deployments do not store it. Final files are also saved there. Per-well checkpoints are kept only after an interrupted run and are deleted after a successful completion or resume."
 growth_browse_dir,Browse...
 growth_browse_dir_caption,Select growth output folder
+growth_clear_output_dir,Clear saved folder
+growth_output_dir_cleared,The saved growth output folder was cleared.
+growth_time_mode,Time mode
+growth_time_fixed,Fixed interval
+growth_time_irregular,Irregular/discontinuous time
+growth_time_column,Time-column name (optional)
+growth_time_column_placeholder,Auto-detect: Time / Tiempo / Hour / Hours
+growth_time_column_help,"Leave blank to detect common English or Spanish time-column names. The selected column must contain finite numeric values that are unique and strictly increasing."
+growth_time_error_column_not_found,"The time column '%s' was not found. Available columns: %s"
+growth_time_error_column_not_detected,"No time column was detected. Enter its name explicitly. Available columns: %s"
+growth_time_error_ambiguous_column,More than one possible time column was found. Enter the time-column name explicitly.
+growth_time_error_missing_values,Time column '%s' contains missing values.
+growth_time_error_nonnumeric_values,Time column '%s' must contain only finite numeric values.
+growth_time_error_duplicated_values,Time column '%s' contains duplicated values.
+growth_time_error_non_increasing_values,Time column '%s' must be strictly increasing.
 growth_max_time,Max time
 growth_interval,Interval (by)
 growth_run,Calculate parameters
@@ -736,3 +751,14 @@ app_update_cancel,Continue working
 app_update_confirm,Close BIOSZEN and update
 app_update_launcher_required,Automatic updating requires BIOSZEN to be launched with BIOSZEN() or run_app(). Close the app and run BIOSZEN::bioszen_update() in R.
 app_update_closing,BIOSZEN is closing and will update from R-universe. Follow the progress in the R console and restart R when it finishes.
+app_install_package_button,Install package
+app_install_package_checking,Checking the stable BIOSZEN package on R-universe...
+app_install_package_title,Install BIOSZEN as an R package
+app_install_package_body,BIOSZEN is running in standalone mode. Stable version %s will be installed in your personal R library.
+app_install_package_close_warning,Save or download any unsaved work first. BIOSZEN will close before installation. When it finishes restart R and use the command below.
+app_install_package_confirm,Close BIOSZEN and install package
+app_install_package_already,BIOSZEN %s is already installed as an R package. Restart R and launch it with BIOSZEN::BIOSZEN().
+app_install_package_unavailable,The standalone installation tools could not be loaded. You can continue using the standalone app.
+app_install_package_check_failed,BIOSZEN could not verify the stable package on R-universe. Check the internet connection and try again.
+app_install_package_launcher_required,Package installation is available only from the BIOSZEN standalone launcher. You can continue using the standalone app.
+app_install_package_closing,BIOSZEN is closing and will install the package from R-universe. Follow the progress in the R console and restart R when it finishes.

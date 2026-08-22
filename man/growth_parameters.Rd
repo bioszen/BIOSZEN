@@ -8,7 +8,9 @@ growth_parameters(
   sheet = NULL,
   overwrite = FALSE,
   max_time = 48,
-  time_interval = 0.5
+  time_interval = 0.5,
+  time_mode = c("fixed", "irregular"),
+  time_column = NULL
 )
 }
 \arguments{
@@ -18,6 +20,10 @@ growth_parameters(
 \item{overwrite}{Whether existing result workbooks may be replaced.}
 \item{max_time}{Maximum time used when converting the raw reader-export format supported by the Shiny growth module.}
 \item{time_interval}{Time interval used when converting the raw reader-export format supported by the Shiny growth module.}
+
+\item{time_mode}{Time handling mode. \code{"fixed"} preserves the historical maximum-time and interval conversion. \code{"irregular"} reads numeric time values from the input file.}
+
+\item{time_column}{Optional time-column name for irregular mode. When \code{NULL} or blank, common English and Spanish names are detected automatically.}
 }
 \value{
 For one input, the same parameter table produced by the Shiny growth workflow,

@@ -142,9 +142,24 @@ growth_selection_cleared,Selección de archivos de crecimiento limpiada.
 growth_need_selected_files,Selecciona al menos un archivo de crecimiento para procesar.
 growth_output_dir,Carpeta de autoguardado (opcional)
 growth_output_dir_placeholder,C:/Users/nombre/Documents/BIOSZEN_growth_results
-growth_output_dir_help,"Opcional. Si no quieres autoguardado, déjala en blanco y descarga los resultados al final. Si se define, selecciona una carpeta existente; BIOSZEN pedirá corregir la ruta si no existe. Los archivos finales también se guardan ahí. Los puntos de control por pozo solo se conservan después de una interrupción y se borran al completar o reanudar con éxito."
+growth_output_dir_help,"Opcional. Si no quieres autoguardado, déjala en blanco y descarga los resultados al final. En instalaciones de escritorio, la carpeta seleccionada existente se recuerda al reiniciar la aplicación; los despliegues alojados no la guardan. Los archivos finales también se guardan ahí. Los puntos de control por pozo solo se conservan después de una interrupción y se borran al completar o reanudar con éxito."
 growth_browse_dir,Examinar...
 growth_browse_dir_caption,Seleccionar carpeta de salida de crecimiento
+growth_clear_output_dir,Limpiar carpeta guardada
+growth_output_dir_cleared,Se limpió la carpeta de salida de crecimiento guardada.
+growth_time_mode,Modo de tiempo
+growth_time_fixed,Intervalo fijo
+growth_time_irregular,Tiempo irregular/discontinuo
+growth_time_column,Nombre de la columna de tiempo (opcional)
+growth_time_column_placeholder,Detección automática: Time / Tiempo / Hour / Hours
+growth_time_column_help,"Déjala en blanco para detectar nombres comunes de columnas de tiempo en inglés o español. La columna seleccionada debe contener valores numéricos finitos, únicos y estrictamente crecientes."
+growth_time_error_column_not_found,"No se encontró la columna de tiempo '%s'. Columnas disponibles: %s"
+growth_time_error_column_not_detected,"No se detectó una columna de tiempo. Escribe su nombre de forma explícita. Columnas disponibles: %s"
+growth_time_error_ambiguous_column,Se encontró más de una posible columna de tiempo. Escribe explícitamente el nombre de la columna de tiempo.
+growth_time_error_missing_values,La columna de tiempo '%s' contiene valores faltantes.
+growth_time_error_nonnumeric_values,La columna de tiempo '%s' debe contener solo valores numéricos finitos.
+growth_time_error_duplicated_values,La columna de tiempo '%s' contiene valores duplicados.
+growth_time_error_non_increasing_values,La columna de tiempo '%s' debe ser estrictamente creciente.
 growth_max_time,Tiempo máximo
 growth_interval,Intervalo (by)
 growth_run,Calcular parámetros
@@ -736,3 +751,14 @@ app_update_cancel,Continuar trabajando
 app_update_confirm,Cerrar BIOSZEN y actualizar
 app_update_launcher_required,La actualización automática requiere iniciar BIOSZEN con BIOSZEN() o run_app(). Cierra la app y ejecuta BIOSZEN::bioszen_update() en R.
 app_update_closing,BIOSZEN se cerrará y actualizará desde R-universe. Sigue el progreso en la consola de R y reinicia R cuando termine.
+app_install_package_button,Instalar paquete
+app_install_package_checking,Comprobando el paquete estable de BIOSZEN en R-universe...
+app_install_package_title,Instalar BIOSZEN como paquete de R
+app_install_package_body,BIOSZEN se está ejecutando en modo standalone. La versión estable %s se instalará en tu biblioteca personal de R.
+app_install_package_close_warning,Primero guarda o descarga cualquier trabajo pendiente. BIOSZEN se cerrará antes de la instalación. Cuando termine reinicia R y usa el siguiente comando.
+app_install_package_confirm,Cerrar BIOSZEN e instalar el paquete
+app_install_package_already,BIOSZEN %s ya está instalado como paquete de R. Reinicia R e inícialo con BIOSZEN::BIOSZEN().
+app_install_package_unavailable,No se pudieron cargar las herramientas de instalación del modo standalone. Puedes continuar usando la aplicación standalone.
+app_install_package_check_failed,BIOSZEN no pudo comprobar el paquete estable en R-universe. Revisa la conexión a internet e inténtalo nuevamente.
+app_install_package_launcher_required,La instalación del paquete solo está disponible desde el launcher standalone de BIOSZEN. Puedes continuar usando la aplicación standalone.
+app_install_package_closing,BIOSZEN se cerrará e instalará el paquete desde R-universe. Sigue el progreso en la consola de R y reinicia R cuando termine.

@@ -18,6 +18,112 @@ make_growth_input_file <- function(path, n_points = 24, n_wells = 3) {
   invisible(path)
 }
 
+test_that("growth parameter table shows up to 100 rows by default", {
+  options <- .bioszen_growth_table_options()
+
+  expect_identical(options$pageLength, 100)
+  expect_identical(options$lengthMenu, c(10, 25, 50, 100))
+})
+
+test_that("live growth table keeps a stable schema for immediate DT updates", {
+  empty <- .bioszen_empty_growth_table()
+  expected_columns <- c("Archivo", .bioszen_growth_result_columns)
+
+  expect_identical(names(empty), expected_columns)
+  expect_identical(nrow(empty), 0L)
+
+  incoming <- data.frame(
+    Archivo = "Parameters_test.xlsx",
+    Well = "A1",
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  normalized <- .bioszen_normalize_growth_table(incoming)
+
+  expect_identical(names(normalized), expected_columns)
+  expect_identical(normalized$Archivo, "Parameters_test.xlsx")
+  expect_identical(normalized$Well, "A1")
+  expect_true(all(vapply(
+    setdiff(.bioszen_growth_result_columns, "Well"),
+    function(column) is.na(normalized[[column]][[1]]),
+    logical(1)
+  )))
+})
+
+test_that("live growth table browser rows preserve order and missing values", {
+  incoming <- data.frame(
+    Archivo = "Parameters_test.xlsx",
+    Well = "A1",
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  incoming[[.bioszen_growth_result_columns[[2L]]]] <- 0.25
+  rows <- .bioszen_growth_table_browser_rows(incoming)
+
+  expect_length(rows, 1L)
+  expect_length(rows[[1]], length(c("Archivo", .bioszen_growth_result_columns)))
+  expect_identical(rows[[1]][[1]], "Parameters_test.xlsx")
+  expect_identical(rows[[1]][[2]], "A1")
+  expect_equal(rows[[1]][[3]], 0.25)
+  expect_identical(rows[[1]][[4]], "")
+  expect_identical(.bioszen_growth_table_browser_rows(data.frame()), list())
+})
+
+test_that("live growth rows serialize with a fixed JSON width", {
+  skip_if_not_installed("jsonlite")
+
+  incoming <- data.frame(
+    Archivo = c("Parameters_test.xlsx", "Parameters_test.xlsx"),
+    Well = c("A1", "A2"),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  incoming[[.bioszen_growth_result_columns[[2L]]]] <- c(0.25, NA_real_)
+  rows <- .bioszen_growth_table_browser_rows(incoming)
+  payload <- jsonlite::toJSON(list(rows = rows), auto_unbox = TRUE, na = "null")
+  decoded <- jsonlite::fromJSON(payload, simplifyVector = FALSE)
+
+  expect_length(decoded$rows, 2L)
+  expect_true(all(vapply(
+    decoded$rows,
+    length,
+    integer(1)
+  ) == length(c("Archivo", .bioszen_growth_result_columns))))
+  expect_identical(decoded$rows[[2L]][[3L]], "")
+})
+
+test_that("growth table reacts during calculations and defaults to 100 rows", {
+  module_txt <- paste(readLines(
+    testthat::test_path("..", "..", "inst", "app", "server", "growth_module.R"),
+    warn = FALSE
+  ), collapse = "\n")
+  ui_txt <- paste(readLines(
+    testthat::test_path("..", "..", "inst", "app", "ui", "ui_main.R"),
+    warn = FALSE
+  ), collapse = "\n")
+
+  expect_match(module_txt, "new_rows < 5L", fixed = TRUE)
+  expect_match(module_txt, "elapsed < 0.75", fixed = TRUE)
+  expect_match(ui_txt, 'DTOutput("growthTable")', fixed = TRUE)
+  expect_match(module_txt, "growth_table_data()", fixed = TRUE)
+  expect_match(module_txt, 'outputOptions(output, "growthTable", suspendWhenHidden = FALSE)', fixed = TRUE)
+  expect_match(module_txt, "shiny::isolate(growth_table_data())", fixed = TRUE)
+  expect_false(grepl('DT::dataTableProxy(', module_txt, fixed = TRUE))
+  expect_false(grepl('DT::replaceData(', module_txt, fixed = TRUE))
+  expect_match(module_txt, 'session$requestFlush()', fixed = TRUE)
+  expect_match(module_txt, 'server = FALSE', fixed = TRUE)
+  expect_match(module_txt, 'session$sendCustomMessage(', fixed = TRUE)
+  expect_match(module_txt, '"bioszen-growth-table-data"', fixed = TRUE)
+  expect_match(module_txt, '.bioszen_growth_table_browser_rows(combined)', fixed = TRUE)
+  expect_match(ui_txt, "'init.dt', '#growthTable table'", fixed = TRUE)
+  expect_match(ui_txt, "Shiny.addCustomMessageHandler('bioszen-growth-table-data'", fixed = TRUE)
+  expect_match(ui_txt, 'window.__bioszen_growth_pending_rows', fixed = TRUE)
+  expect_match(ui_txt, 'table.rows.add(rows)', fixed = TRUE)
+  expect_match(module_txt, "input$growthTableReady", fixed = TRUE)
+  expect_match(module_txt, 'session$flushOutput()', fixed = TRUE)
+  expect_match(module_txt, "pageLength = 100", fixed = TRUE)
+})
+
 test_that("growth output folders can be created safely under the selected directory", {
   root_dir <- tempfile("bioszen_growth_root_")
   dir.create(root_dir)
@@ -79,10 +185,15 @@ test_that("growth module async execution completes without hanging", {
 
     growth_dir <- file.path(tempdir(), "growth_results")
     done <- FALSE
+    saw_live_rows_while_running <- FALSE
     params <- character(0)
     for (i in seq_len(800)) {
       later::run_now(0.01)
       session$flushReact()
+      visible_rows <- growth_table_data()
+      if (isTRUE(growth_running()) && is.data.frame(visible_rows) && nrow(visible_rows) > 0L) {
+        saw_live_rows_while_running <- TRUE
+      }
       params <- list.files(growth_dir, pattern = "^(Parametros|Parameters)_.*\\.xlsx$", full.names = TRUE)
       if (length(params) == 1) {
         done <- TRUE
@@ -91,6 +202,7 @@ test_that("growth module async execution completes without hanging", {
     }
 
     expect_true(done)
+    expect_true(saw_live_rows_while_running)
     res <- readxl::read_excel(params[[1]])
     expect_gt(nrow(res), 0)
   })
@@ -200,6 +312,58 @@ test_that("growth output stems are filesystem-safe and unique", {
   expect_true(all(nzchar(stems)))
 })
 
+test_that("progressive growth snapshots contain only final strict-first results", {
+  skip_if_not_installed("dplyr")
+  skip_if_not_installed("gcplyr")
+
+  time <- seq(0, 31)
+  tidy_df <- dplyr::bind_rows(
+    data.frame(
+      Time = time,
+      Well = "W_strict",
+      Measurements = exp(0.08 * time)
+    ),
+    data.frame(
+      Time = time,
+      Well = "W_permissive",
+      Measurements = exp(0.02 * time)
+    )
+  )
+  normalize_growth <- function(x) {
+    x <- as.data.frame(x)
+    x$Well <- as.character(x$Well)
+    rownames(x) <- NULL
+    x
+  }
+
+  expected <- .bioszen_compute_growth_results_batch_core(tidy_df)
+  snapshots <- list()
+  observed <- compute_growth_results_batch(
+    tidy_df,
+    result_callback = function(results) {
+      snapshots[[length(snapshots) + 1L]] <<- normalize_growth(results)
+    }
+  )
+
+  expect_equal(normalize_growth(observed), normalize_growth(expected), tolerance = 1e-12)
+  expect_length(snapshots, 2L)
+  expect_identical(snapshots[[1]]$Well, "W_strict")
+  expect_false("W_permissive" %in% snapshots[[1]]$Well)
+  expect_identical(snapshots[[2]]$Well, c("W_strict", "W_permissive"))
+  expect_equal(tail(snapshots, 1)[[1]], normalize_growth(expected), tolerance = 1e-12)
+
+  expected_normalized <- normalize_growth(expected)
+  for (snapshot in snapshots) {
+    expected_rows <- expected_normalized[
+      match(snapshot$Well, expected_normalized$Well),
+      ,
+      drop = FALSE
+    ]
+    rownames(expected_rows) <- NULL
+    expect_equal(snapshot, expected_rows, tolerance = 1e-12)
+  }
+})
+
 test_that("checkpointed growth results match the original strong-first calculation", {
   skip_if_not_installed("dplyr")
   skip_if_not_installed("gcplyr")
@@ -239,7 +403,14 @@ test_that("checkpointed growth results match the original strong-first calculati
 
   partial <- full[1, , drop = FALSE]
   .bioszen_write_growth_checkpoint(checkpoint, partial, completed = FALSE)
-  resumed <- compute_growth_results_batch(tidy_df, checkpoint = checkpoint)
+  snapshots <- list()
+  resumed <- compute_growth_results_batch(
+    tidy_df,
+    checkpoint = checkpoint,
+    result_callback = function(results) {
+      snapshots[[length(snapshots) + 1L]] <<- as.data.frame(results)
+    }
+  )
 
   normalize_growth <- function(x) {
     x <- as.data.frame(x)
@@ -247,6 +418,9 @@ test_that("checkpointed growth results match the original strong-first calculati
     x
   }
   expect_equal(normalize_growth(resumed), normalize_growth(full), tolerance = 1e-12)
+  expect_gte(length(snapshots), 2L)
+  expect_equal(normalize_growth(snapshots[[1]]), normalize_growth(partial), tolerance = 1e-12)
+  expect_equal(normalize_growth(tail(snapshots, 1)[[1]]), normalize_growth(full), tolerance = 1e-12)
   expect_identical(tail(names(resumed), 1), "OD0")
   expect_true(file.exists(checkpoint$rds_file))
   expect_true(file.exists(checkpoint$partial_file))
@@ -419,7 +593,7 @@ test_that("growth backgrounding is not wired as cancellation", {
   )
   expect_match(
     module_txt,
-    "later::later\\(function\\(\\) \\{\\s*if \\(is_growth_session_closed\\(\\)\\)",
+    "later::later\\(function\\(\\) \\{[\\s\\S]*?if \\(is_growth_session_closed\\(\\)\\)",
     perl = TRUE,
     info = "Queued growth jobs must abort quietly if the session closes before execution starts."
   )

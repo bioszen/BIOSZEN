@@ -29,28 +29,64 @@ test_that("safe_sheet_names keeps Excel sheet names unique within the 31-charact
   expect_match(sheets[[3]], "_2$")
 })
 
-test_that("mirrored ZIP paths preserve repeated filenames in separate folders", {
+test_that("mirrored ZIP paths preserve the flat format-based bundle layout", {
   skip_if_not_installed("zip")
 
   root <- tempfile("bioszen_bundle_layout_")
   archive <- tempfile(fileext = ".zip")
+  extracted <- tempfile("bioszen_bundle_extracted_")
   dir.create(file.path(root, "datasets", "one"), recursive = TRUE)
-  dir.create(file.path(root, "versiones", "one"), recursive = TRUE)
+  dir.create(file.path(root, "datasets", "one", "estadisticas"), recursive = TRUE)
+  for (format in c("png", "pdf", "ppt", "metadata")) {
+    dir.create(file.path(root, "versions", format), recursive = TRUE)
+  }
   writeLines("dataset", file.path(root, "datasets", "one", "INFO.txt"))
-  writeLines("version", file.path(root, "versiones", "one", "INFO.txt"))
-  on.exit(unlink(c(root, archive), recursive = TRUE, force = TRUE), add = TRUE)
+  writeLines("statistics", file.path(root, "datasets", "one", "estadisticas", "estadisticas_1.xlsx"))
+  writeLines("png", file.path(root, "versions", "png", "001_Boxplot.png"))
+  writeLines("png-second", file.path(root, "versions", "png", "002_Boxplot.png"))
+  writeLines("pdf", file.path(root, "versions", "pdf", "001_Boxplot.pdf"))
+  writeLines("pdf-second", file.path(root, "versions", "pdf", "002_Boxplot.pdf"))
+  writeLines("ppt", file.path(root, "versions", "ppt", "001_Boxplot.pptx"))
+  writeLines("ppt-second", file.path(root, "versions", "ppt", "002_Boxplot.pptx"))
+  writeLines("metadata", file.path(root, "versions", "metadata", "001_Boxplot.xlsx"))
+  writeLines("metadata-second", file.path(root, "versions", "metadata", "002_Boxplot.xlsx"))
+  writeLines("manifest", file.path(root, "versions", "manifest.csv"))
+  on.exit(unlink(c(root, archive, extracted), recursive = TRUE, force = TRUE), add = TRUE)
 
-  old <- setwd(root)
-  on.exit(setwd(old), add = TRUE)
   zip::zipr(
     zipfile = archive,
-    files = list.files(".", recursive = TRUE),
+    files = list.files(root, recursive = TRUE),
+    root = root,
     mode = "mirror"
   )
 
   listing <- utils::unzip(archive, list = TRUE)$Name
   expect_true("datasets/one/INFO.txt" %in% listing)
-  expect_true("versiones/one/INFO.txt" %in% listing)
+  expect_true("datasets/one/estadisticas/estadisticas_1.xlsx" %in% listing)
+  expect_true("versions/png/001_Boxplot.png" %in% listing)
+  expect_true("versions/png/002_Boxplot.png" %in% listing)
+  expect_true("versions/pdf/001_Boxplot.pdf" %in% listing)
+  expect_true("versions/ppt/001_Boxplot.pptx" %in% listing)
+  expect_true("versions/metadata/001_Boxplot.xlsx" %in% listing)
+  expect_true("versions/manifest.csv" %in% listing)
+  expect_false(any(startsWith(listing, "versiones/")))
+  expect_false(any(grepl("_INFO[.]txt$", listing)))
+  expect_identical(anyDuplicated(tolower(listing)), 0L)
+
+  dir.create(extracted, recursive = TRUE)
+  utils::unzip(archive, exdir = extracted)
+  expect_true(file.exists(file.path(
+    extracted,
+    "datasets", "one", "estadisticas", "estadisticas_1.xlsx"
+  )))
+  expect_identical(
+    readLines(file.path(extracted, "versions", "png", "001_Boxplot.png")),
+    "png"
+  )
+  expect_identical(
+    readLines(file.path(extracted, "versions", "png", "002_Boxplot.png")),
+    "png-second"
+  )
 })
 
 test_that("sanitize replaces forbidden filename characters", {
