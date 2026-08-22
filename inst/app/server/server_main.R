@@ -1125,6 +1125,7 @@ server <- function(input, output, session) {
   norm_unavailable_notice_key <- reactiveVal("")
   norm_ctrl_notice_key <- reactiveVal("")
   last_valid_ctrl_medium <- reactiveVal("")
+  datos_agrupados_ready <- reactiveVal(FALSE)
   normalization_notice_state <- new.env(parent = emptyenv())
   normalization_notice_state$generation <- 0L
 
@@ -1197,6 +1198,7 @@ server <- function(input, output, session) {
     }
   }
   normalization_control_choices <- reactive({
+    req(datos_agrupados_ready())
     df <- datos_agrupados()
     if (!is.data.frame(df) || !nrow(df) || !"Media" %in% names(df)) {
       return(character(0))
@@ -6180,6 +6182,7 @@ server <- function(input, output, session) {
         .groups = "drop"
       )
   })
+  datos_agrupados_ready(TRUE)
 
   active_plot_data <- function() {
     if (isTRUE(should_use_normalized_data(

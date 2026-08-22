@@ -166,6 +166,13 @@ test_that("normalization UI uses one effective control while the selector is res
   server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
 
   expect_match(server_txt, "normalization_control_choices <- reactive", fixed = TRUE)
+  expect_match(server_txt, "datos_agrupados_ready <- reactiveVal(FALSE)", fixed = TRUE)
+  expect_match(
+    server_txt,
+    "normalization_control_choices <- reactive\\(\\{\\s*req\\(datos_agrupados_ready\\(\\)\\)",
+    perl = TRUE
+  )
+  expect_match(server_txt, "datos_agrupados_ready(TRUE)", fixed = TRUE)
   expect_match(server_txt, "effective_normalization_control <- reactive", fixed = TRUE)
   expect_match(server_txt, "ctrl   <- effective_normalization_control()", fixed = TRUE)
   expect_match(server_txt, "selected_ctrl <- effective_normalization_control()", fixed = TRUE)

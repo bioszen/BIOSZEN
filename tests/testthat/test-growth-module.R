@@ -15,6 +15,9 @@ test_that("growth module generates curve and parameter workbooks", {
   library(shiny)
   library(dplyr)
 
+  old_options <- options(bioszen_growth_force_sync = TRUE)
+  on.exit(options(old_options), add = TRUE)
+
   n_points <- 24
   tmp_input <- tempfile("growth_input_", fileext = ".xlsx")
   on.exit(unlink(tmp_input, recursive = TRUE), add = TRUE)
@@ -72,6 +75,9 @@ test_that("growth module extracts growth parameters per well with expected field
   skip_if_not_installed("gcplyr")
   skip_if_not_installed("openxlsx")
   skip_if_not_installed("dplyr")
+
+  old_options <- options(bioszen_growth_force_sync = TRUE)
+  on.exit(options(old_options), add = TRUE)
 
   library(shiny)
   library(dplyr)

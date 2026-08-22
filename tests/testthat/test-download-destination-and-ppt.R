@@ -527,9 +527,17 @@ test_that("download UI uses editable preview-aligned PPT and prompts for destina
   expect_match(server_txt, "output$downloadPlotly_png <- individual_plot_png_download()", fixed = TRUE)
   expect_match(server_txt, "output$downloadPlotly_pdf <- individual_plot_pdf_download()", fixed = TRUE)
   expect_match(server_txt, 'plot_pptx_raw <- tryCatch(', fixed = TRUE)
-  expect_match(server_txt, 'plot_pptx_name <- paste0("grafico_", type_label, version_suffix, ".pptx")', fixed = TRUE)
-  expect_match(server_txt, 'writeBin(v$plot_pptx_raw, file.path(ver_dir, pptx_name))', fixed = TRUE)
-  expect_match(server_txt, 'as.character(length(v$plot_pptx_raw %||% raw(0)))', fixed = TRUE)
+  expect_match(server_txt, 'plot_pptx_name <- paste0(archive_stem, ".pptx")', fixed = TRUE)
+  expect_match(
+    server_txt,
+    'write_bundle_raw(v$plot_pptx_raw, file.path(version_dirs$ppt, ppt_name), ppt_name)',
+    fixed = TRUE
+  )
+  expect_match(
+    server_txt,
+    'as.character(md5_raw(v$plot_pptx_raw %||% raw(0)) %||% "")',
+    fixed = TRUE
+  )
   expect_match(server_txt, "write_validated_download_raw <- function", fixed = TRUE)
   expect_gte(
     lengths(regmatches(server_txt, gregexpr("write_validated_download_raw(raw, file", server_txt, fixed = TRUE))),
