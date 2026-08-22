@@ -541,12 +541,23 @@ parametros <- BIOSZEN::growth_parameters(
   output_dir = "resultados_crecimiento",
   overwrite = FALSE
 )
+
+parametros_irregulares <- BIOSZEN::growth_parameters_irregular(
+  "curva_irregular.xlsx",
+  time_column = "Tiempo"
+)
 ```
 
 El comando ejecuta primero el mismo detector robusto y usa el mismo fallback
 permisivo solo para los valores que el método robusto no pudo calcular. Las
 columnas y resultados numéricos coinciden con la pestaña de crecimiento. Sin
 `output_dir`, devuelve el resultado en R y no crea archivos.
+
+Para tiempos registrados desiguales o discontinuos, usa
+`BIOSZEN::growth_parameters_irregular()`. Esta función lee directamente los
+valores numéricos de tiempo del archivo y puede detectar automáticamente nombres
+comunes como `Time`, `Tiempo`, `Hour` u `Hora`; usa `time_column` para seleccionar
+una columna específica.
 
 ![Flujo de parámetros de crecimiento](manual_images/13_growth_parameters_workflow.png)
 

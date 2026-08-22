@@ -1,14 +1,13 @@
 library(testthat)
 
-.bioszen_live_growth_fixture <- function(path, n_points = 120L, n_wells = 24L) {
+.bioszen_live_growth_fixture <- function(path, n_points = 48L, n_wells = 24L) {
   wb <- openxlsx::createWorkbook()
   openxlsx::addWorksheet(wb, "Sheet1")
   time <- seq_len(n_points)
   data <- data.frame(Ignore1 = time, Ignore2 = time)
   for (index in seq_len(n_wells)) {
-    rate <- 0.025 + (index %% 7L) * 0.002
-    data[[sprintf("W%02d", index)]] <-
-      0.08 + 1.2 / (1 + exp(-rate * (time - 55))) + 0.002 * sin(time + index)
+    rate <- 0.06 + (index %% 7L) * 0.004
+    data[[sprintf("W%02d", index)]] <- 0.05 * exp(rate * time)
   }
   openxlsx::writeData(wb, "Sheet1", data, startRow = 3, colNames = TRUE)
   openxlsx::saveWorkbook(wb, path, overwrite = TRUE)
@@ -29,6 +28,35 @@ library(testthat)
   )
   values <- suppressWarnings(as.integer(unlist(raw, use.names = FALSE)))
   if (!length(values) || is.na(values[[1L]])) 0L else values[[1L]]
+}
+
+.bioszen_live_growth_diagnostics <- function(app) {
+  app$get_js(
+    "(function(){
+       var output = document.getElementById('growthTable');
+       var table = document.querySelector('#growthTable table');
+       var pending = window.__bioszen_growth_pending_rows;
+       var pane = output ? output.closest('.tab-pane') : null;
+       return {
+         connected: !!(window.Shiny && Shiny.shinyapp && Shiny.shinyapp.$socket),
+         outputFound: !!output,
+         outputClass: output ? output.className : '',
+         paneClass: pane ? pane.className : '',
+         paneDisplay: pane ? window.getComputedStyle(pane).display : '',
+         outputDisplay: output ? window.getComputedStyle(output).display : '',
+         outputWidth: output ? output.getBoundingClientRect().width : -1,
+         tableFound: !!table,
+         dataTableReady: !!(table && window.jQuery && $.fn.dataTable &&
+           $.fn.dataTable.isDataTable(table)),
+         pendingDefined: typeof pending !== 'undefined',
+         pendingRows: pending && Array.isArray(pending.rows) ? pending.rows.length : -1,
+         bodyRows: table ? table.querySelectorAll('tbody tr').length : -1,
+         bodyText: table && table.querySelector('tbody')
+           ? (table.querySelector('tbody').innerText || table.querySelector('tbody').textContent || '')
+           : ''
+       };
+     })()"
+  )
 }
 
 test_that("growth rows reach the browser before a long calculation finishes", {
@@ -63,20 +91,9 @@ test_that("growth rows reach the browser before a long calculation finishes", {
   )
   on.exit(try(app$stop(), silent = TRUE), add = TRUE)
 
-  activated <- app$get_js(
-    "(function(){
-       var links = Array.from(document.querySelectorAll(
-         'a[data-toggle=\"tab\"], a[data-bs-toggle=\"tab\"], .nav-link'
-       ));
-       var link = links.find(function(item){
-         return /Growth Parameter Extraction/i.test((item.textContent || '').trim());
-       });
-       if (!link) return false;
-       link.click();
-       return true;
-     })()"
-  )
-  expect_true(isTRUE(as.logical(unlist(activated, use.names = FALSE)[[1L]])))
+  app$set_window_size(width = 1400, height = 900)
+  app$set_inputs(mainTabs = "tab_growth", wait_ = TRUE, timeout_ = 60000)
+  expect_identical(app$get_value(input = "mainTabs"), "tab_growth")
 
   app$upload_file(
     growthFiles = normalizePath(fixture),
@@ -84,7 +101,7 @@ test_that("growth rows reach the browser before a long calculation finishes", {
     timeout_ = 240000
   )
   app$wait_for_value(input = "growthFilesKeep", timeout = 240000)
-  app$set_inputs(maxTime = 119, timeInterval = 1, wait_ = TRUE, timeout_ = 60000)
+  app$set_inputs(maxTime = 47, timeInterval = 1, wait_ = TRUE, timeout_ = 60000)
 
   started <- app$get_js(
     "(function(){
@@ -114,9 +131,20 @@ test_that("growth rows reach the browser before a long calculation finishes", {
     if (live_rows < 1L && !completed) Sys.sleep(0.2)
   }
 
+  diagnostics <- if (live_rows < 1L) {
+    list(
+      status = status,
+      browser = tryCatch(.bioszen_live_growth_diagnostics(app), error = function(e) conditionMessage(e))
+    )
+  } else {
+    NULL
+  }
   expect_true(
     live_rows >= 1L,
-    info = "A final per-well row should be visible before completion."
+    info = paste(
+      "A final per-well row should be visible before completion.",
+      paste(capture.output(str(diagnostics)), collapse = " ")
+    )
   )
   expect_false(completed, info = "The assertion must observe a live update, not only final output.")
 

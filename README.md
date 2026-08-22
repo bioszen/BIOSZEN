@@ -151,6 +151,12 @@ result <- BIOSZEN::growth_parameters(
   output_dir = "growth_results",
   overwrite = FALSE
 )
+
+# Curves with uneven/discontinuous recorded time points
+irregular_result <- BIOSZEN::growth_parameters_irregular(
+  "irregular_curve.xlsx",
+  time_column = "Time"
+)
 ```
 
 The same update workflow is also available from the blue **Update** button at
@@ -164,6 +170,9 @@ uploaded data or credentials.
 `growth_parameters()` accepts wide or tidy data frames, one or more Excel/CSV
 files, or a directory. It uses the identical robust-first calculation and
 permissive fallback as the Shiny module and returns the same parameter columns.
+`growth_parameters_irregular()` provides the equivalent file/data-frame workflow
+for uneven time points, with automatic common-name detection when `time_column`
+is omitted.
 
 ## Choose the Right Input Mode
 

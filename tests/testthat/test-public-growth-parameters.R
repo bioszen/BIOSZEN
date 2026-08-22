@@ -12,7 +12,11 @@ if (all(file.exists(public_growth_sources))) {
   }
 } else {
   package_namespace <- asNamespace("BIOSZEN")
-  for (name in c("growth_parameters", ".bioszen_growth_result_columns")) {
+  for (name in c(
+    "growth_parameters",
+    "growth_parameters_irregular",
+    ".bioszen_growth_result_columns"
+  )) {
     assign(name, get(name, envir = package_namespace, inherits = FALSE), envir = public_growth_api)
   }
 }
@@ -23,6 +27,15 @@ make_public_growth_curves <- function() {
     Time = time,
     RobustWell = 0.05 * exp(0.10 * time),
     FallbackWell = 0.03 * exp(0.30 * time),
+    check.names = FALSE
+  )
+}
+
+make_public_irregular_growth_curves <- function() {
+  time <- c(0, cumsum(rep(c(0.08, 0.17, 0.5, 1), length.out = 23L)))
+  data.frame(
+    Tiempo = time,
+    IrregularWell = 0.05 * exp(0.15 * time),
     check.names = FALSE
   )
 }
@@ -71,6 +84,48 @@ test_that("growth_parameters supports tidy data without writing files", {
   expect_s3_class(result, "bioszen_growth_parameters")
   expect_identical(list.files(scratch, all.files = TRUE, no.. = TRUE), before)
   expect_identical(names(result), public_growth_api$.bioszen_growth_result_columns)
+})
+
+test_that("growth_parameters_irregular reads actual uneven times from a curve file", {
+  skip_if_not_installed("writexl")
+
+  curves <- make_public_irregular_growth_curves()
+  input_file <- tempfile("bioszen_growth_irregular_", fileext = ".xlsx")
+  writexl::write_xlsx(list(Curves = curves), input_file)
+
+  result <- public_growth_api$growth_parameters_irregular(
+    input_file,
+    sheet = "Curves"
+  )
+  explicit <- public_growth_api$growth_parameters_irregular(
+    curves,
+    time_column = "Tiempo"
+  )
+  direct <- public_growth_api$growth_parameters(
+    curves,
+    time_mode = "irregular",
+    time_column = "Tiempo"
+  )
+
+  expect_s3_class(result, "bioszen_growth_parameters")
+  expect_identical(names(result), public_growth_api$.bioszen_growth_result_columns)
+  expect_identical(as.character(result$Well), as.character(explicit$Well))
+  for (column in setdiff(names(result), "Well")) {
+    expect_equal(
+      unname(result[[column]]),
+      unname(explicit[[column]]),
+      tolerance = sqrt(.Machine$double.eps)
+    )
+  }
+  expect_equal(explicit, direct, tolerance = sqrt(.Machine$double.eps))
+  expect_identical(attr(result, "input_format"), "processed")
+
+  duplicated <- curves
+  duplicated$Tiempo[[3L]] <- duplicated$Tiempo[[2L]]
+  expect_error(
+    public_growth_api$growth_parameters_irregular(duplicated),
+    "duplicated values"
+  )
 })
 
 test_that("growth_parameters reads files and protects explicit output", {

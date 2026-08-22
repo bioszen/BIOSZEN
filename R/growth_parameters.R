@@ -734,3 +734,49 @@ growth_parameters <- function(
   class(results) <- c("bioszen_growth_parameters_list", "list")
   results
 }
+
+#' Calculate BIOSZEN growth parameters from irregular time points
+#'
+#' A convenience variant of [growth_parameters()] for curve tables whose
+#' recorded time points are uneven or discontinuous. Numeric time values are
+#' read directly from the selected column and must be finite, unique, and
+#' strictly increasing within each well.
+#'
+#' @param input A data frame, a supported growth file (`.xlsx`, `.xls`, or
+#'   `.csv`), a vector of supported files, or a directory containing supported
+#'   files. Data frames may be wide or tidy.
+#' @param output_dir Optional directory for generated parameter workbooks. No
+#'   files are written when this is `NULL`.
+#' @param sheet Optional Excel sheet name or index. The first sheet is used by
+#'   default. Ignored for data frames and CSV files.
+#' @param overwrite Whether existing result workbooks may be replaced.
+#' @param time_column Optional time-column name. When `NULL` or blank, common
+#'   English and Spanish names such as `Time`, `Tiempo`, `Hour`, and `Hora` are
+#'   detected automatically.
+#'
+#' @return The same result type and parameter columns as [growth_parameters()].
+#'
+#' @examples
+#' irregular <- data.frame(
+#'   Time = c(0, 0.08, 0.17, 0.5, 1, 2),
+#'   A1 = c(0.05, 0.051, 0.053, 0.06, 0.08, 0.16)
+#' )
+#' result <- growth_parameters_irregular(irregular)
+#'
+#' @seealso [growth_parameters()]
+#' @export
+growth_parameters_irregular <- function(
+    input,
+    output_dir = NULL,
+    sheet = NULL,
+    overwrite = FALSE,
+    time_column = NULL) {
+  growth_parameters(
+    input = input,
+    output_dir = output_dir,
+    sheet = sheet,
+    overwrite = overwrite,
+    time_mode = "irregular",
+    time_column = time_column
+  )
+}
