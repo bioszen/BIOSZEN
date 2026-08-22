@@ -114,7 +114,10 @@ test_that("growth rows reach the browser before a long calculation finishes", {
     if (live_rows < 1L && !completed) Sys.sleep(0.2)
   }
 
-  expect_gte(live_rows, 1L, info = "A final per-well row should be visible before completion.")
+  expect_true(
+    live_rows >= 1L,
+    info = "A final per-well row should be visible before completion."
+  )
   expect_false(completed, info = "The assertion must observe a live update, not only final output.")
 
   app$get_js(
