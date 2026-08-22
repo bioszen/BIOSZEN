@@ -94,11 +94,11 @@ test_that("live growth rows serialize with a fixed JSON width", {
 
 test_that("growth table reacts during calculations and defaults to 100 rows", {
   module_txt <- paste(readLines(
-    testthat::test_path("..", "..", "inst", "app", "server", "growth_module.R"),
+    app_test_path("server", "growth_module.R"),
     warn = FALSE
   ), collapse = "\n")
   ui_txt <- paste(readLines(
-    testthat::test_path("..", "..", "inst", "app", "ui", "ui_main.R"),
+    app_test_path("ui", "ui_main.R"),
     warn = FALSE
   ), collapse = "\n")
 

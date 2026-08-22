@@ -32,7 +32,10 @@ test_that("package-root runApp does not autoload package R files", {
   root <- normalizePath(app_test_root(), winslash = "/", mustWork = TRUE)
   marker <- file.path(root, "R", "_disable_autoload.R")
 
-  expect_true(file.exists(marker))
+  skip_if_not(
+    file.exists(marker),
+    "The repository-only Shiny autoload marker is not installed with the package."
+  )
 
   support_env <- new.env(parent = globalenv())
   expect_warning(
