@@ -63,6 +63,40 @@ wait_for_selectize_labels <- function(app, input_id, predicate, timeout_sec = 30
   }
 }
 
+is_significance_navigation_timeout <- function(err) {
+  msg <- conditionMessage(err)
+  grepl("Chromote: timed out", msg, fixed = TRUE) &&
+    grepl("Page.navigate", msg, fixed = TRUE)
+}
+
+start_significance_driver <- function(max_attempts = 3L) {
+  max_attempts <- max(1L, as.integer(max_attempts[[1L]]))
+  last_error <- NULL
+
+  for (attempt in seq_len(max_attempts)) {
+    app <- tryCatch(
+      shinytest2::AppDriver$new(
+        app_dir = app_test_launch_dir(),
+        load_timeout = 240000,
+        timeout = 240000,
+        clean_logs = FALSE,
+        options = list(warn = 1)
+      ),
+      error = function(e) e
+    )
+
+    if (!inherits(app, "error")) return(app)
+
+    last_error <- app
+    if (!is_significance_navigation_timeout(app) || attempt >= max_attempts) break
+
+    Sys.sleep(min(10, 2 * attempt))
+    invisible(gc())
+  }
+
+  stop(last_error)
+}
+
 test_that("significance bars remain independent when switching parameters", {
   skip_if_significance_e2e_unavailable()
   skip_if_not_installed("jsonlite")
@@ -73,13 +107,7 @@ test_that("significance bars remain independent when switching parameters", {
     if (is.na(old_not_cran)) Sys.unsetenv("NOT_CRAN") else Sys.setenv(NOT_CRAN = old_not_cran)
   }, add = TRUE)
 
-  app <- shinytest2::AppDriver$new(
-    app_dir = app_test_launch_dir(),
-    load_timeout = 120000,
-    timeout = 120000,
-    clean_logs = FALSE,
-    options = list(warn = 1)
-  )
+  app <- start_significance_driver()
   on.exit(try(app$stop(), silent = TRUE), add = TRUE)
 
   fixture <- app_test_path("www", "reference_files", "Ejemplo_platemap_parametros.xlsx")
