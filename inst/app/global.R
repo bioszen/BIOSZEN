@@ -562,7 +562,6 @@ tab_compos <- tabPanel(
             max = BIOSZEN_MAX_DPI,
             step = 1
           ),
-          helpText(tr("export_dpi_help")),
           value = "combo_section_layout"
         ),
         accordion_panel_safe(

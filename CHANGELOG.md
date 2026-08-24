@@ -6,6 +6,12 @@ Semantic Versioning.
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-08-24
+- Added configurable concentration-response (dose-response) plots for selected strains and replicates, with automatic or editable concentration mapping, raw or normalized responses, linear or logarithmic concentration axes, and publication-oriented appearance controls.
+- Added four-parameter response-curve fitting, IC50 estimates and confidence intervals, model diagnostics, susceptibility ranking, pairwise strain comparisons with Holm adjustment, and complete Excel/statistical bundle exports.
+- Added flexible growth-parameter extraction from both fixed-interval and irregular/discontinuous numeric time points while preserving the established fixed-interval workflow.
+- Improved plot and PowerPoint export fidelity, application diagnostics, update messaging, stability, and general usability, and fixed issues affecting reactive dose-response controls and normalized plot labels.
+
 ## [2.1.1] - 2026-08-01
 - Matched editable PowerPoint output for stacked plots to the existing preview/raster palette, stack order, and proportions without changing other plot exports.
 - Added optional X-axis label angle and multi-line wrapping controls to heatmaps and correlation matrices while preserving their existing defaults.

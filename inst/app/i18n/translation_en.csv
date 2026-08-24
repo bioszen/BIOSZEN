@@ -672,7 +672,6 @@ violin_inner_points,Individual points
 axis_title_spacing_x,X-axis title spacing (pt):
 axis_title_spacing_y,Y-axis title spacing (pt):
 export_dpi,Export resolution (DPI):
-export_dpi_help,"Default: 300 DPI. Supported values: 72 to 600. DPI changes raster export and clipboard resolution only; dimensions and layout remain unchanged. PDF and compatible PowerPoint exports remain vector-based."
 dpi_invalid_fallback,"The DPI value is missing, invalid, or unsupported. BIOSZEN will use 300 DPI. Supported values are 72 to 600 DPI."
 dpi_metadata_invalid_fallback,"The loaded metadata contains an invalid or unsupported DPI value. BIOSZEN restored the remaining settings and used 300 DPI."
 combo_section_pptx,PowerPoint slide
@@ -729,6 +728,7 @@ growth_folder_create_error,Could not create folder: %s
 app_error_generic,An unexpected application error occurred.
 app_error_title,Application error
 app_error_intro,Technical details are available below without uploaded data or personal paths.
+app_error_send_to,Send this report to:
 app_error_details,Show technical details
 app_error_copy,Copy report
 app_error_email,Prepare email
@@ -762,3 +762,133 @@ app_install_package_unavailable,The standalone installation tools could not be l
 app_install_package_check_failed,BIOSZEN could not verify the stable package on R-universe. Check the internet connection and try again.
 app_install_package_launcher_required,Package installation is available only from the BIOSZEN standalone launcher. You can continue using the standalone app.
 app_install_package_closing,BIOSZEN is closing and will install the package from R-universe. Follow the progress in the R console and restart R when it finishes.
+plot_dose_response,Concentration-response
+dose_settings,Concentration-response settings
+dose_series,Compound and concentration unit:
+dose_strains,Strains to compare:
+dose_control,Zero-dose control:
+dose_control_auto,Automatic detection
+dose_series_manual,Manual condition mapping
+dose_mapping_title,Condition concentration mapping
+dose_mapping_condition,Group or condition
+dose_mapping_concentration,Concentration
+dose_mapping_unit,Unit
+dose_mapping_unit_all,Unit for all displayed conditions
+dose_mapping_unit_all_placeholder,e.g. µM / µg/mL / AU
+dose_mapping_apply_unit_all,Apply to all
+dose_mapping_apply_unit_missing,Enter a unit before applying it to all conditions.
+dose_mapping_apply_unit_success,The unit was applied to all displayed conditions.
+dose_mapping_no_rows,No conditions are available for this series. Select the manual mapping option or review the selected groups.
+dose_mapping_missing_concentration,Enter a concentration.
+dose_mapping_invalid_concentration,Enter a numeric concentration greater than or equal to zero.
+dose_mapping_missing_unit,Enter a concentration unit.
+dose_mapping_invalid_unit,Enter a non-empty concentration unit.
+dose_mapping_mixed_units,All displayed conditions must use the same concentration unit before the curve can be fitted.
+dose_mapping_valid,Concentration mapping is valid.
+dose_log_x,Use logarithmic concentration axis
+dose_show_ci,Show 95% confidence bands
+dose_stats_title,Concentration-response analysis
+dose_pairwise_title,Pairwise susceptibility comparisons
+dose_no_valid_data,No valid concentration-response series was found. Check treatment names selected groups strains and concentration units.
+dose_x_label,Concentration
+dose_y_normalized,%s (% of control)
+dose_table_strain,Strain
+dose_table_concentration,Concentration
+dose_table_response,Response
+dose_table_biorep,Biological replicate
+dose_col_parameter,Parameter
+dose_col_compound,Compound
+dose_col_unit,Unit
+dose_col_ic50,IC50
+dose_col_ic50_result,IC50 result
+dose_col_ci_lower,95% CI lower
+dose_col_ci_upper,95% CI upper
+dose_col_hill,Hill slope
+dose_col_lower,Lower asymptote
+dose_col_upper,Upper asymptote
+dose_col_min,Minimum tested
+dose_col_max,Maximum tested
+dose_col_doses,Dose levels
+dose_col_bioreps,Biological replicates
+dose_col_rank,Susceptibility rank
+dose_col_relative,IC50 relative to lowest
+dose_col_status,Fit status
+dose_col_strain_a,Strain A
+dose_col_strain_b,Strain B
+dose_col_ratio,IC50 ratio A/B
+dose_col_ratio_lower,Ratio 95% CI lower
+dose_col_ratio_upper,Ratio 95% CI upper
+dose_col_p,P value
+dose_col_p_adjusted,Holm-adjusted P value
+dose_col_interpretation,Interpretation
+dose_status_ok,Estimable within tested range
+dose_status_dependency_missing,The drc package is unavailable
+dose_status_insufficient_doses,Insufficient distinct concentrations
+dose_status_flat_response,No measurable response range
+dose_status_fit_failed,Model did not converge
+dose_status_non_inhibitory,No decreasing inhibitory response
+dose_status_not_estimable,IC50 not estimable
+dose_status_not_reached,50% inhibition not reached
+dose_status_below_range,IC50 below tested range
+dose_ic50_not_reached,>%s
+dose_ic50_below_range,<%s
+dose_ic50_not_estimable,Not estimable
+dose_pair_more_susceptible,%s is more susceptible than %s
+dose_pair_not_significant,No significant difference after Holm adjustment
+dose_conclusion_most,%s has the lowest estimable IC50 and is descriptively the most susceptible strain.
+dose_conclusion_significant,Adjusted comparisons support the following susceptibility differences: %s
+dose_conclusion_no_significant,%s has the lowest estimated IC50 but no pairwise difference is significant after Holm adjustment.
+dose_conclusion_unavailable,Susceptibility cannot be ranked because fewer than two IC50 values are estimable within the tested range.
+dose_comparison_unavailable,IC50 values were estimable but their pairwise uncertainty could not be calculated.
+dose_point_display,Replicate display:
+dose_display_individual,Individual biological replicates
+dose_display_mean_error,Mean ± error
+dose_linear_slope,Include optional linear trend slope
+dose_axis_settings,Dose-response axes
+dose_xmin,X-axis minimum
+dose_xmax,X-axis maximum
+dose_xbreak,X-axis interval
+dose_ymin,Y-axis minimum
+dose_ymax,Y-axis maximum
+dose_ybreak,Y-axis interval
+dose_axis_auto_hint,Leave both limits at 0 for automatic scaling. Use 0 for an automatic interval. A minimum is applied when its maximum is greater.
+dose_log_axis_interval_hint,On a logarithmic X axis BIOSZEN uses automatic logarithmic tick spacing. The X interval applies to the linear axis.
+dose_xlab,X-axis title
+dose_ylab,Y-axis title
+dose_appearance_settings,Dose-response appearance
+dose_line_width,Fitted curve line width
+dose_point_size,Point size
+dose_point_stroke,Black point outline width
+dose_ci_alpha,Confidence band opacity
+dose_shared_appearance_hint,Font family; plot-title axis and legend sizes; and axis-line width remain in the shared Appearance section below.
+dose_replicate_values_title,Replicate-level values used for this analysis
+dose_curve_parameters_title,Curve parameters
+dose_model_diagnostics_title,Model diagnostics
+dose_metric_based_on,IC50 based on %s
+dose_col_result_basis,Result
+dose_col_ed50,ED50
+dose_col_max_slope,Maximum slope
+dose_col_max_slope_magnitude,Maximum slope magnitude
+dose_col_response_range,Response range
+dose_col_inflection,Inflection point
+dose_col_observations,Observations
+dose_col_model,Model
+dose_col_residual_df,Residual degrees of freedom
+dose_col_rss,Residual sum of squares
+dose_col_rmse,RMSE
+dose_col_r_squared,R²
+dose_col_adjusted_r_squared,Adjusted R²
+dose_col_aic,AIC
+dose_col_bic,BIC
+dose_col_log_likelihood,Log likelihood
+dose_col_linear_slope,Linear trend slope
+dose_col_linear_ci_lower,Linear slope 95% CI lower
+dose_col_linear_ci_upper,Linear slope 95% CI upper
+dose_col_linear_p,Linear slope P value
+dose_col_linear_r_squared,Linear trend R²
+dose_col_converged,Converged
+dose_table_condition,Condition/group
+dose_table_techrep,Technical replicate
+dose_table_raw_value,Raw parameter value
+dose_table_normalized_value,Normalized value (% of control)
+dose_table_model_value,Value used for curve fitting

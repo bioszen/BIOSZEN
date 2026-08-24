@@ -83,6 +83,16 @@ if (!dir.exists(app_dir)) {
   app_root <- normalizePath(app_root, winslash = "/", mustWork = TRUE)
   app_dir <- normalizePath(app_dir, winslash = "/", mustWork = TRUE)
 
+  hosted_markers <- c(
+    "CONNECT_SERVER",
+    "CONNECT_CONTENT_GUID",
+    "RSCONNECT_SERVER",
+    "RSCONNECT_CONTENT_GUID",
+    "SHINY_SERVER_VERSION"
+  )
+  hosted <- any(nzchar(trimws(Sys.getenv(hosted_markers, unset = ""))))
+  options(BIOSZEN.launch_mode = if (hosted) "hosted" else "direct_source")
+
   citation_file <- file.path(app_root, "R", "citation.R")
   startup_file <- file.path(app_root, "R", "app_startup.R")
   startup_files <- c(citation_file, startup_file)

@@ -283,6 +283,70 @@ specific measurement type.
 - Optional overlays: regression line, `r`, `p`, `R2`, equation.
 - Advanced panel supports one-vs-all style screening and Excel export.
 
+### Concentration-response / dose-response
+
+- Select the response parameter, compound series, strains, biological replicates, and displayed conditions to include. The same group and replicate filters used by the other plots remain active.
+- BIOSZEN reads recognized concentrations from condition names and lets you correct every concentration and unit manually. All included rows must use one displayed unit before fitting.
+- Each strain is fitted independently with a four-parameter log-logistic inhibitory model (`LL.4`). Individual biological-replicate points are shown by default; mean with SD or SEM is optional.
+- The raw parameter or its control-normalized value can be used as the response. Normalized responses are fitted as percent of control.
+- A lower IC50 indicates greater susceptibility only when the fit is inhibitory, the IC50 lies within the tested concentration range, and the uncertainty is acceptable. Values reported as `> maximum tested`, `< minimum tested`, or not estimable are excluded from susceptibility ranking.
+- Axis limits, intervals, titles, fitted-line width, point size, black point outline, and confidence-band opacity affect presentation only. They do not refit the curve or change any parameter. An X interval is used on the linear axis; logarithmic X axes use automatic logarithmic spacing.
+
+#### Interpretation of replicate and curve parameters
+
+| Output | Interpretation |
+|---|---|
+| `Strain`, `Parameter`, `Compound`, `ConcentrationUnit` | Identify the fitted strain, selected response, treatment series, and concentration unit. Parameters from different response or concentration units should not be compared as if they were on the same scale. |
+| `Condition`, `Concentration` | Original condition/group label and the corrected numeric concentration used for that row. Always verify the concentration mapping before fitting. |
+| `BiologicalReplicate`, `TechnicalReplicate` | Replicate identifiers retained in the replicate-values sheet. Selected technical replicates are averaged within each biological replicate before nonlinear fitting; biological replicates are the independent model observations. |
+| `RawValue` | Observed parameter value retained after the active group and replicate filters. |
+| `NormalizedValue` | Observed value expressed as percent of the selected control when normalization is enabled. |
+| `ModelValue` | Value actually supplied to the curve model: raw or normalized according to the selected mode. |
+| `ResultBasis` | States which response parameter was used to calculate the reported IC50. |
+| `IC50` / `IC50 result` | Concentration producing 50% of the fitted inhibitory effect relative to the upper fitted response. Lower values generally indicate greater susceptibility. Interpret only an IC50 estimable inside the tested range. |
+| `ED50` | Relative 50% effective dose. In the current inhibitory `LL.4` implementation it is numerically the same fitted concentration as IC50. |
+| `EC50` | Conventional half-maximal effective concentration field. It is reported as `NA` because the current BIOSZEN route fits an inhibitory IC50/ED50 model rather than a separate stimulatory EC50 model. |
+| `IC50_SE` | Delta-method standard error of IC50. Larger values indicate less precise estimation. |
+| `CI_Lower`, `CI_Upper` (95% CI lower/upper in the app) | Confidence interval for IC50. Wide intervals or limits extending far beyond the tested range indicate weak precision. |
+| `HillSlope` | Shape parameter controlling transition steepness on the log-dose scale. For the decreasing inhibitory curves accepted by BIOSZEN it is positive; a larger value gives a sharper transition but is not by itself a susceptibility measure. |
+| `LowerAsymptote` | Fitted response approached at high concentration. It is an extrapolated model limit and may differ from the lowest observed value. |
+| `UpperAsymptote` | Fitted response approached at zero or low concentration. It is an extrapolated model limit and may differ from the highest observed value. |
+| `ResponseRange` | `UpperAsymptote - LowerAsymptote`; the fitted response amplitude. |
+| `InflectionPoint` | Concentration at the center of the fitted transition. For this model it normally coincides with the relative ED50/IC50. |
+| `MaximumSlope` | Steepest fitted change on the raw concentration axis: `-(ResponseRange * HillSlope) / (4 * InflectionPoint)`. A more negative value means a faster local decrease but depends on both response and concentration units. |
+| `MaximumSlopeMagnitude` | Absolute value of `MaximumSlope`, useful when comparing steepness without its negative inhibitory sign. Comparisons still require the same units. |
+| `MinTested`, `MaxTested` | Lowest and highest positive concentrations included in the fitted series. They define whether IC50 is inside the experimental range. |
+| `DoseLevels` | Number of distinct concentrations included, including zero when present. More well-spaced levels generally improve identifiability. |
+| `BiologicalReplicates` | Number of distinct biological replicates contributing to the strain fit. |
+| `Comparable` | `TRUE` only for a decreasing inhibitory fit with a finite positive IC50 inside the tested positive range. Only these rows enter ranking and pairwise IC50 tests. |
+| `SusceptibilityRank` | Rank among comparable strains by ascending IC50. Rank 1 is the lowest IC50; it is descriptive unless supported by the adjusted pairwise comparison. |
+| `RelativeToLowestIC50` | Strain IC50 divided by the lowest comparable IC50. The lowest strain equals 1; a value of 2 means twice the concentration was required for the same fitted 50% effect. |
+| `Status` / `Fit status` | Reports whether the fit is usable or why it is not: insufficient doses, flat response, failed convergence, non-inhibitory response, IC50 not estimable, above range, or below range. |
+
+#### Interpretation of model diagnostics and strain comparisons
+
+| Output | Interpretation |
+|---|---|
+| `Model` | Model used for the strain; currently the four-parameter log-logistic model (`LL.4`). |
+| `Observations` | Number of biological-replicate response values used in the fit after filtering and within-dose technical averaging. |
+| `ResidualDF` | Residual degrees of freedom: observations minus the four fitted model parameters. |
+| `RSS` | Residual sum of squares. Lower is better only when comparing fits to the same response and observations. |
+| `RMSE` | Typical residual error in response units. Lower values indicate predictions closer to observations. |
+| `R_Squared`, `Adjusted_R_Squared` | Descriptive proportion of response variation represented by the curve; adjusted R² accounts for four fitted parameters. For nonlinear models these should not be the sole acceptance criterion. |
+| `AIC`, `BIC` | Information criteria for relative model comparison on the same dataset and response. Lower values are preferred; absolute values have no standalone biological interpretation. |
+| `LogLikelihood` | Model log likelihood. Higher values indicate better likelihood fit only for comparable models fitted to the same observations. |
+| `LinearSlope`, `LinearSlopeSE` | Optional slope and standard error from `Response ~ Concentration`. This is a coarse whole-range trend and does not replace IC50 or the nonlinear maximum slope. |
+| `LinearSlopeCI_Lower`, `LinearSlopeCI_Upper` | Optional 95% confidence interval for the linear trend slope. An interval containing zero does not support a nonzero linear trend. |
+| `LinearSlopeP_Value` | Optional test of whether the whole-range linear slope differs from zero. It does not test equality of IC50 values. |
+| `Linear_R_Squared` | Descriptive R² for the optional linear trend. |
+| `Converged` | Indicates whether the nonlinear fit object was successfully obtained. Convergence is necessary but does not guarantee biological plausibility or precision. |
+| `StrainA`, `StrainB` | Identify the ordered strain pair used for the ratio and Wald comparison. |
+| `IC50_Ratio_A_over_B` (IC50 ratio A/B in the app) | `IC50_A / IC50_B`. A ratio above 1 means strain A required a higher concentration and is descriptively less susceptible than B. |
+| `Ratio_CI_Lower`, `Ratio_CI_Upper` | Delta-method 95% confidence interval for the IC50 ratio. An interval excluding 1 supports a difference before considering the multiplicity-adjusted test. |
+| `P_Value`, `P_Adjusted` | Two-sided Wald test on the log IC50 ratio and its Holm correction across strain pairs. Use the adjusted value for the reported pairwise conclusion. |
+| `LowerIC50Strain` | Identifies which member of the pair has the lower estimable IC50; this is the descriptively more susceptible strain when the fits are comparable. |
+| `ConclusionCode` / `Interpretation` | Machine-readable conclusion (`different` or `not_significant`) and its plain-language app translation, based on the Holm-adjusted result. |
+
 ### Heatmap
 
 - Parameter subset selection.
@@ -463,6 +527,7 @@ Metadata flow:
 - Legend visibility/placement, including right-side legend selection where applicable, is stored in metadata and reapplied when metadata are loaded.
 - Curve point size is stored in curve design metadata and restored when that metadata is loaded. Design metadata do not restore group/sample order, scope, or strain selection.
 - Error-bar statistic and curve-statistics method selection persist across metadata roundtrip.
+- Dose-response series and strain selections, corrected concentration mapping, axis limits and intervals, axis titles, line and point sizes, point outline, and confidence-band opacity persist in dose-response metadata and saved plot versions.
 
 Reproducibility bundle:
 

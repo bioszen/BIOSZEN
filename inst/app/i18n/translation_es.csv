@@ -672,7 +672,6 @@ violin_inner_points,Puntos individuales
 axis_title_spacing_x,Separación del título del eje X (pt):
 axis_title_spacing_y,Separación del título del eje Y (pt):
 export_dpi,Resolución de exportación (DPI):
-export_dpi_help,"Predeterminado: 300 DPI. Valores compatibles: 72 a 600. Los DPI solo cambian la resolución de exportaciones raster y del portapapeles; las dimensiones y la distribución se mantienen. PDF y las exportaciones compatibles de PowerPoint siguen siendo vectoriales."
 dpi_invalid_fallback,"El valor de DPI está ausente, no es válido o no es compatible. BIOSZEN usará 300 DPI. Los valores compatibles son de 72 a 600 DPI."
 dpi_metadata_invalid_fallback,"El metadata cargado contiene un valor de DPI no válido o no compatible. BIOSZEN restauró los demás ajustes y usó 300 DPI."
 combo_section_pptx,Diapositiva de PowerPoint
@@ -729,6 +728,7 @@ growth_folder_create_error,No se pudo crear la carpeta: %s
 app_error_generic,Ocurrió un error inesperado en la aplicación.
 app_error_title,Error de la aplicación
 app_error_intro,Los detalles técnicos están disponibles abajo sin datos cargados ni rutas personales.
+app_error_send_to,Envíe este informe a:
 app_error_details,Mostrar detalles técnicos
 app_error_copy,Copiar informe
 app_error_email,Preparar correo
@@ -762,3 +762,133 @@ app_install_package_unavailable,No se pudieron cargar las herramientas de instal
 app_install_package_check_failed,BIOSZEN no pudo comprobar el paquete estable en R-universe. Revisa la conexión a internet e inténtalo nuevamente.
 app_install_package_launcher_required,La instalación del paquete solo está disponible desde el launcher standalone de BIOSZEN. Puedes continuar usando la aplicación standalone.
 app_install_package_closing,BIOSZEN se cerrará e instalará el paquete desde R-universe. Sigue el progreso en la consola de R y reinicia R cuando termine.
+plot_dose_response,Concentración-respuesta
+dose_settings,Ajustes de concentración-respuesta
+dose_series,Compuesto y unidad de concentración:
+dose_strains,Cepas a comparar:
+dose_control,Control de dosis cero:
+dose_control_auto,Detección automática
+dose_series_manual,Asignación manual de condiciones
+dose_mapping_title,Asignación de concentraciones por condición
+dose_mapping_condition,Grupo o condición
+dose_mapping_concentration,Concentración
+dose_mapping_unit,Unidad
+dose_mapping_unit_all,Unidad para todas las condiciones mostradas
+dose_mapping_unit_all_placeholder,p. ej. µM / µg/mL / UA
+dose_mapping_apply_unit_all,Aplicar a todas
+dose_mapping_apply_unit_missing,Ingresa una unidad antes de aplicarla a todas las condiciones.
+dose_mapping_apply_unit_success,La unidad se aplicó a todas las condiciones mostradas.
+dose_mapping_no_rows,No hay condiciones disponibles para esta serie. Selecciona la asignación manual o revisa los grupos seleccionados.
+dose_mapping_missing_concentration,Ingresa una concentración.
+dose_mapping_invalid_concentration,Ingresa una concentración numérica mayor o igual a cero.
+dose_mapping_missing_unit,Ingresa una unidad de concentración.
+dose_mapping_invalid_unit,Ingresa una unidad de concentración no vacía.
+dose_mapping_mixed_units,Todas las condiciones mostradas deben usar la misma unidad de concentración antes de ajustar la curva.
+dose_mapping_valid,La asignación de concentraciones es válida.
+dose_log_x,Usar eje logarítmico de concentración
+dose_show_ci,Mostrar bandas de confianza del 95%
+dose_stats_title,Análisis de concentración-respuesta
+dose_pairwise_title,Comparaciones pareadas de susceptibilidad
+dose_no_valid_data,No se encontró una serie válida de concentración-respuesta. Revisa los tratamientos grupos cepas y unidades seleccionados.
+dose_x_label,Concentración
+dose_y_normalized,%s (% del control)
+dose_table_strain,Cepa
+dose_table_concentration,Concentración
+dose_table_response,Respuesta
+dose_table_biorep,Réplica biológica
+dose_col_parameter,Parámetro
+dose_col_compound,Compuesto
+dose_col_unit,Unidad
+dose_col_ic50,IC50
+dose_col_ic50_result,Resultado IC50
+dose_col_ci_lower,Límite inferior IC 95%
+dose_col_ci_upper,Límite superior IC 95%
+dose_col_hill,Pendiente de Hill
+dose_col_lower,Asíntota inferior
+dose_col_upper,Asíntota superior
+dose_col_min,Mínimo evaluado
+dose_col_max,Máximo evaluado
+dose_col_doses,Niveles de dosis
+dose_col_bioreps,Réplicas biológicas
+dose_col_rank,Ranking de susceptibilidad
+dose_col_relative,IC50 relativo al menor
+dose_col_status,Estado del ajuste
+dose_col_strain_a,Cepa A
+dose_col_strain_b,Cepa B
+dose_col_ratio,Razón IC50 A/B
+dose_col_ratio_lower,Límite inferior IC 95% de la razón
+dose_col_ratio_upper,Límite superior IC 95% de la razón
+dose_col_p,Valor P
+dose_col_p_adjusted,Valor P ajustado por Holm
+dose_col_interpretation,Interpretación
+dose_status_ok,Estimable dentro del rango evaluado
+dose_status_dependency_missing,El paquete drc no está disponible
+dose_status_insufficient_doses,Concentraciones distintas insuficientes
+dose_status_flat_response,Sin rango de respuesta medible
+dose_status_fit_failed,El modelo no convergió
+dose_status_non_inhibitory,Sin respuesta inhibitoria decreciente
+dose_status_not_estimable,IC50 no estimable
+dose_status_not_reached,No se alcanzó el 50% de inhibición
+dose_status_below_range,IC50 bajo el rango evaluado
+dose_ic50_not_reached,>%s
+dose_ic50_below_range,<%s
+dose_ic50_not_estimable,No estimable
+dose_pair_more_susceptible,%s es más susceptible que %s
+dose_pair_not_significant,Sin diferencia significativa después del ajuste de Holm
+dose_conclusion_most,%s tiene el menor IC50 estimable y descriptivamente es la cepa más susceptible.
+dose_conclusion_significant,Las comparaciones ajustadas respaldan las siguientes diferencias de susceptibilidad: %s
+dose_conclusion_no_significant,%s tiene el menor IC50 estimado pero ninguna diferencia pareada es significativa después del ajuste de Holm.
+dose_conclusion_unavailable,No se puede ordenar la susceptibilidad porque menos de dos valores de IC50 son estimables dentro del rango evaluado.
+dose_comparison_unavailable,Los valores de IC50 fueron estimables pero no se pudo calcular su incertidumbre pareada.
+dose_point_display,Visualización de réplicas:
+dose_display_individual,Réplicas biológicas individuales
+dose_display_mean_error,Promedio ± error
+dose_linear_slope,Incluir pendiente lineal opcional
+dose_axis_settings,Ejes de dosis-respuesta
+dose_xmin,Mínimo del eje X
+dose_xmax,Máximo del eje X
+dose_xbreak,Intervalo del eje X
+dose_ymin,Mínimo del eje Y
+dose_ymax,Máximo del eje Y
+dose_ybreak,Intervalo del eje Y
+dose_axis_auto_hint,Deja ambos límites en 0 para usar escala automática. Usa 0 para un intervalo automático. Un mínimo se aplica cuando su máximo es mayor.
+dose_log_axis_interval_hint,En un eje X logarítmico BIOSZEN usa una separación logarítmica automática. El intervalo X se aplica al eje lineal.
+dose_xlab,Título del eje X
+dose_ylab,Título del eje Y
+dose_appearance_settings,Apariencia de dosis-respuesta
+dose_line_width,Grosor de la curva ajustada
+dose_point_size,Tamaño de puntos
+dose_point_stroke,Grosor del contorno negro de puntos
+dose_ci_alpha,Opacidad de la banda de confianza
+dose_shared_appearance_hint,La familia tipográfica; los tamaños del título los ejes y la leyenda; y el grosor de los ejes permanecen en la sección compartida Apariencia que está más abajo.
+dose_replicate_values_title,Valores por réplica usados en este análisis
+dose_curve_parameters_title,Parámetros de la curva
+dose_model_diagnostics_title,Diagnóstico del modelo
+dose_metric_based_on,IC50 basado en %s
+dose_col_result_basis,Resultado
+dose_col_ed50,ED50
+dose_col_max_slope,Pendiente máxima
+dose_col_max_slope_magnitude,Magnitud de la pendiente máxima
+dose_col_response_range,Rango de respuesta
+dose_col_inflection,Punto de inflexión
+dose_col_observations,Observaciones
+dose_col_model,Modelo
+dose_col_residual_df,Grados de libertad residuales
+dose_col_rss,Suma de cuadrados residual
+dose_col_rmse,RMSE
+dose_col_r_squared,R²
+dose_col_adjusted_r_squared,R² ajustado
+dose_col_aic,AIC
+dose_col_bic,BIC
+dose_col_log_likelihood,Log-verosimilitud
+dose_col_linear_slope,Pendiente de tendencia lineal
+dose_col_linear_ci_lower,Límite inferior IC 95% de la pendiente lineal
+dose_col_linear_ci_upper,Límite superior IC 95% de la pendiente lineal
+dose_col_linear_p,Valor P de la pendiente lineal
+dose_col_linear_r_squared,R² de la tendencia lineal
+dose_col_converged,Convergió
+dose_table_condition,Condición/grupo
+dose_table_techrep,Réplica técnica
+dose_table_raw_value,Valor bruto del parámetro
+dose_table_normalized_value,Valor normalizado (% del control)
+dose_table_model_value,Valor usado para ajustar la curva

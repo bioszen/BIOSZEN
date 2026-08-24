@@ -70,7 +70,7 @@ jobs:
         run: Rscript -e "pkg <- list.files(pattern = '^BIOSZEN_.*[.]tar[.]gz$', full.names = TRUE); stopifnot(length(pkg) == 1L); status <- system2(file.path(R.home('bin'), 'R'), c('CMD', 'check', '--no-tests', '--no-manual', '--no-build-vignettes', pkg[[1]])); quit(status = status)"
 
   build:
-    name: Build BIOSZEN_2.1.1
+    name: Build BIOSZEN_2.1.2
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -86,32 +86,32 @@ jobs:
           use-public-rspm: true
 
       - name: Verify package version
-        run: Rscript -e "description <- read.dcf('DESCRIPTION'); version <- unname(description[1, 'Version']); if (!identical(version, '2.1.1')) stop('Expected BIOSZEN version 2.1.1, found ', version)"
+        run: Rscript -e "description <- read.dcf('DESCRIPTION'); version <- unname(description[1, 'Version']); if (!identical(version, '2.1.2')) stop('Expected BIOSZEN version 2.1.2, found ', version)"
 
       - name: Build BIOSZEN source package
         run: |
           R CMD build .
-          test -f BIOSZEN_2.1.1.tar.gz
+          test -f BIOSZEN_2.1.2.tar.gz
 
       - name: Prepare universal bundle
         run: |
-          mkdir -p dist/BIOSZEN_2.1.1
-          cp BIOSZEN_2.1.1.tar.gz dist/BIOSZEN_2.1.1/
-          cp inst/launchers/App.R dist/BIOSZEN_2.1.1/App.R
-          cp README.md dist/BIOSZEN_2.1.1/
+          mkdir -p dist/BIOSZEN_2.1.2
+          cp BIOSZEN_2.1.2.tar.gz dist/BIOSZEN_2.1.2/
+          cp inst/launchers/App.R dist/BIOSZEN_2.1.2/App.R
+          cp README.md dist/BIOSZEN_2.1.2/
 
       - name: Validate bundle contents
         run: |
-          test -f dist/BIOSZEN_2.1.1/App.R
-          test -f dist/BIOSZEN_2.1.1/BIOSZEN_2.1.1.tar.gz
-          test -f dist/BIOSZEN_2.1.1/README.md
-          test ! -e dist/BIOSZEN_2.1.1/Download_R_and_RStudio.html
-          grep -Fq 'https://bioszen.github.io/r-rstudio-download-guide/' dist/BIOSZEN_2.1.1/README.md
+          test -f dist/BIOSZEN_2.1.2/App.R
+          test -f dist/BIOSZEN_2.1.2/BIOSZEN_2.1.2.tar.gz
+          test -f dist/BIOSZEN_2.1.2/README.md
+          test ! -e dist/BIOSZEN_2.1.2/Download_R_and_RStudio.html
+          grep -Fq 'https://bioszen.github.io/r-rstudio-download-guide/' dist/BIOSZEN_2.1.2/README.md
 
-      - name: Upload BIOSZEN_2.1.1
+      - name: Upload BIOSZEN_2.1.2
         uses: actions/upload-artifact@v4
         with:
-          name: BIOSZEN_2.1.1
-          path: dist/BIOSZEN_2.1.1/
+          name: BIOSZEN_2.1.2
+          path: dist/BIOSZEN_2.1.2/
           if-no-files-found: error
           retention-days: 14

@@ -285,6 +285,70 @@ tipo específico de medición.
 - Capas opcionales: recta, `r`, `p`, `R2`, ecuación.
 - Panel avanzado con cribado uno-contra-todos y exportación Excel.
 
+### Concentración-respuesta / dosis-respuesta
+
+- Selecciona el parámetro de respuesta, la serie del compuesto, las cepas, las réplicas biológicas y las condiciones que se incluirán. Permanecen activos los mismos filtros de grupos y réplicas de los demás gráficos.
+- BIOSZEN reconoce concentraciones desde los nombres de las condiciones y permite corregir manualmente cada concentración y unidad. Todas las filas incluidas deben usar una misma unidad mostrada antes del ajuste.
+- Cada cepa se ajusta independientemente con un modelo inhibitorio log-logístico de cuatro parámetros (`LL.4`). De forma predeterminada se muestran puntos por réplica biológica; opcionalmente se puede mostrar la media con DE o SEM.
+- La respuesta puede ser el parámetro bruto o su valor normalizado al control. Las respuestas normalizadas se ajustan como porcentaje del control.
+- Un IC50 menor indica mayor susceptibilidad solo si el ajuste es inhibitorio, el IC50 queda dentro del rango de concentraciones evaluado y la incertidumbre es aceptable. Los valores informados como `> máximo evaluado`, `< mínimo evaluado` o no estimables se excluyen del ranking de susceptibilidad.
+- Los límites, intervalos y títulos de ejes, el grosor de la curva ajustada, el tamaño y contorno negro de los puntos y la opacidad de la banda de confianza solo cambian la presentación. No reajustan la curva ni modifican los parámetros. El intervalo X se usa en el eje lineal; el eje X logarítmico utiliza espaciado logarítmico automático.
+
+#### Interpretación de valores de réplica y parámetros de curva
+
+| Salida | Interpretación |
+|---|---|
+| `Strain`, `Parameter`, `Compound`, `ConcentrationUnit` | Identifican la cepa ajustada, la respuesta seleccionada, la serie del tratamiento y la unidad de concentración. No deben compararse parámetros en unidades distintas como si estuvieran en la misma escala. |
+| `Condition`, `Concentration` | Etiqueta original de la condición/grupo y concentración numérica corregida usada para esa fila. Debe revisarse siempre el mapeo de concentraciones antes del ajuste. |
+| `BiologicalReplicate`, `TechnicalReplicate` | Identificadores conservados en la hoja de valores por réplica. Las réplicas técnicas seleccionadas se promedian dentro de cada réplica biológica antes del ajuste no lineal; las réplicas biológicas son las observaciones independientes del modelo. |
+| `RawValue` | Valor observado del parámetro conservado después de aplicar los filtros de grupos y réplicas. |
+| `NormalizedValue` | Valor observado expresado como porcentaje del control seleccionado cuando la normalización está activa. |
+| `ModelValue` | Valor realmente entregado al modelo: bruto o normalizado según el modo seleccionado. |
+| `ResultBasis` | Indica qué parámetro de respuesta se usó para calcular el IC50 informado. |
+| `IC50` / `Resultado IC50` | Concentración que produce el 50% del efecto inhibitorio ajustado respecto de la respuesta superior del modelo. Un valor menor suele indicar mayor susceptibilidad. Debe interpretarse solo si es estimable dentro del rango evaluado. |
+| `ED50` | Dosis efectiva relativa del 50%. En la implementación inhibitoria `LL.4` actual corresponde numéricamente a la misma concentración ajustada que el IC50. |
+| `EC50` | Campo convencional de concentración efectiva media. Se informa como `NA` porque la ruta actual de BIOSZEN ajusta un modelo inhibitorio IC50/ED50 y no un modelo estimulador EC50 independiente. |
+| `IC50_SE` | Error estándar del IC50 calculado por método delta. Valores mayores indican menor precisión. |
+| `CI_Lower`, `CI_Upper` (límites inferior/superior del IC 95% en la app) | Intervalo de confianza del IC50. Intervalos anchos o límites muy fuera del rango evaluado indican baja precisión. |
+| `HillSlope` | Parámetro de forma que controla la pendiente de la transición en escala logarítmica de dosis. En las curvas inhibitorias decrecientes aceptadas por BIOSZEN es positivo; un valor mayor genera una transición más brusca pero no mide por sí solo susceptibilidad. |
+| `LowerAsymptote` | Respuesta ajustada a la que se aproxima la curva a concentraciones altas. Es un límite extrapolado y puede diferir del menor valor observado. |
+| `UpperAsymptote` | Respuesta ajustada a la que se aproxima la curva a concentración cero o baja. Es un límite extrapolado y puede diferir del mayor valor observado. |
+| `ResponseRange` | `UpperAsymptote - LowerAsymptote`; amplitud de respuesta ajustada. |
+| `InflectionPoint` | Concentración central de la transición ajustada. En este modelo normalmente coincide con ED50/IC50 relativo. |
+| `MaximumSlope` | Cambio ajustado más pronunciado en el eje de concentración bruto: `-(ResponseRange * HillSlope) / (4 * InflectionPoint)`. Un valor más negativo indica una caída local más rápida pero depende de las unidades de respuesta y concentración. |
+| `MaximumSlopeMagnitude` | Valor absoluto de `MaximumSlope`, útil para comparar la intensidad de la pendiente sin el signo inhibitorio negativo. Las comparaciones requieren las mismas unidades. |
+| `MinTested`, `MaxTested` | Concentraciones positivas mínima y máxima incluidas en la serie. Definen si el IC50 está dentro del rango experimental. |
+| `DoseLevels` | Número de concentraciones distintas incluidas, considerando cero cuando está presente. Más niveles bien distribuidos suelen mejorar la identificabilidad. |
+| `BiologicalReplicates` | Número de réplicas biológicas distintas que contribuyen al ajuste de la cepa. |
+| `Comparable` | Es `TRUE` solo para un ajuste inhibitorio decreciente con IC50 finito y positivo dentro del rango positivo evaluado. Solo estas filas participan en ranking y comparaciones pareadas de IC50. |
+| `SusceptibilityRank` | Ranking de cepas comparables ordenado por IC50 ascendente. Rango 1 corresponde al IC50 menor; es descriptivo si la comparación pareada ajustada no lo respalda. |
+| `RelativeToLowestIC50` | IC50 de la cepa dividido por el menor IC50 comparable. La cepa menor vale 1; un valor 2 significa que requirió el doble de concentración para el mismo efecto ajustado del 50%. |
+| `Status` / `Estado del ajuste` | Indica si el ajuste es utilizable o por qué no: dosis insuficientes, respuesta plana, falta de convergencia, respuesta no inhibitoria, IC50 no estimable, sobre el rango o bajo el rango. |
+
+#### Interpretación del diagnóstico y comparaciones entre cepas
+
+| Salida | Interpretación |
+|---|---|
+| `Model` | Modelo usado para la cepa; actualmente el log-logístico de cuatro parámetros (`LL.4`). |
+| `Observations` | Número de valores de respuesta de réplicas biológicas usados después del filtrado y del promedio técnico dentro de cada dosis. |
+| `ResidualDF` | Grados de libertad residuales: observaciones menos los cuatro parámetros ajustados. |
+| `RSS` | Suma de cuadrados residual. Un valor menor es mejor solo al comparar ajustes de la misma respuesta y observaciones. |
+| `RMSE` | Error residual típico en unidades de respuesta. Valores menores indican predicciones más cercanas a las observaciones. |
+| `R_Squared`, `Adjusted_R_Squared` | Proporción descriptiva de variación representada por la curva; el R² ajustado considera los cuatro parámetros. En modelos no lineales no deben ser el único criterio de aceptación. |
+| `AIC`, `BIC` | Criterios de información para comparar modelos sobre los mismos datos y respuesta. Se prefieren valores menores; el valor absoluto no tiene interpretación biológica aislada. |
+| `LogLikelihood` | Log-verosimilitud del modelo. Valores mayores indican mejor verosimilitud solo entre modelos comparables ajustados a las mismas observaciones. |
+| `LinearSlope`, `LinearSlopeSE` | Pendiente opcional de `Respuesta ~ Concentración` y su error estándar. Resume de forma aproximada todo el rango y no reemplaza al IC50 ni a la pendiente máxima no lineal. |
+| `LinearSlopeCI_Lower`, `LinearSlopeCI_Upper` | Intervalo de confianza del 95% de la pendiente lineal. Si incluye cero no respalda una tendencia lineal distinta de cero. |
+| `LinearSlopeP_Value` | Prueba opcional de que la pendiente lineal en todo el rango difiere de cero. No prueba igualdad entre valores IC50. |
+| `Linear_R_Squared` | R² descriptivo de la tendencia lineal opcional. |
+| `Converged` | Indica si se obtuvo correctamente el objeto del ajuste no lineal. La convergencia es necesaria pero no garantiza plausibilidad biológica ni precisión. |
+| `StrainA`, `StrainB` | Identifican el par ordenado de cepas usado para la razón y la comparación de Wald. |
+| `IC50_Ratio_A_over_B` (razón IC50 A/B en la app) | `IC50_A / IC50_B`. Una razón mayor que 1 significa que la cepa A requirió mayor concentración y es descriptivamente menos susceptible que B. |
+| `Ratio_CI_Lower`, `Ratio_CI_Upper` | Intervalo de confianza del 95% por método delta para la razón IC50. Si excluye 1 respalda una diferencia antes de considerar el ajuste por comparaciones múltiples. |
+| `P_Value`, `P_Adjusted` | Prueba bilateral de Wald sobre la razón logarítmica de IC50 y su corrección de Holm entre pares. Debe usarse el valor ajustado para la conclusión pareada. |
+| `LowerIC50Strain` | Identifica qué integrante del par tiene el IC50 estimable menor; es la cepa descriptivamente más susceptible cuando los ajustes son comparables. |
+| `ConclusionCode` / `Interpretación` | Conclusión legible por máquina (`different` o `not_significant`) y su traducción en lenguaje directo en la app, basadas en el resultado ajustado por Holm. |
+
 ### Mapa de calor
 
 - Selección de subconjunto de parámetros.
@@ -465,6 +529,7 @@ Flujo de metadatos:
 - La visibilidad/posición de la leyenda, incluyendo la selección de leyenda a la derecha cuando corresponde, se guarda en metadatos y se aplica nuevamente al cargarlos.
 - El tamaño de puntos de curvas se guarda en los metadatos de diseño de curvas y se restaura al cargarlos. Los metadatos de diseño no restauran el orden de grupos/muestras, el ámbito ni la selección de cepa.
 - El estadístico de barras de error y la selección de métodos de estadística de curvas se conservan en el roundtrip de metadatos.
+- La serie y cepas de dosis-respuesta, la asignación corregida de concentraciones, los límites e intervalos de ejes, los títulos de ejes, los tamaños de línea y puntos, el contorno de puntos y la opacidad de la banda de confianza se conservan en los metadatos de dosis-respuesta y en las versiones guardadas del gráfico.
 
 Bundle reproducible:
 

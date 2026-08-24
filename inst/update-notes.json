@@ -8,6 +8,10 @@
     "2.1.1": {
       "en": "BIOSZEN 2.1.1 improves editable PowerPoint fidelity for stacked plots, adds X-axis label controls to heatmaps and correlation matrices, and provides weekly update notices.",
       "es": "BIOSZEN 2.1.1 mejora la fidelidad del PowerPoint editable para gráficos apilados, añade controles de etiquetas del eje X a mapas de calor y matrices de correlación, e incorpora avisos semanales de actualización."
+    },
+    "2.1.2": {
+      "en": "BIOSZEN 2.1.2 adds configurable concentration-response (dose-response) plots with multi-strain IC50 analyses and growth-parameter extraction from fixed or irregular time intervals, plus usability, stability, and export improvements and bug fixes.",
+      "es": "BIOSZEN 2.1.2 añade gráficos de concentración-respuesta (dosis-respuesta) con análisis IC50 entre cepas y extracción de parámetros de crecimiento desde tiempos fijos o irregulares, además de mejoras de usabilidad, estabilidad y exportación y correcciones de errores."
     }
   }
 }

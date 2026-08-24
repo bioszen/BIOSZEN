@@ -821,6 +821,7 @@ ui <- fluidPage(
             Curvas: 'plot_curves',
             Apiladas: 'plot_stacked',
             Correlacion: 'plot_correlation',
+            DoseResponse: 'plot_dose_response',
             Heatmap: 'plot_heatmap',
             MatrizCorrelacion: 'plot_corr_matrix'
           },
@@ -1171,7 +1172,8 @@ ui <- fluidPage(
         font-size: 18px;
       }
       .bioszen-error-report-message,
-      .bioszen-error-report-intro {
+      .bioszen-error-report-intro,
+      .bioszen-error-report-recipient {
         margin-bottom: 8px;
       }
       .bioszen-error-report details {
@@ -1386,6 +1388,46 @@ ui <- fluidPage(
 ")),
 
   tags$script(HTML(sprintf("window.BIOSZEN_LANG = '%s';", i18n_lang))),
+  tags$script(HTML("
+    (function () {
+      var sent = false;
+      var allowedModes = {
+        r_package: true,
+        standalone_bundle: true,
+        hosted: true,
+        direct_source: true
+      };
+
+      function clean(value, fallback, maxLength) {
+        value = String(value || '').trim();
+        if (!value) value = fallback;
+        return value.slice(0, maxLength);
+      }
+
+      function send(payload) {
+        if (sent || !payload || typeof window.gtag !== 'function') return;
+        var mode = clean(payload.launch_mode, 'direct_source', 32);
+        if (!allowedModes[mode]) mode = 'direct_source';
+        var language = clean(window.BIOSZEN_LANG || 'en', 'en', 8).toLowerCase();
+        sent = true;
+        window.gtag('event', 'bioszen_app_open', {
+          app_version: clean(payload.app_version, 'development', 32),
+          launch_mode: mode,
+          app_language: language,
+          transport_type: 'beacon'
+        });
+      }
+
+      function register() {
+        if (!window.Shiny || typeof Shiny.addCustomMessageHandler !== 'function') {
+          setTimeout(register, 100);
+          return;
+        }
+        Shiny.addCustomMessageHandler('bioszenAnalyticsAppOpen', send);
+      }
+      register();
+    })();
+  ")),
   tags$script(HTML("
     (function () {
       function onShinyConnected(fn, tries) {
@@ -2896,7 +2938,7 @@ ui <- fluidPage(
                        "tipo",
                        tr("plot_type_label"),
                         choices = named_choices(
-                          c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion", "Heatmap", "MatrizCorrelacion"),
+                          c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion", "DoseResponse", "Heatmap", "MatrizCorrelacion"),
                           list(
                             tr("plot_boxplot"),
                             tr("plot_bars"),
@@ -2904,6 +2946,7 @@ ui <- fluidPage(
                             tr("plot_curves"),
                             tr("plot_stacked"),
                             tr("plot_correlation"),
+                            tr("plot_dose_response"),
                             tr("plot_heatmap"),
                             tr("plot_corr_matrix")
                           )
@@ -3105,6 +3148,139 @@ ui <- fluidPage(
                       )
                     )
                   ),
+
+                 # ---------- Concentration-response / IC50 ---------------------------
+                 conditionalPanel(
+                   condition = "input.tipo == 'DoseResponse'",
+                   h4(tr("dose_settings")),
+                   selectizeInput(
+                     "dose_series",
+                     tr("dose_series"),
+                     choices = NULL,
+                     selected = NULL
+                   ),
+                   selectizeInput(
+                     "dose_strains",
+                     tr("dose_strains"),
+                     choices = NULL,
+                     selected = NULL,
+                     multiple = TRUE,
+                     options = list(plugins = list("remove_button"))
+                   ),
+                    selectizeInput(
+                      "dose_control_media",
+                      tr("dose_control"),
+                      choices = NULL,
+                      selected = "__AUTO__"
+                    ),
+                     tags$div(
+                       class = "well well-sm",
+                       h5(tr("dose_mapping_title")),
+                       tags$div(
+                         style = paste(
+                           "display:flex; gap:8px; align-items:flex-end;",
+                           "flex-wrap:wrap; margin-bottom:4px;"
+                         ),
+                         tags$div(
+                           style = "flex:1 1 190px; min-width:0;",
+                           textInput(
+                             "dose_unit_all",
+                             tr("dose_mapping_unit_all"),
+                             value = "",
+                             placeholder = tr_text("dose_mapping_unit_all_placeholder")
+                           )
+                         ),
+                         actionButton(
+                           "dose_apply_unit_all",
+                           tr("dose_mapping_apply_unit_all"),
+                           class = "btn btn-default",
+                           style = paste(
+                             "flex:0 0 auto; margin-bottom:15px;",
+                             "white-space:nowrap; word-break:keep-all; overflow-wrap:normal;"
+                           )
+                         )
+                       ),
+                       uiOutput("doseConcentrationMappingUI"),
+                       uiOutput("doseConcentrationValidationUI")
+                     ),
+                    checkboxInput("dose_log_x", tr("dose_log_x"), FALSE),
+                    checkboxInput("dose_show_ci", tr("dose_show_ci"), TRUE),
+                    radioButtons(
+                      "dose_point_display",
+                      tr("dose_point_display"),
+                      choices = named_choices(
+                        c("individual", "mean_error"),
+                        list(tr("dose_display_individual"), tr("dose_display_mean_error"))
+                      ),
+                      selected = "individual"
+                     ),
+                     checkboxInput("dose_linear_slope", tr("dose_linear_slope"), FALSE),
+                     h5(tr("dose_axis_settings")),
+                     fluidRow(
+                       column(6, numericInput("dose_xmin", tr("dose_xmin"), value = 0)),
+                       column(6, numericInput("dose_xmax", tr("dose_xmax"), value = 0))
+                     ),
+                     fluidRow(
+                       column(6, numericInput("dose_ymin", tr("dose_ymin"), value = 0)),
+                       column(6, numericInput("dose_ymax", tr("dose_ymax"), value = 0))
+                     ),
+                     fluidRow(
+                       column(
+                         6,
+                         numericInput(
+                           "dose_xbreak", tr("dose_xbreak"), value = 0,
+                           min = 0, step = 0.1
+                         )
+                       ),
+                       column(
+                         6,
+                         numericInput(
+                           "dose_ybreak", tr("dose_ybreak"), value = 0,
+                           min = 0, step = 0.01
+                         )
+                       )
+                     ),
+                     tags$p(class = "qc-help", tr("dose_axis_auto_hint")),
+                     tags$p(class = "qc-help", tr("dose_log_axis_interval_hint")),
+                     fluidRow(
+                       column(6, textInput("dose_xlab", tr("dose_xlab"), value = "")),
+                       column(6, textInput("dose_ylab", tr("dose_ylab"), value = ""))
+                     ),
+                     h5(tr("dose_appearance_settings")),
+                     fluidRow(
+                       column(
+                         6,
+                         numericInput(
+                           "dose_line_width", tr("dose_line_width"),
+                           value = 1.05, min = 0.1, step = 0.05
+                         )
+                       ),
+                       column(
+                         6,
+                         numericInput(
+                           "dose_point_size", tr("dose_point_size"),
+                           value = 2.8, min = 0.1, step = 0.1
+                         )
+                       )
+                     ),
+                     fluidRow(
+                       column(
+                         6,
+                         numericInput(
+                           "dose_point_stroke", tr("dose_point_stroke"),
+                           value = 0.65, min = 0.1, step = 0.05
+                         )
+                       ),
+                       column(
+                         6,
+                         numericInput(
+                           "dose_ci_alpha", tr("dose_ci_alpha"),
+                           value = 0.14, min = 0.01, max = 1, step = 0.01
+                         )
+                       )
+                     ),
+                     tags$p(class = "qc-help", tr("dose_shared_appearance_hint"))
+                   ),
 
                  # ---------- SECCION "Matriz de Correlacion" ---------------------------
                  conditionalPanel(
@@ -3394,11 +3570,15 @@ ui <- fluidPage(
                   
                  ## ─── Boxplot *y* Barras (tamaño de puntos) ────────────────
                  conditionalPanel(
-                   condition = "['Boxplot','Barras','Violin','Apiladas'].indexOf(input.tipo) >= 0",
-                   conditionalPanel(
-                     condition = "['Boxplot','Barras','Apiladas'].indexOf(input.tipo) >= 0",
-                     uiOutput("errbarStatUI"),
+                   condition = paste(
+                     "['Boxplot','Barras','Apiladas'].indexOf(input.tipo) >= 0 ||",
+                     "(input.tipo == 'DoseResponse' && input.dose_point_display == 'mean_error')"
                    ),
+                   uiOutput("errbarStatUI")
+                 ),
+
+                 conditionalPanel(
+                   condition = "['Boxplot','Barras','Violin','Apiladas'].indexOf(input.tipo) >= 0",
                    numericInput("pt_size", tr("point_size"), value = 3,
                                 min = 0.5, max = 20,  step = 0.5),
                    numericInput("errbar_size", tr("errbar_size"),
@@ -3763,6 +3943,26 @@ ui <- fluidPage(
                      )
                    )
                  ),
+                 conditionalPanel(
+                   condition = "input.tipo == 'DoseResponse'",
+                   accordion(
+                     id = "doseStatsPanel",
+                     open = FALSE,
+                     multiple = TRUE,
+                     accordion_panel_safe(
+                       tr("dose_stats_title"),
+                       uiOutput("doseAnalysisBasis"),
+                       h5(tr("dose_curve_parameters_title")),
+                       DTOutput("doseCurveParametersTable"),
+                       uiOutput("doseResponseConclusion"),
+                       h5(tr("dose_model_diagnostics_title")),
+                       DTOutput("doseDiagnosticsTable"),
+                       h5(tr("dose_pairwise_title")),
+                       DTOutput("dosePairwiseTable"),
+                       style = "info"
+                     )
+                   )
+                 ),
                  accordion(
                    id = "qcPanel",
                    open = FALSE,
@@ -3789,7 +3989,7 @@ ui <- fluidPage(
                             value = "qc_outliers",
                             title = tr("qc_outlier_table"),
                             tags$p(class = "qc-help", tr("qc_outlier_help")),
-                            numericInput(
+                  numericInput(
                               "qc_outlier_iqr_mult",
                               tr("qc_outlier_iqr_multiplier_label"),
                               value = 1.5,
@@ -3959,9 +4159,8 @@ ui <- fluidPage(
                    bioszen_visual_defaults$export_dpi,
                    min = BIOSZEN_MIN_DPI,
                    max = BIOSZEN_MAX_DPI,
-                   step = 1
-                 ),
-                 helpText(tr("export_dpi_help")),
+                    step = 1
+                  ),
                  br(), br(),
                  
                  # ── Botones de descarga ──────────────────────────────────────────────
@@ -4071,6 +4270,10 @@ ui <- fluidPage(
                        class = "btn btn-success"
                      )
                    ),
+                    conditionalPanel(
+                      condition = "input.tipo == 'DoseResponse'",
+                      h4(tr("dose_replicate_values_title"))
+                    ),
                     DTOutput('statsTable'),
                     uiOutput("statsFilteredTechTableUI"),
                     hr(),

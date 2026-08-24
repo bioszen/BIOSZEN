@@ -378,6 +378,7 @@ server <- function(input, output, session) {
   app_error_state <- new.env(parent = emptyenv())
   app_error_state$signature <- ""
   last_app_error <- reactiveVal(NULL)
+  app_error_recipient <- "bioszenf+bugs@gmail.com"
 
   active_module_name <- function() {
     active_tab <- isolate(as.character(input$mainTabs %||% "tab_plots"))
@@ -446,6 +447,16 @@ server <- function(input, output, session) {
         )
       ),
       tags$p(class = "bioszen-error-report-intro", tr_text("app_error_intro", lang)),
+      tags$p(
+        class = "bioszen-error-report-recipient",
+        tr_text("app_error_send_to", lang),
+        " ",
+        tags$a(
+          app_error_recipient,
+          href = paste0("mailto:", app_error_recipient),
+          class = "alert-link"
+        )
+      ),
       tags$details(
         tags$summary(tr_text("app_error_details", lang)),
         tags$pre(class = "bioszen-error-report-text", report$text)
@@ -488,7 +499,7 @@ server <- function(input, output, session) {
     session$sendCustomMessage(
       "bioszen-email-error-report",
       list(
-        to = "bioszenf+bugs@gmail.com",
+        to = app_error_recipient,
         subject = subject,
         report = report$text,
         prompt = tr_text("app_error_email_prompt", isolate(input$app_lang %||% i18n_lang)),
@@ -714,6 +725,21 @@ server <- function(input, output, session) {
     show_bioszen_update_modal(installed, available, lang)
     invisible(TRUE)
   }
+
+  on_session_flushed(function() {
+    if (is_session_closing()) return()
+    app_version <- get_current_version("BIOSZEN")
+    if (is.null(app_version) || !nzchar(as.character(app_version))) {
+      app_version <- "development"
+    }
+    session$sendCustomMessage(
+      "bioszenAnalyticsAppOpen",
+      list(
+        app_version = substr(as.character(app_version), 1L, 32L),
+        launch_mode = bioszen_analytics_launch_mode()
+      )
+    )
+  }, once = TRUE)
 
   on_session_flushed(function() {
     if (is_session_closing()) return()
@@ -2736,6 +2762,56 @@ server <- function(input, output, session) {
                   as.character(input$cur_ci_style %||% "ribbon"),
                   paste(input$curve_stats_methods %||% character(0), collapse = ","))
       )
+    } else if (input$tipo == "DoseResponse") {
+      dose_mapping_meta <- tryCatch({
+        mapping <- dose_mapping_values()
+        if (!is.data.frame(mapping) || !nrow(mapping)) {
+          ""
+        } else {
+          encoded_values <- paste(mapping$DoseInput, mapping$UnitInput, sep = "|")
+          encode_named_metadata(stats::setNames(encoded_values, mapping$Media))
+        }
+      }, error = function(e) "")
+      meta <- add_row(
+        meta,
+        Campo = c(
+          "dose_series", "dose_strains", "dose_control_media",
+          "dose_log_x", "dose_show_ci", "dose_point_display",
+          "dose_linear_slope",
+          "dose_xmin", "dose_xmax", "dose_xbreak",
+          "dose_ymin", "dose_ymax", "dose_ybreak",
+          "dose_xlab", "dose_ylab",
+          "dose_line_width", "dose_point_size", "dose_point_stroke",
+          "dose_ci_alpha", "errbar_stat", "dose_mapping"
+        ),
+        Valor = c(
+          as.character(input$dose_series %||% ""),
+          paste(input$dose_strains %||% character(0), collapse = ","),
+          as.character(input$dose_control_media %||% "__AUTO__"),
+          as.character(input$dose_log_x %||% FALSE),
+          as.character(input$dose_show_ci %||% TRUE),
+          as.character(input$dose_point_display %||% "individual"),
+          as.character(input$dose_linear_slope %||% FALSE),
+          as.character(input$dose_xmin %||% 0),
+          as.character(input$dose_xmax %||% 0),
+          as.character(input$dose_xbreak %||% 0),
+          as.character(input$dose_ymin %||% 0),
+          as.character(input$dose_ymax %||% 0),
+          as.character(input$dose_ybreak %||% 0),
+          as.character(input$dose_xlab %||% ""),
+          as.character(input$dose_ylab %||% ""),
+          as.character(input$dose_line_width %||% 1.05),
+          as.character(input$dose_point_size %||% 2.8),
+          as.character(input$dose_point_stroke %||% 0.65),
+          as.character(input$dose_ci_alpha %||% 0.14),
+          normalize_errorbar_stat(
+            input$errbar_stat %||% "SD",
+            default = "SD",
+            allow_minmax = FALSE
+          ),
+          dose_mapping_meta
+        )
+      )
     } else if (input$tipo == "Correlacion") {
       meta <- add_row(
         meta,
@@ -3140,13 +3216,14 @@ server <- function(input, output, session) {
       type_labels <- tr_text("plot_curves", lang)
       default_type <- "Curvas"
     } else if (isTRUE(summary_input_mode())) {
-      type_ids <- c("Barras", "Curvas", "Apiladas", "Correlacion", "Heatmap", "MatrizCorrelacion")
+      type_ids <- c("Barras", "Curvas", "Apiladas", "Correlacion", "DoseResponse", "Heatmap", "MatrizCorrelacion")
       type_labels <- tr_text(
         c(
           "plot_bars",
           "plot_curves",
           "plot_stacked",
           "plot_correlation",
+          "plot_dose_response",
           "plot_heatmap",
           "plot_corr_matrix"
         ),
@@ -3154,7 +3231,7 @@ server <- function(input, output, session) {
       )
       default_type <- "Barras"
     } else {
-      type_ids <- c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion", "Heatmap", "MatrizCorrelacion")
+      type_ids <- c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion", "DoseResponse", "Heatmap", "MatrizCorrelacion")
       type_labels <- tr_text(
         c(
           "plot_boxplot",
@@ -3163,6 +3240,7 @@ server <- function(input, output, session) {
           "plot_curves",
           "plot_stacked",
           "plot_correlation",
+          "plot_dose_response",
           "plot_heatmap",
           "plot_corr_matrix"
         ),
@@ -3719,7 +3797,7 @@ server <- function(input, output, session) {
   }
 
   publication_style_types <- c(
-    "Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion"
+    "Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion", "DoseResponse"
   )
 
   publication_style_enabled <- function(tipo = input$tipo %||% "") {
@@ -6098,7 +6176,10 @@ server <- function(input, output, session) {
   output$errbarStatUI <- renderUI({
     input$app_lang
     tipo_sel <- input$tipo %||% ""
-    if (!tipo_sel %in% c("Boxplot", "Barras", "Apiladas")) return(NULL)
+    dose_mean <- identical(tipo_sel, "DoseResponse") &&
+      identical(input$dose_point_display %||% "individual", "mean_error")
+    if (!tipo_sel %in% c("Boxplot", "Barras", "Apiladas", "DoseResponse") ||
+        (identical(tipo_sel, "DoseResponse") && !dose_mean)) return(NULL)
 
     lang <- input$app_lang %||% i18n_lang
     values <- c("SD", "SEM")
@@ -7366,9 +7447,10 @@ server <- function(input, output, session) {
         "Curvas"      = tr_text("plot_curves", lang),
         "Apiladas"    = tr_text("plot_stacked", lang),
         "Correlacion" = tr_text("plot_correlation", lang),
+        "DoseResponse" = tr_text("plot_dose_response", lang),
         input$tipo
       )
-      parameter_title_types <- c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas")
+      parameter_title_types <- c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "DoseResponse")
       if (!nzchar(param_sel) && input$tipo %in% parameter_title_types) return()
 
       scope_sel <- as.character(input$scope %||% "Combinado")
@@ -7593,6 +7675,690 @@ server <- function(input, output, session) {
         order_filter_group()
     }
     df
+  }
+
+  dose_response_scope_df <- reactive({
+    scope_sel <- if (identical(input$tipo %||% "", "DoseResponse")) {
+      "Combinado"
+    } else {
+      input$scope %||% "Por Cepa"
+    }
+    strain_sel <- if (identical(scope_sel, "Por Cepa")) input$strain else NULL
+    get_scope_df(scope_sel, strain_sel)
+  })
+
+  dose_response_raw_scope_df <- reactive({
+    df <- apply_qc_tech_filter_raw(datos_combinados())
+    if (!is.data.frame(df) || !nrow(df)) return(df)
+    if ("Strain" %in% names(df)) df$Strain <- sanitize_curve_label(df$Strain)
+    if ("Media" %in% names(df)) df$Media <- sanitize_curve_label(df$Media)
+    df <- df |>
+      dplyr::filter(!is.na(Strain), !is.na(Media), Strain != "C-")
+    order_filter_group(df)
+  })
+
+  observeEvent(input$tipo, {
+    if (identical(input$tipo, "DoseResponse") &&
+        !identical(input$scope %||% "Por Cepa", "Combinado")) {
+      updateRadioButtons(session, "scope", selected = "Combinado")
+    }
+  }, ignoreInit = TRUE)
+
+  dose_control_labels <- reactive({
+    selected <- trimws(as.character(input$dose_control_media %||% "__AUTO__"))
+    if (length(selected) && nzchar(selected[[1]]) && !identical(selected[[1]], "__AUTO__")) {
+      return(selected[[1]])
+    }
+    normalization_control <- trimws(as.character(effective_normalization_control() %||% ""))
+    normalization_control[nzchar(normalization_control)]
+  })
+
+  dose_manual_series_key <- "__MANUAL__"
+  dose_mapping_overrides <- reactiveVal(list())
+  dose_mapping_refresh <- reactiveVal(0L)
+  dose_selector_state <- reactiveValues(
+    control_signature = NULL,
+    series_signature = NULL,
+    strain_signature = NULL,
+    strain_initialized = FALSE,
+    strain_choices = character(0)
+  )
+
+  dose_choice_signature <- function(values, labels = names(values)) {
+    values <- as.character(values %||% character(0))
+    labels <- as.character(labels %||% rep("", length(values)))
+    paste(paste(labels, values, sep = "="), collapse = "|")
+  }
+
+  dose_current_series_key <- function() {
+    value <- trimws(as.character(input$dose_series %||% ""))
+    if (length(value) && nzchar(value[[1]])) value[[1]] else dose_manual_series_key
+  }
+
+  dose_mapping_definition <- reactive({
+    df <- dose_response_scope_df()
+    if (!is.data.frame(df) || !nrow(df) || !"Media" %in% names(df)) return(data.frame())
+    series_key <- trimws(as.character(input$dose_series %||% ""))
+    if (!length(series_key) || !nzchar(series_key[[1]])) return(data.frame())
+    bioszen_dose_mapping_defaults(
+      media = df$Media,
+      series_key = series_key[[1]],
+      control_labels = dose_control_labels(),
+      manual_key = dose_manual_series_key
+    )
+  })
+
+  dose_default_text <- function(value) {
+    value <- suppressWarnings(as.numeric(value))
+    if (!length(value) || !is.finite(value[[1]])) return("")
+    format(value[[1]], scientific = FALSE, trim = TRUE, digits = 15)
+  }
+
+  dose_mapping_values <- reactive({
+    rows <- dose_mapping_definition()
+    if (!is.data.frame(rows) || !nrow(rows)) {
+      return(data.frame(
+        Media = character(0), DoseInput = character(0), UnitInput = character(0),
+        stringsAsFactors = FALSE
+      ))
+    }
+    all_overrides <- isolate(dose_mapping_overrides())
+    overrides <- all_overrides[[dose_current_series_key()]] %||% list()
+    values <- lapply(seq_len(nrow(rows)), function(index) {
+      media <- as.character(rows$Media[[index]])
+      dose_id <- bioszen_dose_mapping_input_id(media, "dose")
+      unit_id <- bioszen_dose_mapping_input_id(media, "unit")
+      stored <- overrides[[media]] %||% list()
+      dose_value <- input[[dose_id]]
+      unit_value <- input[[unit_id]]
+      if (is.null(dose_value)) dose_value <- stored$dose %||% dose_default_text(rows$DoseDefault[[index]])
+      if (is.null(unit_value)) unit_value <- stored$unit %||% as.character(rows$UnitDefault[[index]] %||% "")
+      data.frame(
+        Media = media,
+        DoseInput = as.character(dose_value %||% ""),
+        UnitInput = as.character(unit_value %||% ""),
+        stringsAsFactors = FALSE
+      )
+    })
+    dplyr::bind_rows(values)
+  })
+
+  dose_mapping_validation <- reactive({
+    bioszen_validate_dose_mapping(dose_mapping_values())
+  })
+
+  observe({
+    if (!identical(input$tipo %||% "", "DoseResponse")) return()
+    rows <- dose_mapping_definition()
+    if (!is.data.frame(rows) || !nrow(rows)) return()
+    series_key <- dose_current_series_key()
+    all_overrides <- isolate(dose_mapping_overrides())
+    updated <- all_overrides[[series_key]] %||% list()
+    changed <- FALSE
+    for (index in seq_len(nrow(rows))) {
+      media <- as.character(rows$Media[[index]])
+      dose_value <- input[[bioszen_dose_mapping_input_id(media, "dose")]]
+      unit_value <- input[[bioszen_dose_mapping_input_id(media, "unit")]]
+      if (is.null(dose_value) && is.null(unit_value)) next
+      previous <- updated[[media]] %||% list()
+      updated[[media]] <- list(
+        dose = as.character(dose_value %||% previous$dose %||% dose_default_text(rows$DoseDefault[[index]])),
+        unit = as.character(unit_value %||% previous$unit %||% rows$UnitDefault[[index]] %||% "")
+      )
+      changed <- TRUE
+    }
+    if (changed) {
+      all_overrides[[series_key]] <- updated
+      dose_mapping_overrides(all_overrides)
+    }
+  })
+
+  observeEvent(input$dataFile, {
+    dose_mapping_overrides(list())
+    dose_mapping_refresh(isolate(dose_mapping_refresh()) + 1L)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$dose_control_media, {
+    if (!identical(input$tipo %||% "", "DoseResponse")) return()
+    selected <- trimws(as.character(input$dose_control_media %||% "__AUTO__"))
+    if (length(selected) && !identical(selected[[1]], "__AUTO__") && nzchar(selected[[1]])) {
+      series_key <- dose_current_series_key()
+      all_overrides <- isolate(dose_mapping_overrides())
+      updated <- all_overrides[[series_key]] %||% list()
+      updated[[selected[[1]]]] <- NULL
+      all_overrides[[series_key]] <- updated
+      dose_mapping_overrides(all_overrides)
+      dose_mapping_refresh(isolate(dose_mapping_refresh()) + 1L)
+    }
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$dose_apply_unit_all, {
+    if (!identical(input$tipo %||% "", "DoseResponse")) return()
+    lang <- input$app_lang %||% i18n_lang
+    unit_value <- bioszen_dose_normalize_manual_unit(input$dose_unit_all %||% "")
+    unit_value <- if (length(unit_value)) unit_value[[1]] else ""
+    if (!nzchar(unit_value)) {
+      showNotification(
+        tr_text("dose_mapping_apply_unit_missing", lang),
+        type = "error",
+        duration = 5
+      )
+      return()
+    }
+
+    rows <- dose_mapping_definition()
+    if (!is.data.frame(rows) || !nrow(rows)) return()
+    applied_mapping <- bioszen_dose_apply_unit_all(dose_mapping_values(), unit_value)
+    series_key <- dose_current_series_key()
+    all_overrides <- isolate(dose_mapping_overrides())
+    updated <- all_overrides[[series_key]] %||% list()
+    for (index in seq_len(nrow(rows))) {
+      media <- as.character(rows$Media[[index]])
+      stored <- updated[[media]] %||% list()
+      dose_value <- input[[bioszen_dose_mapping_input_id(media, "dose")]]
+      applied_index <- match(media, applied_mapping$Media)
+      updated[[media]] <- list(
+        dose = as.character(
+          dose_value %||% stored$dose %||% dose_default_text(rows$DoseDefault[[index]])
+        ),
+        unit = if (!is.na(applied_index)) as.character(applied_mapping$UnitInput[[applied_index]]) else unit_value
+      )
+    }
+    all_overrides[[series_key]] <- updated
+    dose_mapping_overrides(all_overrides)
+    dose_mapping_refresh(isolate(dose_mapping_refresh()) + 1L)
+    showNotification(
+      tr_text("dose_mapping_apply_unit_success", lang),
+      type = "message",
+      duration = 4
+    )
+  }, ignoreInit = TRUE)
+
+  output$doseConcentrationMappingUI <- renderUI({
+    dose_mapping_refresh()
+    rows <- dose_mapping_definition()
+    lang <- input$app_lang %||% i18n_lang
+    if (!is.data.frame(rows) || !nrow(rows)) {
+      return(tags$div(class = "alert alert-warning", tr_text("dose_mapping_no_rows", lang)))
+    }
+    all_overrides <- isolate(dose_mapping_overrides())
+    overrides <- all_overrides[[dose_current_series_key()]] %||% list()
+    header_style <- "white-space:normal; word-break:keep-all; overflow-wrap:normal; font-size:12px;"
+    header <- fluidRow(
+      column(6, tags$strong(style = header_style, tr_text("dose_mapping_condition", lang))),
+      column(3, tags$strong(style = header_style, tr_text("dose_mapping_concentration", lang))),
+      column(3, tags$strong(style = header_style, tr_text("dose_mapping_unit", lang)))
+    )
+    body <- lapply(seq_len(nrow(rows)), function(index) {
+      media <- as.character(rows$Media[[index]])
+      stored <- overrides[[media]] %||% list()
+      dose_value <- stored$dose %||% dose_default_text(rows$DoseDefault[[index]])
+      unit_value <- bioszen_dose_normalize_manual_unit(
+        stored$unit %||% as.character(rows$UnitDefault[[index]] %||% "")
+      )
+      fluidRow(
+        style = "display:flex; align-items:center; margin-bottom:6px;",
+        column(6, tags$div(style = "overflow-wrap:anywhere;", media)),
+        column(
+          3,
+          textInput(
+            bioszen_dose_mapping_input_id(media, "dose"),
+            label = NULL,
+            value = dose_value,
+            placeholder = tr_text("dose_mapping_concentration", lang)
+          )
+        ),
+        column(
+          3,
+          textInput(
+            bioszen_dose_mapping_input_id(media, "unit"),
+            label = NULL,
+            value = unit_value,
+            placeholder = tr_text("dose_mapping_unit", lang)
+          )
+        )
+      )
+    })
+    tagList(header, body)
+  })
+
+  output$doseConcentrationValidationUI <- renderUI({
+    lang <- input$app_lang %||% i18n_lang
+    status <- dose_mapping_validation()
+    if (identical(status$code, "no_rows")) return(NULL)
+    if (!isTRUE(status$valid)) {
+      errors <- unique(status$errors)
+      items <- lapply(seq_len(nrow(errors)), function(index) {
+        tags$li(
+          tags$strong(paste0(errors$Media[[index]], ": ")),
+          tr_text(paste0("dose_mapping_", errors$Code[[index]]), lang)
+        )
+      })
+      if (isTRUE(status$mixed_units)) {
+        items <- c(items, list(tags$li(tr_text("dose_mapping_mixed_units", lang))))
+      }
+      return(tags$div(class = "alert alert-danger", tags$ul(style = "margin-bottom:0;", items)))
+    }
+    tags$div(class = "alert alert-success", tr_text("dose_mapping_valid", lang))
+  })
+
+  observe({
+      if (!identical(input$tipo %||% "", "DoseResponse")) return()
+      df <- dose_response_scope_df()
+      if (!is.data.frame(df) || !nrow(df) || !all(c("Strain", "Media") %in% names(df))) return()
+      lang <- input$app_lang %||% i18n_lang
+
+      media_choices <- sort(unique(as.character(df$Media)))
+      media_choices <- media_choices[!is.na(media_choices) & nzchar(media_choices)]
+      control_values <- c("__AUTO__", media_choices)
+      control_labels <- c(tr_text("dose_control_auto", lang), media_choices)
+      control_choices <- stats::setNames(control_values, control_labels)
+      current_control_raw <- isolate(input$dose_control_media)
+      current_control_raw_chr <- as.character(current_control_raw %||% character(0))
+      control_is_valid <- length(current_control_raw_chr) &&
+        current_control_raw_chr[[1]] %in% control_values
+      current_control <- current_control_raw_chr
+      if (!isTRUE(control_is_valid)) {
+        current_control <- "__AUTO__"
+      }
+      control_signature <- dose_choice_signature(control_choices, names(control_choices))
+      # A server-side selectize update briefly reports an empty value while its
+      # choices are being replaced. Reissuing the update for that transient
+      # value creates a self-sustaining reactive loop, so refresh this selector
+      # only when its actual choice set changes.
+      control_needs_update <- !identical(
+        isolate(dose_selector_state$control_signature),
+        control_signature
+      )
+      if (isTRUE(control_needs_update)) {
+        shiny::freezeReactiveValue(input, "dose_control_media")
+        updateSelectizeInput(
+          session,
+          "dose_control_media",
+          choices = control_choices,
+          selected = current_control[[1]],
+          server = TRUE
+        )
+        dose_selector_state$control_signature <- control_signature
+      }
+
+      series <- bioszen_dose_series_table(df$Media, control_labels = dose_control_labels())
+      series_choices <- c(
+        stats::setNames(series$SeriesKey, series$Display),
+        stats::setNames(dose_manual_series_key, tr_text("dose_series_manual", lang))
+      )
+      valid_series <- c(series$SeriesKey, dose_manual_series_key)
+      current_series <- as.character(input$dose_series %||% "")
+      if (!length(current_series) || !current_series[[1]] %in% valid_series) {
+        current_series <- if (nrow(series)) series$SeriesKey[[1]] else dose_manual_series_key
+      } else {
+        current_series <- current_series[[1]]
+      }
+      series_signature <- dose_choice_signature(series_choices, names(series_choices))
+      # As with the control selector, an empty value is emitted transiently
+      # while Selectize installs server-side choices. The choice signature is
+      # the stable source of truth for deciding whether another update is due.
+      series_needs_update <- !identical(
+        isolate(dose_selector_state$series_signature),
+        series_signature
+      )
+      if (isTRUE(series_needs_update)) {
+        shiny::freezeReactiveValue(input, "dose_series")
+        updateSelectizeInput(
+          session,
+          "dose_series",
+          choices = series_choices,
+          selected = current_series,
+          server = TRUE
+        )
+        dose_selector_state$series_signature <- series_signature
+      }
+
+      mapping_rows <- bioszen_dose_mapping_defaults(
+        media = df$Media,
+        series_key = current_series,
+        control_labels = dose_control_labels(),
+        manual_key = dose_manual_series_key
+      )
+      treatment_media <- if (identical(current_series, dose_manual_series_key)) {
+        mapping_rows$Media
+      } else {
+        mapping_rows$Media[!mapping_rows$IsControl]
+      }
+      strain_choices <- sort(unique(as.character(df$Strain[df$Media %in% treatment_media])))
+      strain_choices <- strain_choices[!is.na(strain_choices) & nzchar(strain_choices)]
+      current_strains_raw <- isolate(input$dose_strains)
+      strain_initialized <- isTRUE(isolate(dose_selector_state$strain_initialized))
+      previous_strain_choices <- isolate(dose_selector_state$strain_choices %||% character(0))
+      selection_was_available <- strain_initialized && length(previous_strain_choices) > 0L
+      strain_selection <- bioszen_dose_resolve_strain_selection(
+        current = current_strains_raw,
+        choices = strain_choices,
+        initialized = selection_was_available
+      )
+      strain_signature <- dose_choice_signature(strain_choices, strain_choices)
+      strain_needs_update <- !identical(
+        isolate(dose_selector_state$strain_signature),
+        strain_signature
+      ) || !strain_initialized
+      if (isTRUE(strain_needs_update)) {
+        shiny::freezeReactiveValue(input, "dose_strains")
+        updateSelectizeInput(
+          session,
+          "dose_strains",
+          choices = strain_choices,
+          selected = strain_selection$selected,
+          server = TRUE
+        )
+        dose_selector_state$strain_signature <- strain_signature
+        dose_selector_state$strain_initialized <- TRUE
+        dose_selector_state$strain_choices <- strain_choices
+      }
+  })
+
+  dose_response_analysis <- reactive({
+    df <- dose_response_scope_df()
+    params_all <- safe_plot_setting_params()
+    raw_param <- normalize_param_selection(input$param, params_all)
+    if (!nzchar(raw_param)) raw_param <- normalize_param_selection(last_param_selection(), params_all)
+    if (!nzchar(raw_param) && length(params_all)) raw_param <- params_all[[1]]
+
+    series_key <- trimws(as.character(input$dose_series %||% ""))
+    selected_strains <- as.character(input$dose_strains %||% character(0))
+    mapping_status <- dose_mapping_validation()
+    if (!nzchar(raw_param) || !length(series_key) || !nzchar(series_key[[1]]) ||
+        !length(selected_strains) || !isTRUE(mapping_status$valid)) {
+      return(list(
+        observations = data.frame(), predictions = data.frame(), parameters = data.frame(),
+        comparisons = data.frame(), diagnostics = data.frame(), replicate_values = data.frame(),
+        settings = data.frame(), fits = list(),
+        message = if (isTRUE(mapping_status$valid)) "no_data" else "invalid_mapping"
+      ))
+    }
+
+    normalized <- isTRUE(input$doNorm) && has_ctrl_selected()
+    response_col <- if (isTRUE(normalized)) paste0(raw_param, "_Norm") else raw_param
+    mapping_rows <- dose_mapping_definition()
+    compound_label <- if (nrow(mapping_rows)) as.character(mapping_rows$Compound[[1]]) else "Treatment"
+    analysis <- bioszen_analyze_dose_response(
+      df = df,
+      response_col = response_col,
+      parameter_label = raw_param,
+      series_key = series_key[[1]],
+      selected_strains = selected_strains,
+      control_labels = dose_control_labels(),
+      normalized = normalized,
+      ci_level = 0.95,
+      concentration_map = dose_mapping_values(),
+      compound_label = compound_label,
+      include_linear_slope = isTRUE(input$dose_linear_slope),
+      display_mode = isolate(input$dose_point_display %||% "individual"),
+      error_stat = isolate(input$errbar_stat %||% "SD")
+    )
+    analysis$replicate_values <- bioszen_prepare_dose_replicate_values(
+      df = dose_response_raw_scope_df(),
+      response_col = raw_param,
+      parameter_label = raw_param,
+      concentration_map = dose_mapping_values(),
+      selected_strains = selected_strains,
+      normalized_df = if (isTRUE(normalized)) df else NULL,
+      normalized_col = if (isTRUE(normalized)) response_col else NULL
+    )
+    analysis$settings <- dplyr::bind_rows(
+      analysis$settings %||% data.frame(),
+      data.frame(
+        Setting = c("Concentration axis", "Normalization control"),
+        Value = c(
+          if (isTRUE(isolate(input$dose_log_x))) "Logarithmic" else "Raw concentration",
+          if (isTRUE(normalized)) as.character(effective_normalization_control() %||% "") else "Not applicable"
+        ),
+        stringsAsFactors = FALSE
+      )
+    )
+    analysis
+  })
+
+  dose_response_export_analysis <- function() {
+    analysis <- isolate(dose_response_analysis())
+    settings <- analysis$settings %||% data.frame()
+    if (!is.data.frame(settings) || !all(c("Setting", "Value") %in% names(settings))) {
+      settings <- data.frame(Setting = character(0), Value = character(0), stringsAsFactors = FALSE)
+    }
+    set_setting <- function(current, name, value) {
+      current <- current %||% data.frame(Setting = character(0), Value = character(0))
+      index <- which(current$Setting == name)
+      if (length(index)) {
+        current$Value[index[[1]]] <- as.character(value)
+      } else {
+        current <- dplyr::bind_rows(
+          current,
+          data.frame(Setting = name, Value = as.character(value), stringsAsFactors = FALSE)
+        )
+      }
+      current
+    }
+    display_mode <- if (identical(isolate(input$dose_point_display %||% "individual"), "mean_error")) {
+      "Mean +/- error"
+    } else {
+      "Individual biological replicates"
+    }
+    error_stat <- normalize_errorbar_stat(
+      isolate(input$errbar_stat %||% "SD"),
+      default = "SD",
+      allow_minmax = FALSE
+    )
+    settings <- set_setting(settings, "Displayed points", display_mode)
+    settings <- set_setting(
+      settings,
+      "Displayed error bars",
+      if (identical(display_mode, "Mean +/- error")) error_stat else "Not applicable"
+    )
+    settings <- set_setting(
+      settings,
+      "Concentration axis",
+      if (isTRUE(isolate(input$dose_log_x))) "Logarithmic" else "Raw concentration"
+    )
+    analysis$settings <- settings
+    analysis
+  }
+
+  dose_status_label <- function(status, lang = input$app_lang %||% i18n_lang) {
+    status <- as.character(status %||% "fit_failed")
+    vapply(status, function(code) {
+      tr_text(paste0("dose_status_", code), lang)
+    }, character(1))
+  }
+
+  dose_format_number <- function(value, digits = 5L) {
+    value <- suppressWarnings(as.numeric(value))
+    ifelse(is.finite(value), format(signif(value, digits), trim = TRUE, scientific = FALSE), "")
+  }
+
+  dose_parameters_display <- function(analysis, lang = input$app_lang %||% i18n_lang) {
+    tbl <- analysis$parameters %||% data.frame()
+    if (!is.data.frame(tbl) || !nrow(tbl)) return(tibble::tibble())
+    result <- rep(tr_text("dose_ic50_not_estimable", lang), nrow(tbl))
+    ok_idx <- tbl$Status == "ok" & is.finite(tbl$IC50)
+    result[ok_idx] <- dose_format_number(tbl$IC50[ok_idx])
+    high_idx <- tbl$Status == "not_reached" & is.finite(tbl$MaxTested)
+    result[high_idx] <- sprintf(
+      tr_text("dose_ic50_not_reached", lang),
+      dose_format_number(tbl$MaxTested[high_idx])
+    )
+    low_idx <- tbl$Status == "below_range" & is.finite(tbl$MinTested)
+    result[low_idx] <- sprintf(
+      tr_text("dose_ic50_below_range", lang),
+      dose_format_number(tbl$MinTested[low_idx])
+    )
+    data.frame(
+      Strain = tbl$Strain,
+      Parameter = tbl$Parameter,
+      Compound = tbl$Compound,
+      Unit = tbl$ConcentrationUnit,
+      ResultBasis = sprintf(tr_text("dose_metric_based_on", lang), tbl$Parameter),
+      IC50_Result = result,
+      ED50 = tbl$ED50,
+      CI_Lower = tbl$CI_Lower,
+      CI_Upper = tbl$CI_Upper,
+      HillSlope = tbl$HillSlope,
+      MaximumSlope = tbl$MaximumSlope,
+      MaximumSlopeMagnitude = tbl$MaximumSlopeMagnitude,
+      LowerAsymptote = tbl$LowerAsymptote,
+      UpperAsymptote = tbl$UpperAsymptote,
+      ResponseRange = tbl$ResponseRange,
+      InflectionPoint = tbl$InflectionPoint,
+      MinTested = tbl$MinTested,
+      MaxTested = tbl$MaxTested,
+      DoseLevels = tbl$DoseLevels,
+      BiologicalReplicates = tbl$BiologicalReplicates,
+      SusceptibilityRank = tbl$SusceptibilityRank,
+      RelativeToLowestIC50 = tbl$RelativeToLowestIC50,
+      Status = dose_status_label(tbl$Status, lang),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    ) |>
+      dplyr::rename(
+        !!tr_text("dose_table_strain", lang) := Strain,
+        !!tr_text("dose_col_parameter", lang) := Parameter,
+        !!tr_text("dose_col_compound", lang) := Compound,
+        !!tr_text("dose_col_unit", lang) := Unit,
+        !!tr_text("dose_col_result_basis", lang) := ResultBasis,
+        !!tr_text("dose_col_ic50_result", lang) := IC50_Result,
+        !!tr_text("dose_col_ed50", lang) := ED50,
+        !!tr_text("dose_col_ci_lower", lang) := CI_Lower,
+        !!tr_text("dose_col_ci_upper", lang) := CI_Upper,
+        !!tr_text("dose_col_hill", lang) := HillSlope,
+        !!tr_text("dose_col_max_slope", lang) := MaximumSlope,
+        !!tr_text("dose_col_max_slope_magnitude", lang) := MaximumSlopeMagnitude,
+        !!tr_text("dose_col_lower", lang) := LowerAsymptote,
+        !!tr_text("dose_col_upper", lang) := UpperAsymptote,
+        !!tr_text("dose_col_response_range", lang) := ResponseRange,
+        !!tr_text("dose_col_inflection", lang) := InflectionPoint,
+        !!tr_text("dose_col_min", lang) := MinTested,
+        !!tr_text("dose_col_max", lang) := MaxTested,
+        !!tr_text("dose_col_doses", lang) := DoseLevels,
+        !!tr_text("dose_col_bioreps", lang) := BiologicalReplicates,
+        !!tr_text("dose_col_rank", lang) := SusceptibilityRank,
+        !!tr_text("dose_col_relative", lang) := RelativeToLowestIC50,
+        !!tr_text("dose_col_status", lang) := Status
+      )
+  }
+
+  dose_diagnostics_display <- function(analysis, lang = input$app_lang %||% i18n_lang) {
+    tbl <- analysis$diagnostics %||% data.frame()
+    if (!is.data.frame(tbl) || !nrow(tbl)) return(tibble::tibble())
+    data.frame(
+      Strain = tbl$Strain,
+      Model = tbl$Model,
+      Observations = tbl$Observations,
+      ResidualDF = tbl$ResidualDF,
+      RSS = tbl$RSS,
+      RMSE = tbl$RMSE,
+      R_Squared = tbl$R_Squared,
+      Adjusted_R_Squared = tbl$Adjusted_R_Squared,
+      AIC = tbl$AIC,
+      BIC = tbl$BIC,
+      LogLikelihood = tbl$LogLikelihood,
+      LinearSlope = tbl$LinearSlope,
+      LinearSlopeCI_Lower = tbl$LinearSlopeCI_Lower,
+      LinearSlopeCI_Upper = tbl$LinearSlopeCI_Upper,
+      LinearSlopeP_Value = tbl$LinearSlopeP_Value,
+      Linear_R_Squared = tbl$Linear_R_Squared,
+      Converged = tbl$Converged,
+      Status = dose_status_label(tbl$Status, lang),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    ) |>
+      dplyr::rename(
+        !!tr_text("dose_table_strain", lang) := Strain,
+        !!tr_text("dose_col_model", lang) := Model,
+        !!tr_text("dose_col_observations", lang) := Observations,
+        !!tr_text("dose_col_residual_df", lang) := ResidualDF,
+        !!tr_text("dose_col_rss", lang) := RSS,
+        !!tr_text("dose_col_rmse", lang) := RMSE,
+        !!tr_text("dose_col_r_squared", lang) := R_Squared,
+        !!tr_text("dose_col_adjusted_r_squared", lang) := Adjusted_R_Squared,
+        !!tr_text("dose_col_aic", lang) := AIC,
+        !!tr_text("dose_col_bic", lang) := BIC,
+        !!tr_text("dose_col_log_likelihood", lang) := LogLikelihood,
+        !!tr_text("dose_col_linear_slope", lang) := LinearSlope,
+        !!tr_text("dose_col_linear_ci_lower", lang) := LinearSlopeCI_Lower,
+        !!tr_text("dose_col_linear_ci_upper", lang) := LinearSlopeCI_Upper,
+        !!tr_text("dose_col_linear_p", lang) := LinearSlopeP_Value,
+        !!tr_text("dose_col_linear_r_squared", lang) := Linear_R_Squared,
+        !!tr_text("dose_col_converged", lang) := Converged,
+        !!tr_text("dose_col_status", lang) := Status
+      )
+  }
+
+  dose_replicate_values_display <- function(analysis, lang = input$app_lang %||% i18n_lang) {
+    tbl <- analysis$replicate_values %||% data.frame()
+    if (!is.data.frame(tbl) || !nrow(tbl)) return(tibble::tibble())
+    out <- data.frame(
+      Strain = tbl$Strain,
+      Condition = tbl$Condition,
+      Concentration = tbl$Concentration,
+      Unit = tbl$ConcentrationUnit,
+      BiologicalReplicate = tbl$BiologicalReplicate,
+      TechnicalReplicate = tbl$TechnicalReplicate,
+      Parameter = tbl$Parameter,
+      RawValue = tbl$RawValue,
+      NormalizedValue = tbl$NormalizedValue,
+      ModelValue = tbl$ModelValue,
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+    if (!isTRUE(analysis$normalized)) out$NormalizedValue <- NULL
+    rename_map <- c(
+      Strain = tr_text("dose_table_strain", lang),
+      Condition = tr_text("dose_table_condition", lang),
+      Concentration = tr_text("dose_table_concentration", lang),
+      Unit = tr_text("dose_col_unit", lang),
+      BiologicalReplicate = tr_text("dose_table_biorep", lang),
+      TechnicalReplicate = tr_text("dose_table_techrep", lang),
+      Parameter = tr_text("dose_col_parameter", lang),
+      RawValue = tr_text("dose_table_raw_value", lang),
+      NormalizedValue = tr_text("dose_table_normalized_value", lang),
+      ModelValue = tr_text("dose_table_model_value", lang)
+    )
+    names(out) <- unname(rename_map[names(out)])
+    tibble::as_tibble(out)
+  }
+
+  dose_comparisons_display <- function(analysis, lang = input$app_lang %||% i18n_lang) {
+    tbl <- analysis$comparisons %||% data.frame()
+    if (!is.data.frame(tbl) || !nrow(tbl)) return(tibble::tibble())
+    interpretation <- ifelse(
+      tbl$ConclusionCode == "different",
+      sprintf(
+        tr_text("dose_pair_more_susceptible", lang),
+        tbl$LowerIC50Strain,
+        ifelse(tbl$LowerIC50Strain == tbl$StrainA, tbl$StrainB, tbl$StrainA)
+      ),
+      tr_text("dose_pair_not_significant", lang)
+    )
+    data.frame(
+      StrainA = tbl$StrainA,
+      StrainB = tbl$StrainB,
+      Ratio = tbl$IC50_Ratio_A_over_B,
+      RatioLower = tbl$Ratio_CI_Lower,
+      RatioUpper = tbl$Ratio_CI_Upper,
+      P = tbl$P_Value,
+      PAdjusted = tbl$P_Adjusted,
+      Interpretation = interpretation,
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    ) |>
+      dplyr::rename(
+        !!tr_text("dose_col_strain_a", lang) := StrainA,
+        !!tr_text("dose_col_strain_b", lang) := StrainB,
+        !!tr_text("dose_col_ratio", lang) := Ratio,
+        !!tr_text("dose_col_ratio_lower", lang) := RatioLower,
+        !!tr_text("dose_col_ratio_upper", lang) := RatioUpper,
+        !!tr_text("dose_col_p", lang) := P,
+        !!tr_text("dose_col_p_adjusted", lang) := PAdjusted,
+        !!tr_text("dose_col_interpretation", lang) := Interpretation
+      )
   }
   
   curve_long_df <- reactive({
@@ -9921,6 +10687,16 @@ server <- function(input, output, session) {
       }  
     }  
     
+    if (tipo == "DoseResponse") {
+      table <- dose_replicate_values_display(dose_response_analysis(), lang)
+      validate(need(nrow(table) > 0, tr_text("dose_no_valid_data", lang)))
+      return(datatable(
+        table,
+        options = list(pageLength = 100, scrollX = TRUE),
+        rownames = FALSE
+      ))
+    }
+
     if (tipo %in% c("Barras", "Boxplot", "Violin")) {  
       param <- safe_param()  
       validate(need(param %in% names(base_df), tr_text("param_not_available", lang)))  
@@ -10087,6 +10863,124 @@ server <- function(input, output, session) {
       options = list(dom = 't')
     )  
   }, server = FALSE)  
+
+  output$doseAnalysisBasis <- renderUI({
+    analysis <- dose_response_analysis()
+    parameter <- as.character(analysis$parameter %||% "")
+    if (!length(parameter) || !nzchar(parameter[[1]])) return(NULL)
+    tags$h5(sprintf(tr_text("dose_metric_based_on", input$app_lang %||% i18n_lang), parameter[[1]]))
+  })
+
+  output$doseCurveParametersTable <- renderDT({
+    guard_stable_output(table_stability_keys)
+    lang <- input$app_lang %||% i18n_lang
+    table <- dose_parameters_display(dose_response_analysis(), lang)
+    validate(need(nrow(table) > 0, tr_text("dose_no_valid_data", lang)))
+    datatable(
+      table,
+      options = list(pageLength = 100, scrollX = TRUE),
+      rownames = FALSE
+    )
+  }, server = FALSE)
+
+  output$doseDiagnosticsTable <- renderDT({
+    guard_stable_output(table_stability_keys)
+    lang <- input$app_lang %||% i18n_lang
+    table <- dose_diagnostics_display(dose_response_analysis(), lang)
+    validate(need(nrow(table) > 0, tr_text("dose_no_valid_data", lang)))
+    datatable(
+      table,
+      options = list(pageLength = 100, scrollX = TRUE),
+      rownames = FALSE
+    )
+  }, server = FALSE)
+
+  output$dosePairwiseTable <- renderDT({
+    guard_stable_output(table_stability_keys)
+    lang <- input$app_lang %||% i18n_lang
+    analysis <- dose_response_analysis()
+    table <- dose_comparisons_display(analysis, lang)
+    if (!nrow(table)) {
+      parameters <- analysis$parameters %||% data.frame()
+      comparable_count <- if (is.data.frame(parameters) && nrow(parameters)) {
+        sum(!is.na(parameters$Comparable) & parameters$Comparable & is.finite(parameters$IC50))
+      } else {
+        0L
+      }
+      message_key <- if (comparable_count >= 2L) {
+        "dose_comparison_unavailable"
+      } else {
+        "dose_conclusion_unavailable"
+      }
+      table <- tibble::tibble(
+        !!tr_text("dose_col_interpretation", lang) := tr_text(message_key, lang)
+      )
+    }
+    datatable(
+      table,
+      options = list(pageLength = 100, scrollX = TRUE),
+      rownames = FALSE
+    )
+  }, server = FALSE)
+
+  output$doseResponseConclusion <- renderUI({
+    analysis <- dose_response_analysis()
+    lang <- input$app_lang %||% i18n_lang
+    parameters <- analysis$parameters %||% data.frame()
+    if (!is.data.frame(parameters) || !nrow(parameters)) return(NULL)
+
+    comparable <- parameters[
+      !is.na(parameters$Comparable) & parameters$Comparable &
+        is.finite(parameters$IC50),
+      , drop = FALSE
+    ]
+    if (!nrow(comparable)) {
+      message <- tr_text("dose_conclusion_unavailable", lang)
+    } else {
+      lowest <- comparable$Strain[[which.min(comparable$IC50)]]
+      comparisons <- analysis$comparisons %||% data.frame()
+      significant <- if (is.data.frame(comparisons) && nrow(comparisons)) {
+        comparisons[
+          is.finite(comparisons$P_Adjusted) & comparisons$P_Adjusted < 0.05,
+          , drop = FALSE
+        ]
+      } else {
+        data.frame()
+      }
+      if (nrow(significant)) {
+        findings <- vapply(seq_len(nrow(significant)), function(index) {
+          row <- significant[index, , drop = FALSE]
+          other <- if (identical(row$LowerIC50Strain[[1]], row$StrainA[[1]])) {
+            row$StrainB[[1]]
+          } else {
+            row$StrainA[[1]]
+          }
+          sprintf(
+            tr_text("dose_pair_more_susceptible", lang),
+            row$LowerIC50Strain[[1]],
+            other
+          )
+        }, character(1))
+        message <- sprintf(
+          tr_text("dose_conclusion_significant", lang),
+          paste(findings, collapse = "; ")
+        )
+      } else if (nrow(comparable) >= 2L && nrow(comparisons)) {
+        message <- sprintf(tr_text("dose_conclusion_no_significant", lang), lowest)
+      } else if (nrow(comparable) >= 2L) {
+        message <- paste(
+          sprintf(tr_text("dose_conclusion_most", lang), lowest),
+          tr_text("dose_comparison_unavailable", lang)
+        )
+      } else {
+        message <- paste(
+          sprintf(tr_text("dose_conclusion_most", lang), lowest),
+          tr_text("dose_conclusion_unavailable", lang)
+        )
+      }
+    }
+    tags$div(class = "alert alert-info", message)
+  })
 
   stats_filtered_tech_table_data <- reactive({
     tipo <- input$tipo %||% ""
@@ -11612,8 +12506,13 @@ server <- function(input, output, session) {
   palette_group_levels <- reactive({
     tipo  <- input$tipo %||% ""
     scope <- input$scope %||% "Por Cepa"
-    if (!tipo %in% c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Heatmap")) {
+    if (!tipo %in% c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "DoseResponse", "Heatmap")) {
       return(character(0))
+    }
+
+    if (identical(tipo, "DoseResponse")) {
+      strains <- unique(trimws(as.character(input$dose_strains %||% character(0))))
+      return(strains[!is.na(strains) & nzchar(strains)])
     }
 
     if (identical(tipo, "Apiladas")) {
@@ -14067,6 +14966,26 @@ server <- function(input, output, session) {
       )
     }
 
+    # --- 3.x) Concentration-response / IC50 -----------------------------
+    if (tipo == "DoseResponse") {
+      return(
+        style_plot_text(
+          build_dose_response_plot_impl(
+            analysis = dose_response_analysis(),
+            input = input,
+            lang = lang,
+            tr_text = tr_text,
+            palette_for_levels = palette_for_levels,
+            margin_adj = margin_adj,
+            fs_title = fs_title,
+            fs_axis = fs_axis,
+            fs_legend = fs_legend,
+            axis_size = axis_size
+          )
+        )
+      )
+    }
+
     
     
     # --- 3.x) Curves (Por Cepa and Combinado) ---
@@ -14952,6 +15871,7 @@ server <- function(input, output, session) {
     # Keep tooltips compact for large datasets to avoid huge JSON payloads.
     if (identical(tipo, "Correlacion")) return(c("x", "y", "text", "name"))
     if (identical(tipo, "Curvas")) return(c("x", "y", "name", "text"))
+    if (identical(tipo, "DoseResponse")) return(c("x", "y", "name", "fill"))
     if (identical(tipo, "MatrizCorrelacion")) return(c("x", "y", "fill", "text"))
     if (identical(tipo, "Heatmap")) return(c("x", "y", "fill", "text"))
     c("x", "y", "name", "text")
@@ -15461,6 +16381,35 @@ server <- function(input, output, session) {
       corr_param_y = as.character(input$corr_param_y %||% ""),
       corr_adv_anchor = as.character(input$corr_adv_anchor %||% ""),
       corrm_params = as.character(input$corrm_params %||% character(0)),
+      dose_series = as.character(input$dose_series %||% ""),
+      dose_strains = as.character(input$dose_strains %||% character(0)),
+      dose_control_media = as.character(input$dose_control_media %||% "__AUTO__"),
+      dose_log_x = as.character(input$dose_log_x %||% FALSE),
+      dose_show_ci = as.character(input$dose_show_ci %||% TRUE),
+      dose_point_display = as.character(input$dose_point_display %||% "individual"),
+      dose_linear_slope = as.character(input$dose_linear_slope %||% FALSE),
+      dose_xmin = as.character(input$dose_xmin %||% 0),
+      dose_xmax = as.character(input$dose_xmax %||% 0),
+      dose_xbreak = as.character(input$dose_xbreak %||% 0),
+      dose_ymin = as.character(input$dose_ymin %||% 0),
+      dose_ymax = as.character(input$dose_ymax %||% 0),
+      dose_ybreak = as.character(input$dose_ybreak %||% 0),
+      dose_xlab = as.character(input$dose_xlab %||% ""),
+      dose_ylab = as.character(input$dose_ylab %||% ""),
+      dose_line_width = as.character(input$dose_line_width %||% 1.05),
+      dose_point_size = as.character(input$dose_point_size %||% 2.8),
+      dose_point_stroke = as.character(input$dose_point_stroke %||% 0.65),
+      dose_ci_alpha = as.character(input$dose_ci_alpha %||% 0.14),
+      dose_error_stat = normalize_errorbar_stat(
+        input$errbar_stat %||% "SD",
+        default = "SD",
+        allow_minmax = FALSE
+      ),
+      dose_mapping = if (identical(input$tipo %||% "", "DoseResponse")) {
+        tryCatch(dose_mapping_values(), error = function(e) data.frame())
+      } else {
+        data.frame()
+      },
       curve_stats_methods = as.character(input$curve_stats_methods %||% character(0)),
       reps_strain_map = selection_snapshot$reps_strain_map,
       reps_group_map = selection_snapshot$reps_group_map,
@@ -15768,6 +16717,11 @@ server <- function(input, output, session) {
       
       params <- plot_settings()$Parameter
       tipo_sel <- isolate(input$tipo) %||% ""
+      if (identical(tipo_sel, "DoseResponse")) {
+        analysis <- dose_response_export_analysis()
+        bioszen_write_dose_response_workbook(analysis, file)
+        return(invisible(file))
+      }
       is_curve_stats <- identical(tipo_sel, "Curvas")
       curve_method_labels <- c(
         S1 = tr_text("curves_stats_s1", lang),
@@ -16799,6 +17753,65 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("cur_show_reps"))) updateCheckboxInput(session, "cur_show_reps", value = tolower(v) == "true")
     if (!is.null(v <- get_val("cur_rep_alpha"))) updateSliderInput(session, "cur_rep_alpha", value = as.numeric(v))
     if (!is.null(v <- get_val("curve_stats_methods"))) updateCheckboxGroupInput(session, "curve_stats_methods", selected = parse_csv_values(v))
+    if (!is.null(v <- get_val("dose_series"))) {
+      updateSelectizeInput(session, "dose_series", selected = v, server = TRUE)
+    }
+    if (!is.null(v <- get_val("dose_strains"))) {
+      updateSelectizeInput(session, "dose_strains", selected = parse_csv_values(v), server = TRUE)
+    }
+    if (!is.null(v <- get_val("dose_control_media"))) {
+      updateSelectizeInput(session, "dose_control_media", selected = v, server = TRUE)
+    }
+    if (!is.null(v <- get_val("dose_log_x"))) {
+      updateCheckboxInput(session, "dose_log_x", value = parse_bool(v))
+    }
+    if (!is.null(v <- get_val("dose_show_ci"))) {
+      updateCheckboxInput(session, "dose_show_ci", value = parse_bool(v))
+    }
+    if (!is.null(v <- get_val("dose_point_display"))) {
+      display_value <- if (as.character(v) %in% c("individual", "mean_error")) {
+        as.character(v)
+      } else {
+        "individual"
+      }
+      updateRadioButtons(session, "dose_point_display", selected = display_value)
+    }
+    if (!is.null(v <- get_val("dose_linear_slope"))) {
+      updateCheckboxInput(session, "dose_linear_slope", value = parse_bool(v))
+    }
+    if (!is.null(v <- get_val("dose_xmin"))) updateNumericInput(session, "dose_xmin", value = as.numeric(v))
+    if (!is.null(v <- get_val("dose_xmax"))) updateNumericInput(session, "dose_xmax", value = as.numeric(v))
+    if (!is.null(v <- get_val("dose_xbreak"))) updateNumericInput(session, "dose_xbreak", value = as.numeric(v))
+    if (!is.null(v <- get_val("dose_ymin"))) updateNumericInput(session, "dose_ymin", value = as.numeric(v))
+    if (!is.null(v <- get_val("dose_ymax"))) updateNumericInput(session, "dose_ymax", value = as.numeric(v))
+    if (!is.null(v <- get_val("dose_ybreak"))) updateNumericInput(session, "dose_ybreak", value = as.numeric(v))
+    if (!is.null(v <- get_val("dose_xlab"))) updateTextInput(session, "dose_xlab", value = v)
+    if (!is.null(v <- get_val("dose_ylab"))) updateTextInput(session, "dose_ylab", value = v)
+    if (!is.null(v <- get_val("dose_line_width"))) updateNumericInput(session, "dose_line_width", value = as.numeric(v))
+    if (!is.null(v <- get_val("dose_point_size"))) updateNumericInput(session, "dose_point_size", value = as.numeric(v))
+    if (!is.null(v <- get_val("dose_point_stroke"))) updateNumericInput(session, "dose_point_stroke", value = as.numeric(v))
+    if (!is.null(v <- get_val("dose_ci_alpha"))) updateNumericInput(session, "dose_ci_alpha", value = as.numeric(v))
+    if (!is.null(v <- get_val_allow_blank("dose_mapping"))) {
+      decoded <- decode_named_metadata(v)
+      restored <- lapply(seq_along(decoded), function(index) {
+        parts <- strsplit(as.character(decoded[[index]]), "|", fixed = TRUE)[[1]]
+        list(
+          dose = if (length(parts)) parts[[1]] else "",
+          unit = if (length(parts) >= 2L) paste(parts[-1L], collapse = "|") else ""
+        )
+      })
+      names(restored) <- names(decoded)
+      restored_series <- as.character(get_val("dose_series") %||% dose_current_series_key())
+      restored_series <- if (length(restored_series) && nzchar(restored_series[[1]])) {
+        restored_series[[1]]
+      } else {
+        dose_manual_series_key
+      }
+      all_overrides <- isolate(dose_mapping_overrides())
+      all_overrides[[restored_series]] <- restored
+      dose_mapping_overrides(all_overrides)
+      dose_mapping_refresh(isolate(dose_mapping_refresh()) + 1L)
+    }
     if (!is.null(v <- get_val("corr_param_x"))) updateSelectizeInput(session, "corr_param_x", selected = v, server = TRUE)
     if (!is.null(v <- get_val("corr_param_y"))) updateSelectizeInput(session, "corr_param_y", selected = v, server = TRUE)
     if (!is.null(v <- get_val("corr_method")))  update_radio_metadata("corr_method", v, c("pearson", "spearman", "kendall"))
@@ -16910,7 +17923,7 @@ server <- function(input, output, session) {
   # --- Carga de metadata de diseno -----------------------------------
   observeEvent(input$metaFiles, {
     req(input$metaFiles)
-    valid_types <- c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion", "MatrizCorrelacion", "Heatmap")
+    valid_types <- c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion", "DoseResponse", "MatrizCorrelacion", "Heatmap")
     extract_meta_type <- function(tbl, fname = NULL) {
       campos <- trimws(tolower(tbl$Campo))
       valores <- trimws(as.character(tbl$Valor))

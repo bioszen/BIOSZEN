@@ -44,7 +44,8 @@ test_that("initial plot-type choices include correlation matrix", {
     txt,
     paste0(
       "c\\(\\s*\"Boxplot\"\\s*,\\s*\"Barras\"\\s*,\\s*\"Violin\"\\s*,\\s*\"Curvas\"\\s*,\\s*",
-      "\"Apiladas\"\\s*,\\s*\"Correlacion\"\\s*,\\s*\"Heatmap\"\\s*,\\s*\"MatrizCorrelacion\"\\s*\\)"
+      "\"Apiladas\"\\s*,\\s*\"Correlacion\"\\s*,\\s*\"DoseResponse\"\\s*,\\s*",
+      "\"Heatmap\"\\s*,\\s*\"MatrizCorrelacion\"\\s*\\)"
     ),
     perl = TRUE
   )

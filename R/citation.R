@@ -53,7 +53,6 @@
       comment = c(ORCID = "0009-0003-4702-4149")
     ),
     year = metadata$year,
-    version = metadata$version,
     doi = metadata$concept_doi,
     url = paste0("https://doi.org/", metadata$concept_doi),
     note = "R package and Shiny application"

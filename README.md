@@ -52,13 +52,14 @@ community-driven registry of software and data resources for the life sciences.
 
 ## Core Capabilities
 
-- Plot families: **Boxplot**, **Barplot**, **Violin**, **Curves**, **Stacked**, **Correlation**, **Heatmap**, **Correlation Matrix**.
+- Plot families: **Boxplot**, **Barplot**, **Violin**, **Curves**, **Stacked**, **Correlation**, **Heatmap**, **Correlation Matrix**, and configurable **Concentration-response (Dose-response)** curves.
+- Concentration-response analysis with selected strains and replicates, raw or normalized responses, IC50 estimation, model diagnostics, and pairwise susceptibility comparisons.
 - Statistical workflows: normality checks, significance testing, post hoc comparisons, and multiple-testing correction with Holm, FDR (Benjamini-Hochberg), Bonferroni, or no correction.
 - Control-based normalization with replicate-aware behavior.
 - Biological and technical replicate QC (manual + automatic strategies).
 - Composition panel for multi-plot layouts and export (`PNG`, `PDF`, `PPTX`).
 - Reproducibility features: metadata export/import and ZIP bundles.
-- Growth module with extracted metrics: `µMax`, `doub_time`, `lag_time`, `AUC`, `ODmax`, and related fields.
+- Growth module with extracted metrics such as `µMax`, `doub_time`, `lag_time`, `AUC`, and `ODmax`, supporting both fixed intervals and irregular/discontinuous numeric time points.
 
 ## Quick Start
 
@@ -311,7 +312,7 @@ not change the BIOSZEN Shiny application.
 
 ## Citation
 
-Szenfeld, B. (2026). BIOSZEN (Version 2.1.1) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.21765136
+Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210
 
 In R:
 

@@ -13,7 +13,7 @@ testthat::test_that("plotly legend autofit avoids clipping", {
   tmp_html <- file.path(tmp_dir, "plot.html")
   on.exit(unlink(tmp_dir, recursive = TRUE), add = TRUE)
 
-  label <- "Rapa-U18"
+  label <- "Rapa-Drug42"
   df <- data.frame(x = c(1, 2), y = c(1, 2), g = c(label, "Control"))
   colors <- c("Control" = "#2c7fb8", "#41ab5d")
   names(colors)[2] <- label

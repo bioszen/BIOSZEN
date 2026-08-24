@@ -1,8 +1,8 @@
 {
   "title": "BIOSZEN",
   "upload_type": "software",
-  "version": "2.1.1",
-  "description": "BIOSZEN is an app for data analysis and visualization from an Excel file. It can generate boxplot, barplot, violin plot, stacked plots, heatmaps, and correlation plots between parameters. It includes metadata-based reproducibility, normalized-data workflows, downloadable graphics and workbooks, normality tests such as Shapiro-Wilk, Kolmogorov-Smirnov, and Anderson-Darling, and significance tests such as ANOVA, Kruskal-Wallis, t-test, and Wilcoxon. It also extracts microbial growth curve parameters (uMax, max_percap_time, doub_time, lag_time, ODmax, max_time, AUC, OD0).",
+  "version": "2.1.2",
+  "description": "BIOSZEN is an R/Shiny application and R package for reproducible biological data analysis and visualization from Excel files. It generates boxplots, bar plots, violin plots, stacked plots, heatmaps, correlation plots, and concentration-response (dose-response) curves with configurable multi-strain visualization, raw or normalized responses, IC50 estimation, model diagnostics, and statistical comparisons. It also provides metadata-based reproducibility, downloadable graphics and workbooks, normality and significance tests, and flexible microbial growth-curve parameter extraction from fixed or irregular/discontinuous numeric time points.",
   "creators": [
     {
       "name": "Szenfeld, Benjamín",
@@ -14,7 +14,10 @@
     "bioquimica",
     "analisis de datos",
     "visualizacion",
-    "excel"
+    "excel",
+    "concentration response",
+    "dose response",
+    "IC50"
   ],
   "license": "GPL-3.0",
   "language": "es",

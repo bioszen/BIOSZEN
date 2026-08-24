@@ -10,7 +10,6 @@ bibentry(
     comment = c(ORCID = "0009-0003-4702-4149")
   ),
   year = year,
-  version = meta$Version,
   doi = concept_doi,
   url = paste0("https://doi.org/", concept_doi),
   note = "R package and Shiny application",

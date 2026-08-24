@@ -8,6 +8,8 @@ test_that("new plot types are wired in build_plot", {
   expect_false(grepl('if \\(tipo == "Estimacion"\\)', txt, perl = TRUE))
   expect_match(txt, 'if \\(tipo == "Heatmap"\\)', perl = TRUE)
   expect_match(txt, 'if \\(tipo == "MatrizCorrelacion"\\)', perl = TRUE)
+  expect_match(txt, 'if \\(tipo == "DoseResponse"\\)', perl = TRUE)
+  expect_match(txt, 'build_dose_response_plot_impl\\(', perl = TRUE)
 })
 
 test_that("fallback branch does not return a fully blank canvas", {
@@ -31,6 +33,7 @@ test_that("UI still exposes all extended plot types", {
   expect_false(grepl("Estimacion", txt, fixed = TRUE))
   expect_true(grepl("Heatmap", txt, fixed = TRUE))
   expect_true(grepl("MatrizCorrelacion", txt, fixed = TRUE))
+  expect_true(grepl("DoseResponse", txt, fixed = TRUE))
 })
 
 test_that("auto significance section is shown only after running significance test", {
