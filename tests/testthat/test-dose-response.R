@@ -230,7 +230,7 @@ test_that("IC50 beyond the tested range is reported as not reached", {
   skip_if_not_installed("drc")
   env <- load_dose_response_helpers()
   doses <- rep(c(0, 1, 3, 10, 30, 100), each = 3L)
-  response <- 20 + 80 / (1 + (doses / 1000)^1.4) + rep(c(-0.01, 0, 0.01), 6L)
+  response <- 20 + 80 / (1 + (doses / 150)^1.4) + rep(c(-0.01, 0, 0.01), 6L)
   result <- env$bioszen_fit_dose_response_strain(
     data.frame(Dose = doses, Response = response)
   )

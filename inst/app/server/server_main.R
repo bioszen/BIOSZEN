@@ -5073,6 +5073,8 @@ server <- function(input, output, session) {
   # Ã¢â€â‚¬Ã¢â€â‚¬ Lectura robusta del Excel de metadata+parÃƒÂ¡metros Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   observeEvent(input$dataFile, {
     begin_dataset_update()
+    dose_mapping_overrides(list())
+    dose_mapping_refresh(isolate(dose_mapping_refresh()) + 1L)
     merged_platemap_path(NULL)
     merged_platemap_name(NULL)
     merged_well_map(NULL)
@@ -7812,11 +7814,6 @@ server <- function(input, output, session) {
       dose_mapping_overrides(all_overrides)
     }
   })
-
-  observeEvent(input$dataFile, {
-    dose_mapping_overrides(list())
-    dose_mapping_refresh(isolate(dose_mapping_refresh()) + 1L)
-  }, ignoreInit = TRUE)
 
   observeEvent(input$dose_control_media, {
     if (!identical(input$tipo %||% "", "DoseResponse")) return()

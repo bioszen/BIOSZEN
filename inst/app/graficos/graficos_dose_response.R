@@ -27,7 +27,8 @@ bioszen_dose_control_aliases <- function() {
 
 bioszen_dose_unit_info <- function(unit) {
   unit_chr <- as.character(unit %||% "")
-  unit_chr <- chartr("µμ", "uu", unit_chr)
+  unit_chr <- gsub("µ", "u", unit_chr, fixed = TRUE)
+  unit_chr <- gsub("μ", "u", unit_chr, fixed = TRUE)
   key <- tolower(gsub("\\s+", "", unit_chr))
   key <- gsub("\\\\", "/", key)
   compact_mass_units <- c(
@@ -69,7 +70,8 @@ bioszen_dose_unit_choices <- function() {
 
 bioszen_dose_canonical_unit <- function(unit) {
   unit_chr <- as.character(unit %||% "")
-  unit_chr <- chartr("µμ", "uu", unit_chr)
+  unit_chr <- gsub("µ", "u", unit_chr, fixed = TRUE)
+  unit_chr <- gsub("μ", "u", unit_chr, fixed = TRUE)
   key <- tolower(gsub("\\s+", "", unit_chr))
   compact_mass_units <- c(
     pgml = "pg/ml", ngml = "ng/ml", ugml = "ug/ml",
@@ -400,7 +402,7 @@ bioszen_prepare_dose_response_data <- function(df,
   out$Response <- if (isTRUE(normalized)) out$Response * 100 else out$Response
   out <- out |>
     dplyr::group_by(
-      Strain, Compound, ConcentrationUnit, Dose, BiologicalReplicate
+      Strain, Compound, UnitFamily, ConcentrationUnit, Dose, BiologicalReplicate
     ) |>
     dplyr::summarise(
       Response = mean(Response, na.rm = TRUE),
@@ -436,7 +438,7 @@ bioszen_dose_ed_values <- function(fit, level = 0.95) {
     return(c(estimate = NA_real_, se = NA_real_, lower = NA_real_, upper = NA_real_))
   }
   values <- suppressWarnings(as.numeric(mat[1, ]))
-  cols <- tolower(gsub("[^a-z]", "", colnames(mat) %||% rep("", length(values))))
+  cols <- gsub("[^a-z]", "", tolower(colnames(mat) %||% rep("", length(values))))
   pick <- function(candidates, fallback) {
     idx <- which(cols %in% candidates)
     if (length(idx)) values[[idx[[1]]]] else if (length(values) >= fallback) values[[fallback]] else NA_real_
@@ -611,7 +613,7 @@ bioszen_fit_dose_response_strain <- function(df,
   if (!is.null(pred_raw)) {
     if (is.matrix(pred_raw) || is.data.frame(pred_raw)) {
       pred_mat <- as.matrix(pred_raw)
-      pred_cols <- tolower(gsub("[^a-z]", "", colnames(pred_mat) %||% rep("", ncol(pred_mat))))
+      pred_cols <- gsub("[^a-z]", "", tolower(colnames(pred_mat) %||% rep("", ncol(pred_mat))))
       col_value <- which(pred_cols %in% c("prediction", "fit", "estimate"))
       col_lower <- which(pred_cols %in% c("lower", "lowerlimit"))
       col_upper <- which(pred_cols %in% c("upper", "upperlimit"))

@@ -732,7 +732,7 @@ test_that("initial default plot titles wait for complete selector context", {
 
   expect_match(
     title_section,
-    "parameter_title_types <- c\\(\"Boxplot\", \"Barras\", \"Violin\", \"Curvas\", \"Apiladas\"\\)",
+    "parameter_title_types <- c\\(\"Boxplot\", \"Barras\", \"Violin\", \"Curvas\", \"Apiladas\", \"DoseResponse\"\\)",
     perl = TRUE,
     info = "Curves need the same non-empty parameter guard as other parameter-based plot titles."
   )
