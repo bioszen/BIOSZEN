@@ -287,7 +287,8 @@ specific measurement type.
 
 - Select the response parameter, compound series, strains, biological replicates, and displayed conditions to include. The same group and replicate filters used by the other plots remain active.
 - BIOSZEN reads recognized concentrations from condition names and lets you correct every concentration and unit manually. All included rows must use one displayed unit before fitting.
-- Each strain is fitted independently with a four-parameter log-logistic inhibitory model (`LL.4`). Individual biological-replicate points are shown by default; mean with SD or SEM is optional.
+- Each strain is fitted independently with a four-parameter log-logistic inhibitory model (`LL.4`). Individual biological-replicate points remain the default. **Replicate display** can instead show the mean with SD/SEM or hide all points and display only the fitted curves.
+- **Show 95% confidence bands** controls whether the shaded uncertainty margin is drawn and remains enabled by default. It can be combined with any replicate-display mode, including fitted curves with bands but no points. These display choices do not change the fitted models or statistical results. The legend always uses the opaque fitted-curve line color; confidence bands do not create or replace legend keys.
 - The raw parameter or its control-normalized value can be used as the response. Normalized responses are fitted as percent of control.
 - A lower IC50 indicates greater susceptibility only when the fit is inhibitory, the IC50 lies within the tested concentration range, and the uncertainty is acceptable. Values reported as `> maximum tested`, `< minimum tested`, or not estimable are excluded from susceptibility ranking.
 - Axis limits, intervals, titles, fitted-line width, point size, black point outline, and confidence-band opacity affect presentation only. They do not refit the curve or change any parameter. An X interval is used on the linear axis; logarithmic X axes use automatic logarithmic spacing.
@@ -527,7 +528,7 @@ Metadata flow:
 - Legend visibility/placement, including right-side legend selection where applicable, is stored in metadata and reapplied when metadata are loaded.
 - Curve point size is stored in curve design metadata and restored when that metadata is loaded. Design metadata do not restore group/sample order, scope, or strain selection.
 - Error-bar statistic and curve-statistics method selection persist across metadata roundtrip.
-- Dose-response series and strain selections, corrected concentration mapping, axis limits and intervals, axis titles, line and point sizes, point outline, and confidence-band opacity persist in dose-response metadata and saved plot versions.
+- Dose-response series and strain selections, corrected concentration mapping, replicate-display mode, confidence-band visibility, axis limits and intervals, axis titles, line and point sizes, point outline, and confidence-band opacity persist in dose-response metadata and saved plot versions.
 
 Reproducibility bundle:
 

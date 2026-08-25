@@ -843,6 +843,7 @@ dose_comparison_unavailable,Los valores de IC50 fueron estimables pero no se pud
 dose_point_display,Visualización de réplicas:
 dose_display_individual,Réplicas biológicas individuales
 dose_display_mean_error,Promedio ± error
+dose_display_curve_only,Solo curvas ajustadas (ocultar puntos)
 dose_linear_slope,Incluir pendiente lineal opcional
 dose_axis_settings,Ejes de dosis-respuesta
 dose_xmin,Mínimo del eje X

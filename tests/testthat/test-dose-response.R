@@ -318,6 +318,68 @@ test_that("dose-response plot builds multiple strain curves with assigned colors
   expect_equal(unname(plot$scales$get_scales("colour")$palette(2)), unname(colors))
 })
 
+test_that("dose-response plot can hide points while retaining line-only legend keys", {
+  skip_if_not_installed("drc")
+  fixture <- dose_response_test_fixture()
+  colors <- c(A = "#3366CC", B = "#AA66CC")
+  input <- list(
+    dose_log_x = FALSE,
+    dose_show_ci = TRUE,
+    dose_point_display = "curve_only",
+    errbar_stat = "SD",
+    yLab = "",
+    plotTitle = "Curves and confidence bands",
+    base_size = 11
+  )
+  labels <- c(
+    dose_no_valid_data = "No valid data",
+    dose_x_label = "Concentration"
+  )
+  plot <- fixture$env$build_dose_response_plot_impl(
+    analysis = fixture$analysis,
+    input = input,
+    lang = "en",
+    tr_text = function(key, lang) {
+      value <- labels[[key]]
+      if (is.null(value)) key else unname(value)
+    },
+    palette_for_levels = function(levels) colors[levels],
+    margin_adj = function(top, right, bottom, left) ggplot2::margin(top, right, bottom, left),
+    fs_title = 14,
+    fs_axis = 11,
+    fs_legend = 10,
+    axis_size = 0.5
+  )
+
+  line_layers <- Filter(function(layer) inherits(layer$geom, "GeomLine"), plot$layers)
+  ribbon_layers <- Filter(function(layer) inherits(layer$geom, "GeomRibbon"), plot$layers)
+  point_layers <- Filter(function(layer) inherits(layer$geom, "GeomPoint"), plot$layers)
+  expect_length(line_layers, 1L)
+  expect_length(ribbon_layers, 1L)
+  expect_length(point_layers, 0L)
+  expect_true(isTRUE(line_layers[[1]]$show.legend))
+  expect_false(isTRUE(ribbon_layers[[1]]$show.legend))
+  expect_identical(plot$scales$get_scales("fill")$guide, "none")
+
+  if (requireNamespace("plotly", quietly = TRUE)) {
+    interactive <- plotly::ggplotly(plot)
+    legend_traces <- Filter(
+      function(trace) isTRUE(trace$showlegend),
+      interactive$x$data
+    )
+    expect_equal(vapply(legend_traces, `[[`, character(1), "name"), c("A", "B"))
+    expect_true(all(vapply(
+      legend_traces,
+      function(trace) {
+        line_color <- trace$line$color
+        identical(trace$mode, "lines") &&
+          !is.null(line_color) && grepl(",1\\)$", line_color)
+      },
+      logical(1)
+    )))
+  }
+})
+
 test_that("replicate display defaults to individuals and supports mean SD or SEM", {
   skip_if_not_installed("drc")
   fixture <- dose_response_test_fixture()
@@ -498,6 +560,7 @@ test_that("dose-response controls and exports are wired into the app", {
   expect_match(ui, '"dose_apply_unit_all"', fixed = TRUE)
   expect_match(ui, 'uiOutput("doseConcentrationMappingUI")', fixed = TRUE)
   expect_match(ui, '"dose_point_display"', fixed = TRUE)
+  expect_match(ui, 'tr("dose_display_curve_only")', fixed = TRUE)
   expect_match(ui, 'selected = "individual"', fixed = TRUE)
   expect_match(ui, '"dose_xmin"', fixed = TRUE)
   expect_match(ui, '"dose_xmax"', fixed = TRUE)

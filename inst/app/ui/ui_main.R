@@ -3209,8 +3209,12 @@ ui <- fluidPage(
                       "dose_point_display",
                       tr("dose_point_display"),
                       choices = named_choices(
-                        c("individual", "mean_error"),
-                        list(tr("dose_display_individual"), tr("dose_display_mean_error"))
+                        c("individual", "mean_error", "curve_only"),
+                        list(
+                          tr("dose_display_individual"),
+                          tr("dose_display_mean_error"),
+                          tr("dose_display_curve_only")
+                        )
                       ),
                       selected = "individual"
                      ),

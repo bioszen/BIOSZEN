@@ -289,7 +289,8 @@ tipo específico de medición.
 
 - Selecciona el parámetro de respuesta, la serie del compuesto, las cepas, las réplicas biológicas y las condiciones que se incluirán. Permanecen activos los mismos filtros de grupos y réplicas de los demás gráficos.
 - BIOSZEN reconoce concentraciones desde los nombres de las condiciones y permite corregir manualmente cada concentración y unidad. Todas las filas incluidas deben usar una misma unidad mostrada antes del ajuste.
-- Cada cepa se ajusta independientemente con un modelo inhibitorio log-logístico de cuatro parámetros (`LL.4`). De forma predeterminada se muestran puntos por réplica biológica; opcionalmente se puede mostrar la media con DE o SEM.
+- Cada cepa se ajusta independientemente con un modelo inhibitorio log-logístico de cuatro parámetros (`LL.4`). Los puntos por réplica biológica siguen siendo la opción predeterminada. **Visualización de réplicas** permite mostrar en su lugar la media con DE/SEM u ocultar todos los puntos y dejar solo las curvas ajustadas.
+- **Mostrar bandas de confianza del 95%** controla si se dibuja el margen sombreado de incertidumbre y permanece activo de forma predeterminada. Puede combinarse con cualquier visualización de réplicas, incluidas curvas ajustadas con bandas pero sin puntos. Estas opciones visuales no modifican los modelos ajustados ni los resultados estadísticos. La leyenda usa siempre el color opaco de la línea de la curva ajustada; las bandas de confianza no crean ni reemplazan sus claves.
 - La respuesta puede ser el parámetro bruto o su valor normalizado al control. Las respuestas normalizadas se ajustan como porcentaje del control.
 - Un IC50 menor indica mayor susceptibilidad solo si el ajuste es inhibitorio, el IC50 queda dentro del rango de concentraciones evaluado y la incertidumbre es aceptable. Los valores informados como `> máximo evaluado`, `< mínimo evaluado` o no estimables se excluyen del ranking de susceptibilidad.
 - Los límites, intervalos y títulos de ejes, el grosor de la curva ajustada, el tamaño y contorno negro de los puntos y la opacidad de la banda de confianza solo cambian la presentación. No reajustan la curva ni modifican los parámetros. El intervalo X se usa en el eje lineal; el eje X logarítmico utiliza espaciado logarítmico automático.
@@ -529,7 +530,7 @@ Flujo de metadatos:
 - La visibilidad/posición de la leyenda, incluyendo la selección de leyenda a la derecha cuando corresponde, se guarda en metadatos y se aplica nuevamente al cargarlos.
 - El tamaño de puntos de curvas se guarda en los metadatos de diseño de curvas y se restaura al cargarlos. Los metadatos de diseño no restauran el orden de grupos/muestras, el ámbito ni la selección de cepa.
 - El estadístico de barras de error y la selección de métodos de estadística de curvas se conservan en el roundtrip de metadatos.
-- La serie y cepas de dosis-respuesta, la asignación corregida de concentraciones, los límites e intervalos de ejes, los títulos de ejes, los tamaños de línea y puntos, el contorno de puntos y la opacidad de la banda de confianza se conservan en los metadatos de dosis-respuesta y en las versiones guardadas del gráfico.
+- La serie y cepas de dosis-respuesta, la asignación corregida de concentraciones, el modo de visualización de réplicas, la visibilidad de las bandas de confianza, los límites e intervalos de ejes, los títulos de ejes, los tamaños de línea y puntos, el contorno de puntos y la opacidad de la banda se conservan en los metadatos de dosis-respuesta y en las versiones guardadas del gráfico.
 
 Bundle reproducible:
 

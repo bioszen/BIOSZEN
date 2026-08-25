@@ -1118,6 +1118,10 @@ build_dose_response_plot_impl <- function(analysis,
   strains <- analysis$strain_levels %||% unique(as.character(obs$Strain))
   strains <- as.character(strains)
   display_mode <- as.character(input$dose_point_display %||% "individual")
+  if (!display_mode %in% c("individual", "mean_error", "curve_only")) {
+    display_mode <- "individual"
+  }
+  show_points <- !identical(display_mode, "curve_only")
   error_stat <- as.character(input$errbar_stat %||% "SD")
   display <- bioszen_dose_display_data(obs, display_mode, error_stat)
   obs$Strain <- factor(as.character(obs$Strain), levels = strains)
@@ -1182,7 +1186,8 @@ build_dose_response_plot_impl <- function(analysis,
       inherit.aes = FALSE,
       ggplot2::aes(x = DosePlot, y = Fit, colour = Strain),
       linewidth = line_width,
-      na.rm = TRUE
+      na.rm = TRUE,
+      show.legend = TRUE
     )
   }
   if (identical(display_mode, "mean_error")) {
@@ -1204,18 +1209,20 @@ build_dose_response_plot_impl <- function(analysis,
       )
     }
   }
-  p <- p + ggplot2::geom_point(
-    data = display,
-    inherit.aes = FALSE,
-    ggplot2::aes(x = DosePlot, y = Response, fill = Strain),
-    shape = 21,
-    colour = "black",
-    stroke = point_stroke,
-    size = point_size,
-    alpha = 0.8,
-    na.rm = TRUE,
-    show.legend = FALSE
-  )
+  if (isTRUE(show_points)) {
+    p <- p + ggplot2::geom_point(
+      data = display,
+      inherit.aes = FALSE,
+      ggplot2::aes(x = DosePlot, y = Response, fill = Strain),
+      shape = 21,
+      colour = "black",
+      stroke = point_stroke,
+      size = point_size,
+      alpha = 0.8,
+      na.rm = TRUE,
+      show.legend = FALSE
+    )
+  }
 
   automatic_x_label <- paste0(
     tr_text("dose_x_label", lang), " (", as.character(obs$ConcentrationUnit[[1]]), ")"
@@ -1242,7 +1249,13 @@ build_dose_response_plot_impl <- function(analysis,
       name = NULL, values = colors, limits = strains, drop = FALSE
     ) +
     ggplot2::scale_fill_manual(
-      name = NULL, values = colors, limits = strains, drop = FALSE
+      name = NULL, values = colors, limits = strains, drop = FALSE,
+      guide = "none"
+    ) +
+    ggplot2::guides(
+      colour = ggplot2::guide_legend(
+        override.aes = list(alpha = 1, linewidth = line_width)
+      )
     ) +
     ggplot2::labs(
       title = input$plotTitle,

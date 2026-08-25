@@ -843,6 +843,7 @@ dose_comparison_unavailable,IC50 values were estimable but their pairwise uncert
 dose_point_display,Replicate display:
 dose_display_individual,Individual biological replicates
 dose_display_mean_error,Mean ± error
+dose_display_curve_only,Fitted curves only (hide points)
 dose_linear_slope,Include optional linear trend slope
 dose_axis_settings,Dose-response axes
 dose_xmin,X-axis minimum

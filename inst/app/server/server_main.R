@@ -17766,7 +17766,7 @@ server <- function(input, output, session) {
       updateCheckboxInput(session, "dose_show_ci", value = parse_bool(v))
     }
     if (!is.null(v <- get_val("dose_point_display"))) {
-      display_value <- if (as.character(v) %in% c("individual", "mean_error")) {
+      display_value <- if (as.character(v) %in% c("individual", "mean_error", "curve_only")) {
         as.character(v)
       } else {
         "individual"
