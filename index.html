@@ -13,7 +13,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BIOSZEN | Reproducible biological data analysis</title>
-  <meta name="description" content="BIOSZEN is an open-source R/Shiny package for biological data analysis, statistics, microbial growth curves, reproducible workflows, and publication-ready figures.">
+  <meta name="description" content="BIOSZEN 2.1.2 is an open-source R/Shiny package for biological data analysis, statistics, fixed and irregular microbial growth curves, concentration-response analysis, reproducible workflows, and publication-ready figures.">
   <meta name="author" content="Benjamín Szenfeld">
   <meta name="theme-color" content="#12678f">
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
@@ -29,11 +29,11 @@
       document.documentElement.style.colorScheme = theme;
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=2.1.1-20260808i">
+  <link rel="stylesheet" href="styles.css?v=2.1.2-20260825">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="BIOSZEN">
   <meta property="og:title" content="BIOSZEN | Reproducible biological data analysis">
-  <meta property="og:description" content="Analyze biological data, run statistics and growth-curve workflows, and export reproducible, publication-ready scientific figures with BIOSZEN.">
+  <meta property="og:description" content="Analyze biological data, fixed or irregular growth curves, and concentration-response relationships with BIOSZEN 2.1.2.">
   <meta property="og:url" content="https://bioszen.github.io/BIOSZEN/">
   <meta property="og:image" content="https://bioszen.github.io/BIOSZEN/site-assets/bioszen-social-preview-square.png">
   <meta property="og:image:secure_url" content="https://bioszen.github.io/BIOSZEN/site-assets/bioszen-social-preview-square.png">
@@ -43,7 +43,7 @@
   <meta property="og:image:height" content="1200">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="BIOSZEN | Reproducible biological data analysis">
-  <meta name="twitter:description" content="Open-source biological data analysis, statistics, growth curves, and publication-ready scientific figures in R/Shiny.">
+  <meta name="twitter:description" content="Open-source biological data analysis, irregular growth curves, dose-response analysis, and publication-ready figures in R/Shiny.">
   <meta name="twitter:image" content="https://bioszen.github.io/BIOSZEN/site-assets/bioszen-social-preview-square.png">
   <meta name="twitter:image:alt" content="BIOSZEN social preview card">
   <script type="application/ld+json">
@@ -53,11 +53,11 @@
     "name": "BIOSZEN",
     "applicationCategory": "ScienceApplication",
     "applicationSubCategory": "Biological data analysis and visualization",
-    "softwareVersion": "2.1.1",
-    "datePublished": "2026-08-08",
+    "softwareVersion": "2.1.2",
+    "datePublished": "2026-08-25",
     "operatingSystem": "Windows, macOS, Linux",
     "softwareRequirements": "R >= 4.1",
-    "description": "Open-source R/Shiny software for biological data analysis, statistical workflows, microbial growth curves, reproducible exports, and scientific visualization.",
+    "description": "Open-source R/Shiny software for biological data analysis, statistical workflows, fixed and irregular microbial growth curves, concentration-response analysis, reproducible exports, and scientific visualization.",
     "url": "https://bioszen.github.io/BIOSZEN/",
     "sameAs": [
       "https://github.com/bioszen/BIOSZEN",
@@ -72,7 +72,7 @@
       "name": "Benjamín Szenfeld",
       "identifier": "https://orcid.org/0009-0003-4702-4149"
     },
-    "citation": "https://doi.org/10.5281/zenodo.21765136"
+    "citation": "https://doi.org/10.5281/zenodo.18217210"
   }
   </script>
 </head>
@@ -89,6 +89,7 @@
           <li><a href="#overview" data-analytics-id="overview" data-analytics-type="navigation" data-analytics-section="header">Overview</a></li>
           <li><a href="#install" data-analytics-id="install_section" data-analytics-type="navigation" data-analytics-section="header">Install</a></li>
           <li><a href="#workflow" data-analytics-id="workflow" data-analytics-type="navigation" data-analytics-section="header">Workflow</a></li>
+          <li><a href="#dose-response" data-analytics-id="dose_response" data-analytics-type="navigation" data-analytics-section="header">Dose-response</a></li>
           <li><a href="#growth" data-analytics-id="growth_curves" data-analytics-type="navigation" data-analytics-section="header">Growth curves</a></li>
           <li><a href="#availability" data-analytics-id="availability" data-analytics-type="navigation" data-analytics-section="header">Availability</a></li>
         </ul>
@@ -103,8 +104,8 @@
         <div class="hero-copy">
           <span class="eyebrow">Open-source R/Shiny software</span>
           <h1>From experimental data to reproducible analysis and editable scientific figures</h1>
-          <p class="hero-byline">Benjamín Szenfeld · BIOSZEN 2.1.1 · August 2026</p>
-          <p class="lead"><strong>BIOSZEN</strong> helps researchers turn Excel tables, CSV files, and optical-density time series into statistical results, growth parameters, customizable plots, and reproducible exports—without requiring plotting code.</p>
+          <p class="hero-byline">Benjamín Szenfeld · BIOSZEN 2.1.2 · August 2026</p>
+          <p class="lead"><strong>BIOSZEN</strong> helps researchers turn Excel tables, CSV files, and optical-density time series into statistical results, growth parameters, concentration–response models, customizable plots, and reproducible exports—without requiring plotting code.</p>
           <div class="cta-group" aria-label="BIOSZEN links">
             <a class="button button-primary" href="https://bioszen.r-universe.dev/" aria-label="Install BIOSZEN from R-universe" data-analytics-id="install" data-analytics-type="outbound_link" data-analytics-section="hero">Install</a>
             <a class="button button-secondary" href="https://bioszen-test.share.connect.posit.cloud" aria-label="Try the limited BIOSZEN online demo" data-analytics-id="try_online" data-analytics-type="outbound_link" data-analytics-section="hero">Try online</a>
@@ -142,7 +143,7 @@
         <div class="card-grid">
           <article class="card"><span class="card-number">01</span><h3>Accessible analysis</h3><p>Work through a graphical interface while retaining scriptable R functions for repeatable pipelines.</p></article>
           <article class="card"><span class="card-number">02</span><h3>Biological statistics</h3><p>Use normalization, replicate-aware quality control, normality tests, significance tests, post hoc comparisons, and multiple-testing correction.</p></article>
-          <article class="card"><span class="card-number">03</span><h3>Scientific figures</h3><p>Create boxplots, bar plots, violin plots, curves, stacked plots, heatmaps, correlation plots, and correlation matrices.</p></article>
+          <article class="card"><span class="card-number">03</span><h3>Scientific figures</h3><p>Create boxplots, bar plots, violin plots, curves, stacked plots, heatmaps, correlation plots, correlation matrices, and multi-strain concentration–response curves.</p></article>
           <article class="card"><span class="card-number">04</span><h3>Reproducible outputs</h3><p>Export processed data, statistics, metadata, plots, composition panels, and reusable ZIP bundles.</p></article>
         </div>
       </div>
@@ -242,12 +243,28 @@ BIOSZEN::BIOSZEN()</code></pre>
       </div>
     </section>
 
-    <section class="section" id="growth">
+    <section class="section" id="dose-response">
+      <div class="section-shell">
+        <div class="section-heading">
+          <span class="eyebrow">Concentration–response</span>
+          <h2>Compare dose–response relationships across strains</h2>
+          <p>BIOSZEN 2.1.2 generates concentration–response plots for selected strains, conditions, and biological replicates using raw parameters or responses normalized to a control. Detected concentrations and units remain editable before fitting.</p>
+        </div>
+        <div class="card-grid">
+          <article class="card"><span class="card-number">01</span><h3>Multi-strain curves</h3><p>Fit an independent four-parameter log-logistic inhibitory curve for every selected strain and compare them in one figure.</p></article>
+          <article class="card"><span class="card-number">02</span><h3>IC50 and diagnostics</h3><p>Estimate IC50 values, curve parameters, model diagnostics, susceptibility ranks, and pairwise strain comparisons.</p></article>
+          <article class="card"><span class="card-number">03</span><h3>Flexible responses</h3><p>Use the selected raw growth parameter or its control-normalized response while preserving group and replicate filters.</p></article>
+          <article class="card"><span class="card-number">04</span><h3>Configurable display</h3><p>Show individual biological replicates, mean with SD or SEM, or fitted curves without points, with optional 95% confidence bands.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-tint" id="growth">
       <div class="section-shell">
         <div class="section-heading">
           <span class="eyebrow">Growth curves</span>
           <h2>Extract biologically useful parameters from time series</h2>
-          <p>The growth module plots trajectories and calculates parameters independently for each well or curve. It uses a robust exponential-phase detector first and a permissive detector only to complete estimates that remain missing.</p>
+          <p>The growth module plots trajectories and calculates parameters independently for each well or curve. Fixed interval remains the default. The optional irregular/discontinuous mode reads the actual increasing numeric values from a detected or user-selected time column, supporting uneven observations such as 0, 0.08, 0.17, 0.5, 1, and 2. Both modes use the same robust-first detector and permissive fallback.</p>
         </div>
         <div class="split">
           <figure class="screenshot"><img src="https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/13_growth_parameters_workflow.png" alt="BIOSZEN growth parameter extraction workflow" loading="lazy"></figure>
@@ -259,6 +276,11 @@ BIOSZEN::BIOSZEN()</code></pre>
   time_interval = 0.5,
   output_dir = "growth_results",
   overwrite = FALSE
+)
+
+irregular_results &lt;- BIOSZEN::growth_parameters_irregular(
+  "irregular_curve.xlsx",
+  time_column = "Time"
 )</code></pre>
           </div>
         </div>
@@ -281,7 +303,7 @@ BIOSZEN::BIOSZEN()</code></pre>
       </div>
     </section>
 
-    <section class="section section-tint" id="exports">
+    <section class="section" id="exports">
       <div class="section-shell split">
         <div>
           <div class="section-heading">
@@ -333,7 +355,7 @@ BIOSZEN::bioszen_citation()</code></pre>
         </div>
         <div class="citation" style="margin-top: 2rem;">
           <h3>Citation</h3>
-          <p>Szenfeld, B. (2026). <em>BIOSZEN</em> (Version 2.1.1) [Computer software]. Zenodo. <a href="https://doi.org/10.5281/zenodo.21765136" data-analytics-id="version_doi" data-analytics-type="outbound_link" data-analytics-section="citation">https://doi.org/10.5281/zenodo.21765136</a></p>
+          <p>Szenfeld, B. (2026). <em>BIOSZEN</em> [Computer software]. Zenodo. <a href="https://doi.org/10.5281/zenodo.18217210" data-analytics-id="concept_doi" data-analytics-type="outbound_link" data-analytics-section="citation">https://doi.org/10.5281/zenodo.18217210</a></p>
         </div>
       </div>
     </section>

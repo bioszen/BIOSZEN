@@ -1,7 +1,7 @@
 ---
 title: "BIOSZEN | Reproducible biological data analysis"
 author: "Benjamín Szenfeld"
-date: "2026-08-08"
+date: "2026-08-25"
 format:
   html:
     toc: true
@@ -40,11 +40,11 @@ format:
           "name": "BIOSZEN",
           "applicationCategory": "ScienceApplication",
           "applicationSubCategory": "Biological data analysis and visualization",
-          "softwareVersion": "2.1.1",
-          "datePublished": "2026-08-08",
+          "softwareVersion": "2.1.2",
+          "datePublished": "2026-08-25",
           "operatingSystem": "Windows, macOS, Linux",
           "softwareRequirements": "R >= 4.1",
-          "description": "Open-source R/Shiny software for biological data analysis, statistical workflows, microbial growth curves, reproducible exports, and scientific visualization.",
+          "description": "Open-source R/Shiny software for biological data analysis, statistical workflows, fixed and irregular microbial growth curves, concentration-response analysis, reproducible exports, and scientific visualization.",
           "url": "https://bioszen.github.io/BIOSZEN/",
           "sameAs": [
             "https://github.com/bioszen/BIOSZEN",
@@ -59,10 +59,10 @@ format:
             "name": "Benjamín Szenfeld",
             "identifier": "https://orcid.org/0009-0003-4702-4149"
           },
-          "citation": "https://doi.org/10.5281/zenodo.21765136"
+          "citation": "https://doi.org/10.5281/zenodo.18217210"
         }
         </script>
-description: "BIOSZEN is an open-source R/Shiny package for biological data analysis, statistics, microbial growth curves, reproducible workflows, and publication-ready figures."
+description: "BIOSZEN is an open-source R/Shiny package for biological data analysis, statistics, fixed and irregular microbial growth curves, concentration-response analysis, reproducible workflows, and publication-ready figures."
 favicon: "https://raw.githubusercontent.com/bioszen/BIOSZEN/main/inst/app/www/logo_light.png"
 website:
   site-url: "https://bioszen.github.io/BIOSZEN/"
@@ -76,6 +76,7 @@ categories:
   - data visualization
   - statistics
   - microbiology
+  - dose-response
   - reproducible research
 ---
 
@@ -86,7 +87,7 @@ categories:
 
 # From experimental data to reproducible analysis and editable scientific figures
 
-<p class="hero-byline">Benjamín Szenfeld · BIOSZEN 2.1.1 · August 2026</p>
+<p class="hero-byline">Benjamín Szenfeld · BIOSZEN 2.1.2 · August 2026</p>
 
 **BIOSZEN** is an open-source R package with a modular Shiny application for biological data analysis and visualization. It helps researchers turn Excel tables, CSV files, and optical-density time series into statistical results, growth parameters, customizable plots, and reproducible exports without requiring plotting code.
 
@@ -102,7 +103,7 @@ BIOSZEN brings data preparation, exploratory visualization, statistical analysis
 
 - **Accessible analysis:** work through a graphical interface while retaining scriptable R functions for repeatable pipelines.
 - **Biological statistics:** use control-based normalization, replicate-aware quality control, normality tests, significance tests, post hoc comparisons, and multiple-testing correction.
-- **Scientific figures:** create boxplots, bar plots, violin plots, curves, stacked plots, heatmaps, correlation plots, and correlation matrices.
+- **Scientific figures:** create boxplots, bar plots, violin plots, curves, stacked plots, heatmaps, correlation plots, correlation matrices, and multi-strain concentration–response curves.
 - **Reproducible outputs:** export processed data, statistics, metadata, plots, composition panels, and reusable ZIP bundles.
 
 ![](https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/01_app_home_overview.png){fig-alt="BIOSZEN application overview" .screenshot}
@@ -171,9 +172,18 @@ Significance results can be reviewed as tables and incorporated into supported p
 
 ![](https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/09_significance_tests_setup.png){fig-alt="Statistical test configuration in BIOSZEN" .screenshot}
 
+## Compare concentration–response and dose–response curves
+
+BIOSZEN 2.1.2 can generate concentration–response plots for selected strains, conditions, and biological replicates using either raw parameters or responses normalized to a control. Concentrations and units are detected from treatment names and remain editable before fitting, so the numeric mapping can be reviewed and corrected when necessary.
+
+- Fit an independent four-parameter log-logistic inhibitory curve for each selected strain.
+- Estimate IC50 values, curve parameters, model diagnostics, susceptibility ranks, and pairwise strain comparisons.
+- Display individual biological replicates by default, mean with SD/SEM, or fitted curves without points.
+- Show or hide 95% confidence bands independently while retaining the fitted-curve color in the legend.
+
 ## Analyze microbial growth curves
 
-The growth module plots optical-density trajectories and extracts biologically useful parameters for each well or curve. BIOSZEN first applies its robust exponential-phase detector and uses the permissive detector only to complete values that the robust method could not estimate.
+The growth module plots optical-density trajectories and extracts biologically useful parameters for each well or curve. Fixed interval remains the default and preserves the traditional maximum-time and interval workflow. The optional irregular/discontinuous mode reads the actual increasing numeric values from a detected or user-selected time column, allowing uneven time points such as `0`, `0.08`, `0.17`, `0.5`, `1`, and `2`. Both modes use the same robust-first exponential-phase detector and permissive fallback.
 
 ![](https://raw.githubusercontent.com/bioszen/BIOSZEN/main/Gallery/screenshots/app/13_growth_parameters_workflow.png){fig-alt="BIOSZEN growth parameter workflow" .screenshot}
 
@@ -184,6 +194,11 @@ growth_results <- BIOSZEN::growth_parameters(
   time_interval = 0.5,
   output_dir = "growth_results",
   overwrite = FALSE
+)
+
+irregular_results <- BIOSZEN::growth_parameters_irregular(
+  "irregular_curve.xlsx",
+  time_column = "Time"
 )
 ```
 
@@ -238,9 +253,9 @@ BIOSZEN::bioszen_citation()
 
 ## Citation
 
-If you use this version of BIOSZEN in research, please cite:
+If you use BIOSZEN in research, please cite the application record:
 
-> Szenfeld, B. (2026). *BIOSZEN* (Version 2.1.1) [Computer software]. Zenodo. [https://doi.org/10.5281/zenodo.21765136](https://doi.org/10.5281/zenodo.21765136){data-analytics-id="version_doi" data-analytics-type="outbound_link" data-analytics-section="citation"}
+> Szenfeld, B. (2026). *BIOSZEN* [Computer software]. Zenodo. [https://doi.org/10.5281/zenodo.18217210](https://doi.org/10.5281/zenodo.18217210){data-analytics-id="concept_doi" data-analytics-type="outbound_link" data-analytics-section="citation"}
 
 ## Feedback and contributions
 
