@@ -9,6 +9,15 @@ app_test_path <- function(...) {
     return(source_path)
   }
 
+  check_package <- Sys.getenv("_R_CHECK_PACKAGE_NAME_", unset = "BIOSZEN")
+  check_tree_path <- do.call(
+    testthat::test_path,
+    c(list("..", "..", "00_pkg_src", check_package, "inst", "app"), rel_parts)
+  )
+  if (file.exists(check_tree_path) || dir.exists(check_tree_path)) {
+    return(normalizePath(check_tree_path, winslash = "/", mustWork = TRUE))
+  }
+
   check_source_path <- do.call(
     testthat::test_path,
     c(list("..", "inst", "app"), rel_parts)
@@ -40,6 +49,16 @@ app_test_root <- function() {
     dir.exists(file.path(source_root, "inst", "app"))
   ) {
     return(source_root)
+  }
+
+  check_package <- Sys.getenv("_R_CHECK_PACKAGE_NAME_", unset = "BIOSZEN")
+  check_source_root <- file.path(source_root, "00_pkg_src", check_package)
+  if (
+    dir.exists(check_source_root) &&
+    file.exists(file.path(check_source_root, "DESCRIPTION")) &&
+    dir.exists(file.path(check_source_root, "inst", "app"))
+  ) {
+    return(normalizePath(check_source_root, winslash = "/", mustWork = TRUE))
   }
 
   check_root <- testthat::test_path("..")
