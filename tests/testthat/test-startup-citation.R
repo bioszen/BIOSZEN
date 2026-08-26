@@ -201,7 +201,7 @@ test_that("direct source launchers emit the BIOSZEN startup citation", {
   expect_true(any(grepl("BIOSZEN", msg, fixed = TRUE)))
   expect_true(any(grepl("10.5281/zenodo.18217210", msg, fixed = TRUE)))
 
-  app_launcher <- paste(readLines(file.path(app_test_root(), "App.R"), warn = FALSE), collapse = "\n")
+  app_launcher <- paste(readLines(file.path(app_test_root(), "app.R"), warn = FALSE), collapse = "\n")
   embedded_launcher <- paste(readLines(app_test_path("app.R"), warn = FALSE), collapse = "\n")
   run_app_launcher <- paste(readLines(file.path(app_test_root(), "R", "run_app.R"), warn = FALSE), collapse = "\n")
   standalone_launcher <- paste(
@@ -241,4 +241,15 @@ test_that("direct source launchers emit the BIOSZEN startup citation", {
     info = "The parent launcher should print the citation once before a clean-process handoff."
   )
   expect_match(standalone_launcher, "options\\(BIOSZEN\\.startup_citation_shown = FALSE\\)", perl = TRUE)
+})
+
+test_that("embedded startup source keeps the growth parameter name locale-safe", {
+  global_file <- app_test_path("global.R")
+  global_source <- paste(
+    readLines(global_file, warn = FALSE, encoding = "UTF-8"),
+    collapse = "\n"
+  )
+
+  expect_false(grepl("\u00B5Max", global_source, fixed = TRUE))
+  expect_match(global_source, '"\\\\u00B5Max"\\s*:=', perl = TRUE)
 })

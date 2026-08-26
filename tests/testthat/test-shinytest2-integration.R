@@ -1556,6 +1556,30 @@ test_that("metadata import does not overwrite dataset selectors", {
   meta_path <- app$get_download(output = "downloadMetadata")
   expect_true(file.exists(meta_path))
 
+  renamed_meta <- tempfile("unrelated_metadata_filename_1_", fileext = ".xlsx")
+  on.exit(unlink(renamed_meta), add = TRUE)
+  expect_true(file.copy(meta_path, renamed_meta, overwrite = TRUE))
+  app$upload_file(metaFiles = renamed_meta, wait_ = TRUE, timeout_ = 120000)
+
+  restored_param <- as.character(app$get_value(input = "param"))[[1]]
+  restored_choices_raw <- tryCatch(
+    app$get_js(
+      "(function(){
+         var el = document.getElementById('param');
+         if (!el || !el.selectize || !el.selectize.options) return [];
+         return Object.keys(el.selectize.options);
+       })()"
+    ),
+    error = function(e) character(0)
+  )
+  restored_choices <- unique(as.character(unlist(restored_choices_raw, use.names = FALSE)))
+  restored_choices <- restored_choices[!is.na(restored_choices) & nzchar(restored_choices)]
+  expect_identical(restored_param, old_param)
+  expect_true(old_param %in% restored_choices)
+
+  params_after_metadata <- app$get_download(output = "downloadExcel")
+  expect_nonempty_download(params_after_metadata, "parameter workbook after metadata restore")
+
   tabs <- readxl::excel_sheets(meta_path)
   wb_sheets <- stats::setNames(
     lapply(tabs, function(sheet) readxl::read_excel(meta_path, sheet = sheet)),

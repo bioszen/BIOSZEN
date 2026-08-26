@@ -17680,9 +17680,14 @@ server <- function(input, output, session) {
     if (!is.null(v <- get_val("sig_label_param_color"))) updateCheckboxInput(session, "sig_label_param_color", value = tolower(v) == "true")
     if (!is.null(v <- get_val("multitest_method"))) update_radio_metadata("multitest_method", v, c("holm", "fdr", "bonferroni", "none"))
     if (!is.null(v <- get_val("param"))) {
-      param_sel <- normalize_param_selection(v, safe_plot_setting_params())
+      metadata_params <- safe_plot_setting_params()
+      param_sel <- normalize_param_selection(v, metadata_params)
       if (nzchar(param_sel)) {
-        updateSelectizeInput(session, "param", selected = param_sel, server = TRUE)
+        update_selectize_adaptive(
+          "param",
+          choices = metadata_params,
+          selected = param_sel
+        )
         last_param_selection(param_sel)
       }
     }
@@ -17921,7 +17926,7 @@ server <- function(input, output, session) {
   observeEvent(input$metaFiles, {
     req(input$metaFiles)
     valid_types <- c("Boxplot", "Barras", "Violin", "Curvas", "Apiladas", "Correlacion", "DoseResponse", "MatrizCorrelacion", "Heatmap")
-    extract_meta_type <- function(tbl, fname = NULL) {
+    extract_meta_type <- function(tbl) {
       campos <- trimws(tolower(tbl$Campo))
       valores <- trimws(as.character(tbl$Valor))
       by_name <- function(key) {
@@ -17931,12 +17936,8 @@ server <- function(input, output, session) {
         if (!is.null(v) && nzchar(v)) v else NULL
       }
       out <- by_name("tipo") %||% by_name("tipo_grafico") %||% by_name("plot_type")
-      if (!is.null(out)) return(out)
-      if (!is.null(fname) && startsWith(fname, "metadata_")) {
-        maybe <- sub("^metadata_", "", sub("\\.xlsx$", "", fname))
-        if (nzchar(maybe)) return(maybe)
-      }
-      NULL
+      if (identical(out, "Correlación")) out <- "Correlacion"
+      out
     }
     for (i in seq_len(nrow(input$metaFiles))) {
       lang <- input$app_lang %||% i18n_lang
@@ -17974,11 +17975,7 @@ server <- function(input, output, session) {
           style_prefix = "plot_text_style_"
         )
       )
-      meta_tipo  <- extract_meta_type(meta)
-      name_tipo  <- if (startsWith(fname, "metadata_"))
-        sub("^metadata_", "", sub("\\.xlsx$", "", fname)) else NULL
-      tipo       <- meta_tipo %||% name_tipo
-      if (!is.null(tipo) && identical(tipo, "Correlación")) tipo <- "Correlacion"
+      tipo <- extract_meta_type(meta)
 
       if (is.null(tipo) || !tipo %in% valid_types) {
         showNotification(
@@ -17990,13 +17987,6 @@ server <- function(input, output, session) {
           type = "error", duration = 7
         )
         next
-      }
-
-      if (!is.null(meta_tipo) && !is.null(name_tipo) && !identical(meta_tipo, name_tipo)) {
-        showNotification(
-          sprintf(tr_text("metadata_type_mismatch", lang), fname, name_tipo, meta_tipo, meta_tipo),
-          type = "warning", duration = 6
-        )
       }
 
       # Si pasa validaciones, almacenar y aplicar si corresponde

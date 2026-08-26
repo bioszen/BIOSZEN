@@ -3233,7 +3233,7 @@ calculate_growth_rates_robust <- function(df) {
         lag_time <- .$Time[which.max(.$Time[1:start])]
         
         dplyr::tibble(
-          µMax            = coef(model)[2],
+          "\u00B5Max" := coef(model)[2],
           max_percap_time = mean(.$Time[start:end]),
           doub_time       = log(2) / coef(model)[2],
           lag_time        = lag_time,
@@ -3243,7 +3243,7 @@ calculate_growth_rates_robust <- function(df) {
         )
       } else {
         dplyr::tibble(
-          µMax            = NA_real_,
+          "\u00B5Max" := NA_real_,
           max_percap_time = NA_real_,
           doub_time       = NA_real_,
           lag_time        = NA_real_,
@@ -3276,7 +3276,7 @@ calculate_growth_rates_permissive <- function(df) {
         
         dplyr::tibble(
           Well           = .$Well[1],
-          µMax            = coef(model)[2],
+          "\u00B5Max" := coef(model)[2],
           max_percap_time = mean(.$Time[start:end]),
           doub_time       = log(2) / coef(model)[2],
           lag_time        = lag_time,
@@ -3287,7 +3287,7 @@ calculate_growth_rates_permissive <- function(df) {
       } else {
         dplyr::tibble(
           Well           = .$Well[1],
-          µMax            = NA_real_,
+          "\u00B5Max" := NA_real_,
           max_percap_time = NA_real_,
           doub_time       = NA_real_,
           lag_time        = NA_real_,

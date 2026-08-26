@@ -1260,7 +1260,8 @@ test_that("normalized parameter switching does not preserve stale unavailable pa
 
   expect_match(server_txt, "normalize_param_selection\\(input\\$param, params_all\\)", perl = TRUE)
   expect_match(server_txt, "normalize_param_selection\\(isolate\\(input\\$param %\\|\\|% \"\"\\), params\\)", perl = TRUE)
-  expect_match(server_txt, "param_sel <- normalize_param_selection\\(v, safe_plot_setting_params\\(\\)\\)", perl = TRUE)
+  expect_match(server_txt, "metadata_params <- safe_plot_setting_params\\(\\)", perl = TRUE)
+  expect_match(server_txt, "param_sel <- normalize_param_selection\\(v, metadata_params\\)", perl = TRUE)
   expect_match(server_txt, "metadata_param <- normalize_param_selection\\(input\\$param, safe_plot_setting_params\\(\\)\\)", perl = TRUE)
   expect_match(server_txt, "metadata_param <- normalize_param_selection\\(last_param_selection\\(\\), safe_plot_setting_params\\(\\)\\)", perl = TRUE)
 
@@ -1349,6 +1350,21 @@ test_that("metadata restore validates enum-like design fields before updating in
   expect_match(server_txt, 'update_radio_metadata\\("curve_geom", v, c\\("line_points", "line_only"\\)\\)', perl = TRUE)
   expect_match(server_txt, 'update_radio_metadata\\("corr_norm_target", v, c\\("both", "x_only", "y_only"\\)\\)', perl = TRUE)
   expect_match(server_txt, 'update_select_metadata\\(\\s*"heat_hclust_method"', perl = TRUE)
+})
+
+test_that("metadata restore keeps parameter choices and identifies plot type from workbook content", {
+  server_file <- app_test_path("server", "server_main.R")
+  server_txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(server_txt, "metadata_params <- safe_plot_setting_params()", fixed = TRUE)
+  expect_match(
+    server_txt,
+    'update_selectize_adaptive\\(\\s*"param",\\s*choices = metadata_params,\\s*selected = param_sel',
+    perl = TRUE
+  )
+  expect_match(server_txt, "tipo <- extract_meta_type(meta)", fixed = TRUE)
+  expect_false(grepl("name_tipo", server_txt, fixed = TRUE))
+  expect_false(grepl("startsWith(fname, \"metadata_\")", server_txt, fixed = TRUE))
 })
 
 test_that("closed biological-replicate panels do not build large selector trees", {
