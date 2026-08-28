@@ -6,7 +6,7 @@
 **Biological data analysis and visualization in R/Shiny**  
 From data import to reproducible plots, statistics, metadata, and bundle exports.
 
-[Project website](https://bioszen.github.io/BIOSZEN/) · [English manual](inst/app/www/MANUAL_EN.md) · [bio.tools](https://bio.tools/bioszen) · [R-universe](https://bioszen.r-universe.dev/) · [Zenodo](https://doi.org/10.5281/zenodo.18217210)
+[Project website](https://bioszen.github.io/BIOSZEN/) · [English manual](inst/app/www/MANUAL_EN.md) · [bio.tools](https://bio.tools/bioszen) · [OpenEBench](https://openebench.bsc.es/tool/bioszen-6a87238999682f1e2e0b1c85) · [R-universe](https://bioszen.r-universe.dev/) · [Zenodo](https://doi.org/10.5281/zenodo.18217210)
 </div>
 
 ![BIOSZEN home overview](Gallery/screenshots/app/01_app_home_overview.png)
@@ -40,15 +40,22 @@ BIOSZEN is an R package with a modular Shiny app focused on biological experimen
 
 ## Availability and Discovery
 
+### Scientific registries
+
+- **bio.tools registry:** <https://bio.tools/bioszen>
+- **OpenEBench Software Observatory:** <https://openebench.bsc.es/tool/bioszen-6a87238999682f1e2e0b1c85>
+
+The bio.tools registry and OpenEBench Software Observatory provide dedicated
+discovery and research-software monitoring information for BIOSZEN within the
+life-science software ecosystem.
+
+### Project resources
+
 - **Project website:** <https://bioszen.github.io/BIOSZEN/>
 - **English user manual:** [MANUAL_EN.md](inst/app/www/MANUAL_EN.md)
-- **bio.tools registry:** <https://bio.tools/bioszen>
 - **R-universe package page:** <https://bioszen.r-universe.dev/>
 - **Limited online demo:** <https://bioszen-test.share.connect.posit.cloud>
 - **Complete Zenodo record and version history:** <https://doi.org/10.5281/zenodo.18217210>
-
-The bio.tools listing gives BIOSZEN a dedicated, persistent entry in the
-community-driven registry of software and data resources for the life sciences.
 
 ## Core Capabilities
 

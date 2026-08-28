@@ -2,7 +2,8 @@
   "title": "BIOSZEN",
   "upload_type": "software",
   "version": "2.1.2",
-  "description": "BIOSZEN is an R/Shiny application and R package for reproducible biological data analysis and visualization from Excel files. It generates boxplots, bar plots, violin plots, stacked plots, heatmaps, correlation plots between parameters, and concentration-response (dose-response) curves with configurable multi-strain visualization, raw or normalized responses, IC50 estimation, model diagnostics, and statistical comparisons. It includes metadata-based reproducibility, normalized-data workflows, downloadable graphics and workbooks, editable vector PowerPoint exports for individual plots and multi-plot composition panels, normality tests such as Shapiro-Wilk, Kolmogorov-Smirnov, and Anderson-Darling, and significance tests such as ANOVA, Kruskal-Wallis, t-test, and Wilcoxon. It also extracts microbial growth curve parameters (uMax, max_percap_time, doub_time, lag_time, ODmax, max_time, AUC, OD0) from fixed-interval or irregular/discontinuous numeric time points. The application provides English and Spanish interfaces and documentation.",
+  "publication_date": "2026-08-26",
+  "description": "<p>BIOSZEN is an R/Shiny application and R package for reproducible biological data analysis and visualization from Excel files. It generates boxplots, bar plots, violin plots, stacked plots, heatmaps, correlation plots between parameters, and concentration-response (dose-response) curves with configurable multi-strain visualization, raw or normalized responses, IC50 estimation, model diagnostics, and statistical comparisons. It includes metadata-based reproducibility, normalized-data workflows, downloadable graphics and workbooks, editable vector PowerPoint exports for individual plots and multi-plot composition panels, normality tests such as Shapiro-Wilk, Kolmogorov-Smirnov, and Anderson-Darling, and significance tests such as ANOVA, Kruskal-Wallis, t-test, and Wilcoxon. It also extracts microbial growth curve parameters (uMax, max_percap_time, doub_time, lag_time, ODmax, max_time, AUC, OD0) from fixed-interval or irregular/discontinuous numeric time points.</p>",
   "creators": [
     {
       "name": "Szenfeld, Benjamín",
@@ -15,22 +16,17 @@
     "biochemistry",
     "biological data analysis",
     "data visualization",
-    "Excel",
-    "reproducibility",
     "statistical analysis",
-    "normality testing",
     "microbial growth curves",
     "growth curve parameters",
-    "irregular time points",
     "concentration-response",
     "dose-response",
-    "IC50",
-    "PowerPoint export"
+    "IC50"
   ],
-  "license": "GPL-3.0",
+  "license": "gpl-3.0-only",
   "access_right": "open",
   "language": "eng",
-  "notes": "<p><strong>Version 2.1.2</strong> adds configurable concentration-response (dose-response) plots with parallel multi-strain visualization, raw or normalized response values, biological-replicate points, IC50 estimation, model diagnostics, susceptibility ranking, and pairwise statistical comparisons. It also makes microbial growth-parameter extraction more flexible by supporting fixed intervals and irregular/discontinuous numeric time points. The release further improves application stability, startup reliability, dependency management, data compatibility, usability, export consistency, and overall robustness, and includes bug fixes. BIOSZEN continues to provide editable vector-based PowerPoint (.pptx) export for individual plots and multi-plot composition panels; exported figures can be edited in PowerPoint, including text, fonts, colors, axes, legends, annotations, graphical elements, and layouts.</p>\n<p><strong>Technical information</strong></p>\n<p>BIOSZEN is available through R-universe, making it easy to install and update the package directly from R. The application can also be launched from the RStudio Addins menu without manually entering commands.</p>\n<p>To install BIOSZEN, run:</p>\n<pre><code>install.packages(\n  &quot;BIOSZEN&quot;,\n  repos = c(\n    &quot;https://bioszen.r-universe.dev&quot;,\n    &quot;https://cloud.r-project.org&quot;\n  )\n)</code></pre>\n<p>After installation, launch the application with:</p>\n<pre><code>BIOSZEN::BIOSZEN()</code></pre>\n<p><strong>Software details</strong></p>\n<ul><li>Repository URL: <a href=\"https://github.com/bioszen/BIOSZEN\">https://github.com/bioszen/BIOSZEN</a></li><li>Programming language: R</li><li>Development status: Active</li></ul>",
+  "notes": "<p><strong>Version 2.1.2</strong> adds configurable concentration-response (dose-response) plots with parallel multi-strain visualization, raw or normalized response values, biological-replicate points, IC50 estimation, model diagnostics, susceptibility ranking, and pairwise statistical comparisons. It also makes microbial growth-parameter extraction more flexible by supporting fixed intervals and irregular/discontinuous numeric time points. The release further improves application stability, startup reliability, dependency management, data compatibility, usability, export consistency, and overall robustness, and includes bug fixes. BIOSZEN continues to provide editable vector-based PowerPoint (.pptx) export for individual plots and multi-plot composition panels; exported figures can be edited in PowerPoint, including text, fonts, colors, axes, legends, annotations, graphical elements, and layouts.</p>\n<p><strong>Technical information</strong></p>\n<p>BIOSZEN is available through R-universe, making it easy to install and update the package directly from R. The application can also be launched from the RStudio Addins menu without manually entering commands.</p>\n<p>To install BIOSZEN, run:</p>\n<pre><code>install.packages(\n  \"BIOSZEN\",\n  repos = c(\n    \"https://bioszen.r-universe.dev\",\n    \"https://cloud.r-project.org\"\n  )\n)</code></pre>\n<p>After installation, launch the application with:</p>\n<pre><code>BIOSZEN::BIOSZEN()</code></pre>",
   "related_identifiers": [
     {
       "relation": "isSupplementTo",
@@ -64,6 +60,12 @@
     {
       "relation": "isReferencedBy",
       "identifier": "https://bio.tools/bioszen",
+      "scheme": "url",
+      "resource_type": "other"
+    },
+    {
+      "relation": "isReferencedBy",
+      "identifier": "https://openebench.bsc.es/tool/bioszen-6a87238999682f1e2e0b1c85",
       "scheme": "url",
       "resource_type": "other"
     }

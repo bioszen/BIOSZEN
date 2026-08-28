@@ -49,6 +49,7 @@ format:
           "sameAs": [
             "https://github.com/bioszen/BIOSZEN",
             "https://bio.tools/bioszen",
+            "https://openebench.bsc.es/tool/bioszen-6a87238999682f1e2e0b1c85",
             "https://bioszen.r-universe.dev/"
           ],
           "downloadUrl": "https://bioszen.r-universe.dev/",
@@ -240,11 +241,12 @@ BIOSZEN::bioszen_update()
 BIOSZEN::bioszen_citation()
 ```
 
-## Availability
+## Scientific registries & resources
 
 - **Project website:** <https://bioszen.github.io/BIOSZEN/>
 - **English user manual:** [https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md](https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md){data-analytics-id="manual" data-analytics-type="outbound_link" data-analytics-section="availability"}
 - **bio.tools registry:** [https://bio.tools/bioszen](https://bio.tools/bioszen){data-analytics-id="bio_tools" data-analytics-type="outbound_link" data-analytics-section="availability"}
+- **OpenEBench Software Observatory:** [https://openebench.bsc.es/tool/bioszen-6a87238999682f1e2e0b1c85](https://openebench.bsc.es/tool/bioszen-6a87238999682f1e2e0b1c85){data-analytics-id="openebench" data-analytics-type="outbound_link" data-analytics-section="availability"}
 - **Source code and issues:** [https://github.com/bioszen/BIOSZEN](https://github.com/bioszen/BIOSZEN){data-analytics-id="github" data-analytics-type="outbound_link" data-analytics-section="availability"}
 - **R-universe:** [https://bioszen.r-universe.dev/](https://bioszen.r-universe.dev/){data-analytics-id="install" data-analytics-type="outbound_link" data-analytics-section="availability"}
 - **Limited online demo:** [https://bioszen-test.share.connect.posit.cloud](https://bioszen-test.share.connect.posit.cloud){data-analytics-id="try_online" data-analytics-type="outbound_link" data-analytics-section="availability"}
