@@ -1,5 +1,6 @@
 year <- meta[["Config/BIOSZEN/CitationYear"]]
 concept_doi <- meta[["Config/BIOSZEN/ConceptDOI"]]
+rrid <- paste0("RRID:", sub("^RRID:", "", meta[["Config/BIOSZEN/RRID"]], ignore.case = TRUE))
 
 bibentry(
   bibtype = "Manual",
@@ -12,8 +13,10 @@ bibentry(
   year = year,
   doi = concept_doi,
   url = paste0("https://doi.org/", concept_doi),
-  note = "R package and Shiny application",
-  textVersion = paste0(
-    "Szenfeld, B. (", year, "). BIOSZEN. Zenodo. https://doi.org/", concept_doi
+  note = paste("R package and Shiny application; Research Resource Identifier:", rrid),
+  textVersion = paste(
+    paste0("Szenfeld, B. (", year, "). BIOSZEN. Zenodo. https://doi.org/", concept_doi),
+    paste("Research Resource Identifier:", rrid),
+    sep = "\n"
   )
 )

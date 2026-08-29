@@ -547,13 +547,24 @@ test_that("a post-shutdown installation failure does not crash run_app", {
   expect_false(isTRUE(getOption("BIOSZEN.app_running", FALSE)))
 })
 
-test_that("citation commands expose one official DOI and citation", {
+test_that("citation commands expose the official DOI, RRID, and Methods statement", {
   expected_text <- "Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210"
+  expected_methods <- paste0(
+    "Data analysis and visualization were performed with BIOSZEN v2.1.2 ",
+    "(RRID:SCR_028902; Zenodo DOI: 10.5281/zenodo.22117454)."
+  )
 
   expect_identical(public_package_api$bioszen_citation("text"), expected_text)
   expect_identical(public_package_api$bioszen_citation("doi"), "10.5281/zenodo.18217210")
+  expect_identical(public_package_api$bioszen_citation("rrid"), "RRID:SCR_028902")
+  expect_identical(public_package_api$bioszen_citation("methods"), expected_methods)
   expect_s3_class(public_package_api$bioszen_citation("bibentry"), "bibentry")
   expect_match(public_package_api$bioszen_citation("bibtex"), "10.5281/zenodo.18217210", fixed = TRUE)
+
+  metadata <- public_package_api$.bioszen_metadata()
+  expect_identical(metadata$latest_archived_version, "2.1.2")
+  expect_identical(metadata$latest_archived_doi, "10.5281/zenodo.22117454")
+  expect_identical(metadata$rrid_resolver, "https://scicrunch.org/resolver/RRID:SCR_028902")
 })
 
 test_that("the package installs into a clean library with its public API and citation", {
@@ -574,6 +585,7 @@ test_that("the package installs into a clean library with its public API and cit
       "10.5281/zenodo.18217210",
       fixed = TRUE
     )
+    expect_match(paste(format(package_citation), collapse = " "), "RRID:SCR_028902", fixed = TRUE)
     return(invisible(NULL))
   }
 
@@ -640,4 +652,5 @@ test_that("the package installs into a clean library with its public API and cit
     "10.5281/zenodo.18217210",
     fixed = TRUE
   )
+  expect_match(paste(format(package_citation), collapse = " "), "RRID:SCR_028902", fixed = TRUE)
 })

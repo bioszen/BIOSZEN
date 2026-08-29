@@ -2467,6 +2467,65 @@ server <- function(input, output, session) {
     style_tbl
   }
 
+  resolve_bioszen_runtime_metadata <- function() {
+    metadata_fun <- if (exists(".bioszen_metadata", mode = "function", inherits = TRUE)) {
+      get(".bioszen_metadata", mode = "function", inherits = TRUE)
+    } else {
+      tryCatch(
+        {
+          if (requireNamespace("BIOSZEN", quietly = TRUE)) {
+            getFromNamespace(".bioszen_metadata", "BIOSZEN")
+          } else {
+            NULL
+          }
+        },
+        error = function(e) NULL
+      )
+    }
+    if (!is.function(metadata_fun)) return(NULL)
+    tryCatch(metadata_fun(), error = function(e) NULL)
+  }
+
+  collect_software_provenance_tbl <- function() {
+    metadata <- resolve_bioszen_runtime_metadata()
+    if (is.null(metadata)) {
+      return(data.frame(Campo = character(), Valor = character(), stringsAsFactors = FALSE))
+    }
+    metadata_value <- function(name, default = "") {
+      value <- metadata[[name]]
+      if (is.null(value) || !length(value) || is.na(value[[1]]) || !nzchar(value[[1]])) {
+        default
+      } else {
+        as.character(value[[1]])
+      }
+    }
+
+    methods_fun <- if (exists(".bioszen_citation_methods", mode = "function", inherits = TRUE)) {
+      get(".bioszen_citation_methods", mode = "function", inherits = TRUE)
+    } else {
+      tryCatch(getFromNamespace(".bioszen_citation_methods", "BIOSZEN"), error = function(e) NULL)
+    }
+    methods_statement <- if (is.function(methods_fun)) {
+      tryCatch(methods_fun(), error = function(e) "")
+    } else {
+      ""
+    }
+
+    data.frame(
+      Campo = c(
+        "software", "version", "rrid", "rrid_resolver", "zenodo_concept_doi",
+        "latest_archived_version", "latest_archived_doi", "methods_statement"
+      ),
+      Valor = c(
+        metadata_value("title", "BIOSZEN"), metadata_value("version"),
+        metadata_value("rrid"), metadata_value("rrid_resolver"),
+        metadata_value("concept_doi"), metadata_value("latest_archived_version"),
+        metadata_value("latest_archived_doi"), methods_statement
+      ),
+      stringsAsFactors = FALSE
+    )
+  }
+
   # --- Helper: recopilar metadata actual para reproducibilidad ---
   collect_metadata_tbl <- function() {
     legend_style <- plot_metadata_style_value("legend")
@@ -2900,12 +2959,16 @@ server <- function(input, output, session) {
     wb <- createWorkbook()
     addWorksheet(wb, "Metadata")
     meta <- collect_metadata_tbl()
+    software_provenance <- collect_software_provenance_tbl()
     text_style <- collect_plot_text_style_tbl()
     if (input$tipo == "Curvas" && !is.null(curve_settings())){
       addWorksheet(wb, "CurvasSettings")
       writeData(wb, "CurvasSettings", curve_settings())
     }
     writeData(wb, "Metadata", meta,
+              headerStyle = createStyle(textDecoration = "bold"))
+    addWorksheet(wb, "SoftwareProvenance")
+    writeData(wb, "SoftwareProvenance", software_provenance,
               headerStyle = createStyle(textDecoration = "bold"))
     addWorksheet(wb, "TextStyle")
     writeData(wb, "TextStyle", text_style,
@@ -16560,11 +16623,13 @@ server <- function(input, output, session) {
 
   metadata_export_key <- function() {
     meta <- collect_metadata_tbl()
+    software_provenance <- collect_software_provenance_tbl()
     paste(
       "metadata",
       input_file_stamp(),
       as.character(input$tipo %||% ""),
       paste(meta$Campo, meta$Valor, sep = "=", collapse = ";"),
+      paste(software_provenance$Campo, software_provenance$Valor, sep = "=", collapse = ";"),
       sep = "||"
     )
   }

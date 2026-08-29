@@ -111,7 +111,7 @@ Archivos de plantilla:
 - Cuando BIOSZEN se inicia como paquete de R instalado, el botón azul **Actualizar** mantiene el mismo flujo de actualización: informa si no existe una versión estable más reciente y, si existe, muestra ambas versiones antes de solicitar confirmación.
 - Cuando BIOSZEN se inicia desde el bundle standalone local, el botón cambia a **Instalar paquete**. Después de confirmar, BIOSZEN se cierra e instala el paquete estable de R-universe en la biblioteca personal de R. Reinicia R y luego usa `BIOSZEN::BIOSZEN()`. Si ya existe una instalación normal del paquete, BIOSZEN lo informa en lugar de instalarlo nuevamente.
 - **Seguridad de instalación y actualización:** ninguna acción instala silenciosamente. Guarda o descarga el trabajo no guardado antes de confirmar. BIOSZEN cierra Shiny antes de modificar archivos del paquete, y las comprobaciones no envían datos experimentales cargados, información personal ni credenciales. Si se interrumpe la descarga o la biblioteca de R está bloqueada, el launcher standalone continúa disponible; reinicia R y vuelve a intentarlo o ejecuta `BIOSZEN::bioszen_update()` para una instalación existente.
-- Usa `BIOSZEN::bioszen_citation()` o `citation("BIOSZEN")` para la cita oficial.
+- Usa `BIOSZEN::bioszen_citation()` o `citation("BIOSZEN")` para la cita oficial; usa `BIOSZEN::bioszen_citation("rrid")` para el identificador de recurso de investigación y `BIOSZEN::bioszen_citation("methods")` para una frase lista para la sección Métodos.
 
 ![Configuración de gráficos y capas](manual_images/02_plot_setup_layers.png)
 

@@ -2,10 +2,10 @@
 \alias{bioszen_citation}
 \title{Cite BIOSZEN}
 \usage{
-bioszen_citation(format = c("text", "bibentry", "bibtex", "doi"))
+bioszen_citation(format = c("text", "bibentry", "bibtex", "doi", "rrid", "methods"))
 }
 \arguments{
-\item{format}{Citation format: plain \code{"text"}, a \code{"bibentry"}, BibTeX, or the DOI alone.}
+\item{format}{Citation format: plain \code{"text"}, a \code{"bibentry"}, BibTeX, the DOI alone, the RRID, or a Methods-ready statement.}
 }
 \value{A character value, except for \code{format = "bibentry"}, which returns a \code{bibentry} object.}
 \description{

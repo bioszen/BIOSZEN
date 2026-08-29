@@ -68,6 +68,12 @@
       "identifier": "https://openebench.bsc.es/tool/bioszen-6a87238999682f1e2e0b1c85",
       "scheme": "url",
       "resource_type": "other"
+    },
+    {
+      "relation": "isAlternateIdentifier",
+      "identifier": "https://scicrunch.org/resolver/RRID:SCR_028902",
+      "scheme": "url",
+      "resource_type": "software"
     }
   ],
   "references": [

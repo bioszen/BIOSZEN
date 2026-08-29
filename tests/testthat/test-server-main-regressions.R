@@ -1,5 +1,24 @@
 library(testthat)
 
+test_that("metadata exports add centralized software provenance without replacing existing sheets", {
+  server_file <- app_test_path("server", "server_main.R")
+  txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(txt, "resolve_bioszen_runtime_metadata <- function", fixed = TRUE)
+  expect_match(txt, "collect_software_provenance_tbl <- function", fixed = TRUE)
+  expect_match(txt, "metadata <- resolve_bioszen_runtime_metadata()", fixed = TRUE)
+  expect_match(txt, 'addWorksheet(wb, "Metadata")', fixed = TRUE)
+  expect_match(txt, 'addWorksheet(wb, "SoftwareProvenance")', fixed = TRUE)
+  expect_match(txt, 'addWorksheet(wb, "TextStyle")', fixed = TRUE)
+  expect_match(txt, 'writeData(wb, "SoftwareProvenance", software_provenance,', fixed = TRUE)
+  expect_match(txt, "software_provenance <- collect_software_provenance_tbl()", fixed = TRUE)
+  expect_match(
+    txt,
+    'paste(software_provenance$Campo, software_provenance$Valor, sep = "=", collapse = ";")',
+    fixed = TRUE
+  )
+})
+
 test_that("statistics actions open the bslib accordion panel by stable value", {
   server_file <- app_test_path("server", "server_main.R")
   txt <- paste(readLines(server_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")

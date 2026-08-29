@@ -6,6 +6,9 @@ Semantic Versioning.
 
 ## [Unreleased]
 
+- Added centralized RRID metadata (`RRID:SCR_028902`), RRID and Methods citation formats, startup citation output, provenance in reports and metadata exports, and a Zenodo alternate-identifier relation.
+- Corrected the latest archived release metadata to BIOSZEN 2.1.2 and Zenodo DOI `10.5281/zenodo.22117454` while retaining the concept DOI for the general citation.
+
 ## [2.1.2] - 2026-08-24
 - Added configurable concentration-response (dose-response) plots for selected strains and replicates, with automatic or editable concentration mapping, raw or normalized responses, linear or logarithmic concentration axes, and publication-oriented appearance controls.
 - Added four-parameter response-curve fitting, IC50 estimates and confidence intervals, model diagnostics, susceptibility ranking, pairwise strain comparisons with Holm adjustment, and complete Excel/statistical bundle exports.

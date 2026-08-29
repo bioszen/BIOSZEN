@@ -64,9 +64,9 @@ test_that("combine_growth_results fills gaps with permissive estimates", {
     merged <- combine_growth_results(rob, perm)
 
     expect_equal(as.character(merged$Well), c("B", "A"))
-    b_mu <- merged$µMax[merged$Well == "B"]
+    b_mu <- merged[["\u00B5Max"]][merged$Well == "B"]
     expect_false(any(is.na(b_mu)))
-    expect_equal(unname(b_mu), unname(perm$µMax[perm$Well == "B"]))
+    expect_equal(unname(b_mu), unname(perm[["\u00B5Max"]][perm$Well == "B"]))
     expect_true(all(is.finite(merged$AUC[merged$Well == "B"])))
     expect_equal(
       unname(merged$OD0),

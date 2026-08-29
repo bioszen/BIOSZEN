@@ -1494,6 +1494,21 @@ test_that("heatmap metadata roundtrip preserves strict design fields", {
   expect_identical(fields[["heat_norm_z"]], "TRUE")
 
   tabs <- readxl::excel_sheets(meta_path)
+  expect_true(all(c("Metadata", "SoftwareProvenance", "TextStyle") %in% tabs))
+  provenance_tbl <- readxl::read_excel(meta_path, sheet = "SoftwareProvenance")
+  provenance <- stats::setNames(
+    as.character(provenance_tbl$Valor),
+    as.character(provenance_tbl$Campo)
+  )
+  expect_identical(provenance[["version"]], "2.1.2")
+  expect_identical(provenance[["rrid"]], "RRID:SCR_028902")
+  expect_identical(
+    provenance[["rrid_resolver"]],
+    "https://scicrunch.org/resolver/RRID:SCR_028902"
+  )
+  expect_identical(provenance[["latest_archived_version"]], "2.1.2")
+  expect_identical(provenance[["latest_archived_doi"]], "10.5281/zenodo.22117454")
+
   wb_sheets <- stats::setNames(
     lapply(tabs, function(sheet) readxl::read_excel(meta_path, sheet = sheet)),
     tabs

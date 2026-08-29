@@ -110,7 +110,7 @@ Template files:
 - When BIOSZEN is launched as an installed R package, the blue **Update** button keeps the same update workflow: it reports when no newer stable release exists and otherwise shows both versions before requesting confirmation.
 - When BIOSZEN is launched from the local standalone bundle, the button changes to **Install package**. After confirmation, BIOSZEN closes and installs the stable R-universe package in the personal R library. Restart R and then use `BIOSZEN::BIOSZEN()`. If a normal package installation already exists, BIOSZEN reports it instead of installing again.
 - **Installation and update safety:** neither action installs silently. Save or download unsaved work before confirming. BIOSZEN closes Shiny before modifying package files, and the checks do not send uploaded experimental data, personal information, or credentials. If a download is interrupted or the R library is locked, the standalone launcher remains usable; restart R and retry or run `BIOSZEN::bioszen_update()` for an existing package installation.
-- Use `BIOSZEN::bioszen_citation()` or `citation("BIOSZEN")` for the official citation.
+- Use `BIOSZEN::bioszen_citation()` or `citation("BIOSZEN")` for the official citation; use `BIOSZEN::bioszen_citation("rrid")` for the Research Resource Identifier and `BIOSZEN::bioszen_citation("methods")` for a Methods-ready statement.
 
 ![Plot setup and layers](manual_images/02_plot_setup_layers.png)
 

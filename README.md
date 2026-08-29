@@ -44,6 +44,7 @@ BIOSZEN is an R package with a modular Shiny app focused on biological experimen
 
 - **bio.tools registry:** <https://bio.tools/bioszen>
 - **OpenEBench Software Observatory:** <https://openebench.bsc.es/tool/bioszen-6a87238999682f1e2e0b1c85>
+- **Research Resource Identifier:** [RRID:SCR_028902](https://scicrunch.org/resolver/RRID:SCR_028902)
 
 The bio.tools registry and OpenEBench Software Observatory provide dedicated
 discovery and research-software monitoring information for BIOSZEN within the
@@ -145,8 +146,10 @@ BIOSZEN::BIOSZEN()
 BIOSZEN::bioszen_update_available()
 BIOSZEN::bioszen_update()
 
-# Official citation in text, bibentry, BibTeX, or DOI form
+# Official citation in text, bibentry, BibTeX, DOI, RRID, or Methods form
 BIOSZEN::bioszen_citation()
+BIOSZEN::bioszen_citation("rrid")
+BIOSZEN::bioszen_citation("methods")
 
 # Extract the same growth parameters as the Shiny Growth tab
 result <- BIOSZEN::growth_parameters("Curvas.xlsx")
@@ -321,10 +324,16 @@ not change the BIOSZEN Shiny application.
 
 Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210
 
+Research Resource Identifier: [RRID:SCR_028902](https://scicrunch.org/resolver/RRID:SCR_028902)
+
+Latest archived release: BIOSZEN 2.1.2, <https://doi.org/10.5281/zenodo.22117454>
+
 In R:
 
 ```r
 BIOSZEN::bioszen_citation()
+BIOSZEN::bioszen_citation("rrid")
+BIOSZEN::bioszen_citation("methods")
 citation("BIOSZEN")
 ```
 

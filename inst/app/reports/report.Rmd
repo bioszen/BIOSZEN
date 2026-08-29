@@ -12,6 +12,62 @@ params:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
+
+metadata_fun <- if (exists(".bioszen_metadata", mode = "function", inherits = TRUE)) {
+  get(".bioszen_metadata", mode = "function", inherits = TRUE)
+} else {
+  tryCatch(
+    {
+      if (requireNamespace("BIOSZEN", quietly = TRUE)) {
+        getFromNamespace(".bioszen_metadata", "BIOSZEN")
+      } else {
+        NULL
+      }
+    },
+    error = function(e) NULL
+  )
+}
+
+software_metadata <- if (is.function(metadata_fun)) {
+  tryCatch(metadata_fun(), error = function(e) NULL)
+} else {
+  NULL
+}
+
+if (is.null(software_metadata)) {
+  report_path <- tryCatch(knitr::current_input(dir = TRUE), error = function(e) "")
+  description_candidates <- unique(c(
+    file.path(dirname(report_path), "..", "..", "..", "DESCRIPTION"),
+    file.path(getwd(), "DESCRIPTION"),
+    file.path(getwd(), "..", "DESCRIPTION")
+  ))
+  description_path <- description_candidates[file.exists(description_candidates)][1]
+  description_meta <- if (!is.na(description_path)) {
+    tryCatch(as.list(read.dcf(description_path)[1, , drop = TRUE]), error = function(e) list())
+  } else {
+    list()
+  }
+  description_field <- function(name, default = "") {
+    value <- description_meta[[name]]
+    if (is.null(value) || !length(value) || is.na(value[[1]]) || !nzchar(value[[1]])) {
+      default
+    } else {
+      as.character(value[[1]])
+    }
+  }
+  rrid <- description_field("Config/BIOSZEN/RRID")
+  if (nzchar(rrid) && !grepl("^RRID:", rrid, ignore.case = TRUE)) rrid <- paste0("RRID:", rrid)
+  if (length(description_meta)) {
+    software_metadata <- list(
+      title = "BIOSZEN",
+      version = description_field("Version"),
+      rrid = rrid,
+      rrid_resolver = description_field("Config/BIOSZEN/RRIDResolver"),
+      latest_archived_version = description_field("Config/BIOSZEN/LatestArchivedVersion"),
+      latest_archived_doi = description_field("Config/BIOSZEN/LatestArchivedDOI")
+    )
+  }
+}
 ```
 
 ## Gráficos generados
@@ -45,5 +101,31 @@ if (!is.null(params$sig) && nrow(params$sig) > 0) {
 ```{r meta}
 if (!is.null(params$metadata) && nrow(params$metadata) > 0) {
   knitr::kable(params$metadata)
+}
+```
+
+## Procedencia del software
+
+```{r software-provenance}
+if (!is.null(software_metadata)) {
+  methods_statement <- sprintf(
+    "Data analysis and visualization were performed with %s v%s (%s; Zenodo DOI: %s).",
+    software_metadata$title,
+    software_metadata$latest_archived_version,
+    software_metadata$rrid,
+    software_metadata$latest_archived_doi
+  )
+  knitr::kable(data.frame(
+    Campo = c(
+      "Software", "Versión", "RRID", "Resolutor RRID",
+      "Versión archivada", "DOI de la versión archivada", "Cita para Métodos"
+    ),
+    Valor = c(
+      software_metadata$title, software_metadata$version, software_metadata$rrid,
+      software_metadata$rrid_resolver, software_metadata$latest_archived_version,
+      software_metadata$latest_archived_doi, methods_statement
+    ),
+    check.names = FALSE
+  ))
 }
 ```

@@ -48,23 +48,23 @@ test_that("prepare_platemap includes parameters present in Datos even when missi
     BiologicalReplicate = c(1, 2, 3),
     TechnicalReplicate = c("A", "A", "A"),
     YBR291C = c(10, NA, 12),
-    `μMax` = c(0.9, 1.0, 1.1),
     stringsAsFactors = FALSE,
     check.names = FALSE
   )
+  datos[["\u03BCMax"]] <- c(0.9, 1.0, 1.1)
 
   cfg <- data.frame(
-    Parameter = c("CTP1", "μMax"),
+    Parameter = c("CTP1", "\u03BCMax"),
     Y_Max = c(500, 0.3),
     Interval = c(50, 0.1),
-    Y_Title = c("Expression CTP1", "μMax"),
+    Y_Title = c("Expression CTP1", "\u03BCMax"),
     stringsAsFactors = FALSE,
     check.names = FALSE
   )
 
   prep <- prepare_platemap(datos, cfg)
 
-  expect_true("μMax" %in% prep$cfg$Parameter)
+  expect_true("\u03BCMax" %in% prep$cfg$Parameter)
   expect_true("YBR291C" %in% prep$cfg$Parameter)
   expect_false("CTP1" %in% prep$cfg$Parameter)
 })

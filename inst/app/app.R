@@ -141,15 +141,50 @@ shiny::addResourcePath("www", file.path(app_dir, "www"))
   citation_message <- if (exists(".bioszen_startup_citation_text", mode = "function", inherits = TRUE)) {
     .bioszen_startup_citation_text()
   } else {
-    paste(
+    root_candidate <- if (exists("source_root", inherits = TRUE)) {
+      get("source_root", inherits = TRUE)
+    } else {
+      character()
+    }
+    description_candidates <- unique(c(
+      file.path(root_candidate, "DESCRIPTION"),
+      file.path(getwd(), "DESCRIPTION"),
+      file.path(getwd(), "..", "DESCRIPTION"),
+      file.path(getwd(), "..", "..", "DESCRIPTION")
+    ))
+    description_path <- description_candidates[file.exists(description_candidates)][1]
+    fallback_meta <- if (!is.na(description_path)) {
+      tryCatch(as.list(read.dcf(description_path)[1, , drop = TRUE]), error = function(e) list())
+    } else {
+      list()
+    }
+    fallback_field <- function(name, default = "") {
+      value <- fallback_meta[[name]]
+      if (is.null(value) || !length(value) || is.na(value[[1]]) || !nzchar(value[[1]])) {
+        default
+      } else {
+        as.character(value[[1]])
+      }
+    }
+    rrid <- fallback_field("Config/BIOSZEN/RRID")
+    if (nzchar(rrid) && !grepl("^RRID:", rrid, ignore.case = TRUE)) rrid <- paste0("RRID:", rrid)
+    citation_lines <- c(
       "##",
       "## BIOSZEN",
-      "## See https://github.com/bioszen/BIOSZEN for additional documentation and source code.",
+      sprintf(
+        "## See %s for additional documentation and source code.",
+        fallback_field("URL", "https://github.com/bioszen/BIOSZEN")
+      ),
       "## Please cite software as:",
-      "##   Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210",
-      "##",
-      sep = "\n"
+      sprintf(
+        "##   Szenfeld, B. (%s). BIOSZEN. Zenodo. https://doi.org/%s",
+        fallback_field("Config/BIOSZEN/CitationYear", "2026"),
+        fallback_field("Config/BIOSZEN/ConceptDOI", "10.5281/zenodo.18217210")
+      ),
+      if (nzchar(rrid)) paste0("## Research Resource Identifier: ", rrid),
+      "##"
     )
+    paste(citation_lines, collapse = "\n")
   }
   options(BIOSZEN.startup_citation_shown = TRUE)
   schedule_fun(function() packageStartupMessage(citation_message), delay = 0)

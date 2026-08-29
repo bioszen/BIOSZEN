@@ -4,7 +4,7 @@ normalize_captured_console <- function(x) {
   x[nzchar(x)]
 }
 
-test_that("BIOSZEN startup citation includes the Zenodo DOI", {
+test_that("BIOSZEN startup citation includes the Zenodo DOI and RRID", {
   citation_file <- file.path(app_test_root(), "R", "citation.R")
   run_app_file <- file.path(app_test_root(), "R", "run_app.R")
   if (file.exists(citation_file) && file.exists(run_app_file)) {
@@ -40,6 +40,7 @@ test_that("BIOSZEN startup citation includes the Zenodo DOI", {
     "## See https://github.com/bioszen/BIOSZEN for additional documentation and source code.",
     "## Please cite software as:",
     "##   Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210",
+    "## Research Resource Identifier: RRID:SCR_028902",
     "##"
   )
   expect_equal(msg, expected)
@@ -104,6 +105,7 @@ test_that("standalone launcher emits the approved citation block", {
     "## See https://github.com/bioszen/BIOSZEN for additional documentation and source code.",
     "## Please cite software as:",
     "##   Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210",
+    "## Research Resource Identifier: RRID:SCR_028902",
     "##"
   ))
 })
@@ -162,6 +164,7 @@ test_that("embedded app schedules the citation after Shiny starts listening", {
     "## See https://github.com/bioszen/BIOSZEN for additional documentation and source code.",
     "## Please cite software as:",
     "##   Szenfeld, B. (2026). BIOSZEN. Zenodo. https://doi.org/10.5281/zenodo.18217210",
+    "## Research Resource Identifier: RRID:SCR_028902",
     "##"
   ))
 })
@@ -200,6 +203,7 @@ test_that("direct source launchers emit the BIOSZEN startup citation", {
   )
   expect_true(any(grepl("BIOSZEN", msg, fixed = TRUE)))
   expect_true(any(grepl("10.5281/zenodo.18217210", msg, fixed = TRUE)))
+  expect_true(any(grepl("RRID:SCR_028902", msg, fixed = TRUE)))
 
   app_launcher <- paste(readLines(file.path(app_test_root(), "app.R"), warn = FALSE), collapse = "\n")
   embedded_launcher <- paste(readLines(app_test_path("app.R"), warn = FALSE), collapse = "\n")
@@ -234,7 +238,8 @@ test_that("direct source launchers emit the BIOSZEN startup citation", {
     info = "Direct inst/app startup should print the citation at the end of app startup, after modules load."
   )
   expect_match(standalone_launcher, "bioszen_startup_citation\\s*<-\\s*function", perl = TRUE)
-  expect_match(standalone_launcher, "Szenfeld, B\\. \\(2026\\)\\. BIOSZEN\\. Zenodo\\. https://doi\\.org/10\\.5281/zenodo\\.18217210", perl = TRUE)
+  expect_match(standalone_launcher, "Config/BIOSZEN/ConceptDOI", fixed = TRUE)
+  expect_match(standalone_launcher, "Config/BIOSZEN/RRID", fixed = TRUE)
   expect_false(grepl("installed_app_late_citation", standalone_launcher, fixed = TRUE))
   expect_true(
     grepl("if \\(restart_in_clean_process\\)[\\s\\S]*?cat\\(\"\\\\nBIOSZEN version:[\\s\\S]*?bioszen_startup_citation\\(\\)[\\s\\S]*?launch_fresh_launcher_process\\(script_path\\)", standalone_launcher, perl = TRUE),
