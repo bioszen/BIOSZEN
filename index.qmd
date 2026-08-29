@@ -50,6 +50,7 @@ format:
             "https://github.com/bioszen/BIOSZEN",
             "https://bio.tools/bioszen",
             "https://openebench.bsc.es/tool/bioszen-6a87238999682f1e2e0b1c85",
+            "https://scicrunch.org/resolver/RRID:SCR_028902",
             "https://bioszen.r-universe.dev/"
           ],
           "downloadUrl": "https://bioszen.r-universe.dev/",
@@ -247,6 +248,7 @@ BIOSZEN::bioszen_citation()
 - **English user manual:** [https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md](https://github.com/bioszen/BIOSZEN/blob/main/inst/app/www/MANUAL_EN.md){data-analytics-id="manual" data-analytics-type="outbound_link" data-analytics-section="availability"}
 - **bio.tools registry:** [https://bio.tools/bioszen](https://bio.tools/bioszen){data-analytics-id="bio_tools" data-analytics-type="outbound_link" data-analytics-section="availability"}
 - **OpenEBench Software Observatory:** [https://openebench.bsc.es/tool/bioszen-6a87238999682f1e2e0b1c85](https://openebench.bsc.es/tool/bioszen-6a87238999682f1e2e0b1c85){data-analytics-id="openebench" data-analytics-type="outbound_link" data-analytics-section="availability"}
+- **RRID / SciCrunch:** [RRID:SCR_028902](https://scicrunch.org/resolver/RRID:SCR_028902){data-analytics-id="rrid_scicrunch" data-analytics-type="outbound_link" data-analytics-section="availability"}
 - **Source code and issues:** [https://github.com/bioszen/BIOSZEN](https://github.com/bioszen/BIOSZEN){data-analytics-id="github" data-analytics-type="outbound_link" data-analytics-section="availability"}
 - **R-universe:** [https://bioszen.r-universe.dev/](https://bioszen.r-universe.dev/){data-analytics-id="install" data-analytics-type="outbound_link" data-analytics-section="availability"}
 - **Limited online demo:** [https://bioszen-test.share.connect.posit.cloud](https://bioszen-test.share.connect.posit.cloud){data-analytics-id="try_online" data-analytics-type="outbound_link" data-analytics-section="availability"}
@@ -258,6 +260,8 @@ BIOSZEN::bioszen_citation()
 If you use BIOSZEN in research, please cite the application record:
 
 > Szenfeld, B. (2026). *BIOSZEN* [Computer software]. Zenodo. [https://doi.org/10.5281/zenodo.18217210](https://doi.org/10.5281/zenodo.18217210){data-analytics-id="concept_doi" data-analytics-type="outbound_link" data-analytics-section="citation"}
+
+Research Resource Identifier: [**RRID:SCR_028902**](https://scicrunch.org/resolver/RRID:SCR_028902){data-analytics-id="rrid_scicrunch" data-analytics-type="outbound_link" data-analytics-section="citation"}
 
 ## Feedback and contributions
 
