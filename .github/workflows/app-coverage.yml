@@ -1,0 +1,72 @@
+name: App test coverage
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-coverage-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    name: Measure BIOSZEN app coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    env:
+      NOT_CRAN: "true"
+      CI: "true"
+      RGL_USE_NULL: "true"
+      SHINYTEST2_TIMEOUT: "240000"
+      SHINYTEST2_LOAD_TIMEOUT: "240000"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install test and coverage dependencies
+        uses: r-lib/actions/setup-r-dependencies@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590
+        with:
+          extra-packages: |
+            any::covr
+            any::testthat
+            any::shinytest2
+            any::chromote
+            any::pkgload
+          needs: check
+          pak-version: stable
+
+      - name: Check coverage environment
+        run: Rscript -e "cat('Operating system:', Sys.info()[['sysname']], '\n'); cat('R version:', R.version.string, '\n'); cat('covr version:', as.character(packageVersion('covr')), '\n'); cat('Chrome executable:', chromote::find_chrome(), '\n')"
+
+      - name: Run full app coverage
+        run: Rscript tools/coverage/report-app-coverage.R coverage-report
+
+      - name: Add coverage report to the workflow summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f coverage-report/coverage-summary.md ]]; then
+            cat coverage-report/coverage-summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "# BIOSZEN application test coverage" >> "$GITHUB_STEP_SUMMARY"
+            echo "The coverage command stopped before a report could be created. Inspect the workflow log." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload derived coverage reports only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bioszen-app-coverage-${{ github.run_number }}
+          path: coverage-report/
+          if-no-files-found: warn
+          retention-days: 14
