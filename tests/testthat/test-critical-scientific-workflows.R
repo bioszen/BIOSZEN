@@ -170,26 +170,28 @@ test_that("correlation calculations execute with finite-pair filtering and known
     app_lang = "en"
   )
 
-  plot <- env$build_correlation_plot_impl(
-    scope = "Por Cepa",
-    scope_df = df,
-    input = input,
-    lang = "en",
-    has_ctrl_selected = function() FALSE,
-    corr_adv_last_pair = function() NULL,
-    tr_text = function(key, lang) key,
-    margin_adj = function(top, right, bottom, left) {
-      ggplot2::margin(top, right, bottom, left, unit = "pt")
-    }
+  plot <- suppressWarnings(
+    env$build_correlation_plot_impl(
+      scope = "Por Cepa",
+      scope_df = df,
+      input = input,
+      lang = "en",
+      has_ctrl_selected = function() FALSE,
+      corr_adv_last_pair = function() NULL,
+      tr_text = function(key, lang) key,
+      margin_adj = function(top, right, bottom, left) {
+        ggplot2::margin(top, right, bottom, left, unit = "pt")
+      }
+    )
   )
 
   expect_s3_class(plot, "ggplot")
   expect_equal(plot$data$X, 1:5)
   expect_equal(plot$data$Y, 2 * (1:5) + 1)
-  expect_no_error(ggplot2::ggplot_build(plot))
-  annotation_labels <- unlist(lapply(plot$layers, function(layer) {
-    if (is.data.frame(layer$data) && "label" %in% names(layer$data)) {
-      as.character(layer$data$label)
+  built <- ggplot2::ggplot_build(plot)
+  annotation_labels <- unlist(lapply(built$data, function(layer_data) {
+    if (is.data.frame(layer_data) && "label" %in% names(layer_data)) {
+      as.character(layer_data$label)
     } else {
       character(0)
     }

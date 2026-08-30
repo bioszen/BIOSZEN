@@ -1076,6 +1076,21 @@ wait_for_enabled_element <- function(app, element_id, timeout_sec = 60) {
   FALSE
 }
 
+wait_for_bound_input <- function(app, input_id, timeout_sec = 60) {
+  script <- sprintf(
+    "!!document.querySelector('#%s.shiny-bound-input')",
+    input_id
+  )
+  tryCatch({
+    app$wait_for_js(
+      script = script,
+      timeout = as.integer(timeout_sec * 1000),
+      interval = 250
+    )
+    TRUE
+  }, error = function(e) FALSE)
+}
+
 wait_for_growth_status <- function(app, timeout_sec = 90) {
   deadline <- Sys.time() + as.numeric(timeout_sec)
   last_status <- ""
@@ -3369,10 +3384,11 @@ test_that("dose-response runs end to end from upload through scientific export",
   app$set_inputs(
     dose_strains = c("A", "B"),
     dose_point_display = "mean_error",
-    errbar_stat = "SEM",
     wait_ = TRUE,
     timeout_ = 120000
   )
+  expect_true(wait_for_bound_input(app, "errbar_stat", timeout_sec = 60))
+  app$set_inputs(errbar_stat = "SEM", wait_ = TRUE, timeout_ = 120000)
 
   expect_true(wait_for_plot_idle(app, timeout_sec = 90))
   validation_html <- app$get_html(selector = "#doseConcentrationValidationUI")
@@ -3426,6 +3442,7 @@ test_that("merge failures recover and merged data, curves, and bundle downloads 
   app <- ctx$app
 
   app$click("openMergeModal")
+  expect_true(wait_for_bound_input(app, "mergePlatemaps", timeout_sec = 30))
   app$click("mergePlatemaps", timeout_ = 120000)
   missing_base <- wait_for_dom_text(
     app,
@@ -3449,6 +3466,7 @@ test_that("merge failures recover and merged data, curves, and bundle downloads 
   app$wait_for_value(input = "param", timeout = 120000)
 
   app$click("openMergeModal")
+  expect_true(wait_for_bound_input(app, "mergePlatemaps", timeout_sec = 30))
   app$click("mergePlatemaps", timeout_ = 120000)
   missing_additional <- wait_for_dom_text(
     app,
@@ -3482,6 +3500,7 @@ test_that("merge failures recover and merged data, curves, and bundle downloads 
 
   expect_true(wait_for_enabled_element(app, "openCurveMergeModal", timeout_sec = 60))
   app$click("openCurveMergeModal")
+  expect_true(wait_for_bound_input(app, "mergeCurves", timeout_sec = 30))
   app$upload_file(
     mergeCurveFiles = normalizePath(files$curve_add, winslash = "/", mustWork = TRUE),
     wait_ = TRUE,
