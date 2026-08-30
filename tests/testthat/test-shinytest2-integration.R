@@ -1091,6 +1091,31 @@ wait_for_bound_input <- function(app, input_id, timeout_sec = 60) {
   }, error = function(e) FALSE)
 }
 
+set_accordion_open <- function(app, accordion_id, open = TRUE, timeout_sec = 30) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  desired <- if (isTRUE(open)) "true" else "false"
+  while (Sys.time() < deadline) {
+    ready <- tryCatch(
+      normalize_js_bool(app$get_js(sprintf(
+        "(function(){
+           var root = document.getElementById('%s');
+           var button = root ? root.querySelector('.accordion-button') : null;
+           if (!button) return false;
+           if (button.getAttribute('aria-expanded') !== '%s') button.click();
+           return button.getAttribute('aria-expanded') === '%s';
+         })()",
+        accordion_id,
+        desired,
+        desired
+      ))),
+      error = function(e) FALSE
+    )
+    if (isTRUE(ready)) return(TRUE)
+    Sys.sleep(0.25)
+  }
+  FALSE
+}
+
 wait_for_growth_status <- function(app, timeout_sec = 90) {
   deadline <- Sys.time() + as.numeric(timeout_sec)
   last_status <- ""
@@ -3393,6 +3418,7 @@ test_that("dose-response runs end to end from upload through scientific export",
   expect_true(wait_for_plot_idle(app, timeout_sec = 90))
   validation_html <- app$get_html(selector = "#doseConcentrationValidationUI")
   expect_match(validation_html, "alert-success", fixed = TRUE)
+  expect_true(set_accordion_open(app, "doseStatsPanel", timeout_sec = 60))
 
   parameter_text <- wait_for_stats_output_text(
     app,
