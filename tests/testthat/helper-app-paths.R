@@ -89,6 +89,54 @@ app_test_launch_dir <- function() {
   app_test_path()
 }
 
+# covr::file_coverage() preloads instrumented app functions into the same
+# environment that sources the coverage test driver. Focused tests normally
+# source private copies so they can also run outside covr; during coverage,
+# reuse the instrumented environment instead so those executions are counted.
+app_test_source_env <- function(paths,
+                                required,
+                                parent = globalenv(),
+                                initialize = NULL) {
+  coverage_env <- getOption("BIOSZEN.coverage_source_env", NULL)
+  required <- unique(as.character(required))
+  has_required <- function(env) {
+    is.environment(env) && all(vapply(
+      required,
+      exists,
+      logical(1),
+      envir = env,
+      inherits = FALSE
+    ))
+  }
+
+  if (has_required(coverage_env)) {
+    return(coverage_env)
+  }
+
+  env <- new.env(parent = parent)
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
+  if (is.function(initialize)) initialize(env)
+
+  paths <- normalizePath(paths, winslash = "/", mustWork = TRUE)
+  for (path in paths) sys.source(path, envir = env)
+
+  missing <- required[!vapply(
+    required,
+    exists,
+    logical(1),
+    envir = env,
+    inherits = FALSE
+  )]
+  if (length(missing)) {
+    stop(
+      "Focused app test source did not define: ",
+      paste(missing, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  env
+}
+
 # Some focused tests source global.R directly instead of the full app bootstrap.
 # Load the shared constants first so those tests mirror the production order.
 dpi_config_path <- app_test_path("config.R")

@@ -1,11 +1,13 @@
 load_dose_response_helpers <- function() {
-  env <- new.env(parent = globalenv())
-  env$`%||%` <- function(x, y) if (is.null(x)) y else x
-  sys.source(
-    app_test_path("graficos", "graficos_dose_response.R"),
-    envir = env
+  app_test_source_env(
+    paths = app_test_path("graficos", "graficos_dose_response.R"),
+    required = c(
+      "bioszen_parse_concentration_labels",
+      "bioszen_analyze_dose_response",
+      "build_dose_response_plot_impl",
+      "bioszen_write_dose_response_workbook"
+    )
   )
-  env
 }
 
 dose_response_test_fixture <- local({

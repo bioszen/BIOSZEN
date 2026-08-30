@@ -54,7 +54,7 @@ jobs:
           pak-version: stable
 
       - name: Check test environment
-        run: Rscript -e "cat('Operating system:', Sys.info()[['sysname']], '\n'); cat('Architecture:', Sys.info()[['machine']], '\n'); cat('R version:', R.version.string, '\n'); cat('Chrome executable:', chromote::find_chrome(), '\n')"
+        run: Rscript -e "chrome <- chromote::find_chrome(); cat('Operating system:', Sys.info()[['sysname']], '\n'); cat('Architecture:', Sys.info()[['machine']], '\n'); cat('R version:', R.version.string, '\n'); cat('Chrome executable:', chrome, '\n'); if (!nzchar(chrome)) stop('Chrome/Chromium is required so Shiny browser E2E tests cannot be silently skipped.')"
 
       - name: Run full testthat suite including shiny e2e
         run: Rscript -e "options(shinytest2.timeout = 240000, shinytest2.load_timeout = 240000, testthat.progress.max_fails = Inf); testthat::test_dir('tests/testthat', reporter = 'summary', stop_on_failure = TRUE, stop_on_warning = FALSE)"

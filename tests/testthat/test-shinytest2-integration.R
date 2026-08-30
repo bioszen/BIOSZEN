@@ -908,6 +908,174 @@ make_qc_outlier_e2e_workbook <- function(path) {
   invisible(path)
 }
 
+make_dose_response_e2e_workbook <- function(path) {
+  doses <- c(0, 1, 3, 10, 30, 100)
+  strains <- c(A = 10, B = 30)
+  dat <- do.call(rbind, lapply(names(strains), function(strain) {
+    do.call(rbind, lapply(seq_along(doses), function(index) {
+      dose <- doses[[index]]
+      response <- 20 + 80 / (1 + (dose / strains[[strain]])^1.4)
+      data.frame(
+        Strain = strain,
+        Media = if (dose == 0) "Control" else paste0(dose, " uM Rapa"),
+        Orden = index,
+        Replicate = as.character(1:3),
+        BiologicalReplicate = as.character(1:3),
+        TechnicalReplicate = "A",
+        muMax = response + c(-0.35, 0, 0.35),
+        stringsAsFactors = FALSE
+      )
+    }))
+  }))
+  plate_wells <- as.vector(outer(LETTERS[1:8], 1:12, paste0))
+  dat$Well <- plate_wells[seq_len(nrow(dat))]
+  dat <- dat[, c(
+    "Well", "Strain", "Media", "Orden", "Replicate",
+    "BiologicalReplicate", "TechnicalReplicate", "muMax"
+  )]
+  cfg <- data.frame(
+    Parameter = "muMax",
+    Y_Max = 110,
+    Interval = 10,
+    Y_Title = "Growth rate",
+    stringsAsFactors = FALSE
+  )
+
+  wb <- openxlsx::createWorkbook()
+  openxlsx::addWorksheet(wb, "Datos")
+  openxlsx::writeData(wb, "Datos", dat)
+  openxlsx::addWorksheet(wb, "PlotSettings")
+  openxlsx::writeData(wb, "PlotSettings", cfg)
+  openxlsx::saveWorkbook(wb, path, overwrite = TRUE)
+  invisible(path)
+}
+
+make_merge_e2e_workbooks <- function(directory) {
+  dir.create(directory, recursive = TRUE, showWarnings = FALSE)
+  paths <- list(
+    plate_base = file.path(directory, "plate_base.xlsx"),
+    plate_add = file.path(directory, "plate_add.xlsx"),
+    curve_base = file.path(directory, "curve_base.xlsx"),
+    curve_add = file.path(directory, "curve_add.xlsx")
+  )
+
+  make_plate <- function(path, values) {
+    dat <- data.frame(
+      Well = c("A1", "A2"),
+      Strain = c("WT", "WT"),
+      Media = c("Control", "Control"),
+      Orden = c(1L, 1L),
+      Replicate = c("1", "1"),
+      BiologicalReplicate = c("1", "1"),
+      TechnicalReplicate = c("A", "B"),
+      Signal = values,
+      stringsAsFactors = FALSE
+    )
+    cfg <- data.frame(
+      Parameter = "Signal",
+      Y_Max = 5,
+      Interval = 1,
+      Y_Title = "Signal",
+      stringsAsFactors = FALSE
+    )
+    wb <- openxlsx::createWorkbook()
+    openxlsx::addWorksheet(wb, "Datos")
+    openxlsx::writeData(wb, "Datos", dat)
+    openxlsx::addWorksheet(wb, "PlotSettings")
+    openxlsx::writeData(wb, "PlotSettings", cfg)
+    openxlsx::saveWorkbook(wb, path, overwrite = TRUE)
+  }
+
+  make_curve <- function(path, offset = 0) {
+    time <- 0:4
+    dat <- data.frame(
+      Time = time,
+      A1 = offset + c(0.10, 0.20, 0.35, 0.55, 0.75),
+      A2 = offset + c(0.12, 0.22, 0.38, 0.58, 0.78),
+      check.names = FALSE
+    )
+    cfg <- data.frame(
+      X_Max = 4,
+      Interval_X = 1,
+      Y_Max = 2,
+      Interval_Y = 0.5,
+      X_Title = "Time",
+      Y_Title = "Signal",
+      stringsAsFactors = FALSE
+    )
+    wb <- openxlsx::createWorkbook()
+    openxlsx::addWorksheet(wb, "Sheet1")
+    openxlsx::writeData(wb, "Sheet1", dat)
+    openxlsx::addWorksheet(wb, "Sheet2")
+    openxlsx::writeData(wb, "Sheet2", cfg)
+    openxlsx::saveWorkbook(wb, path, overwrite = TRUE)
+  }
+
+  make_plate(paths$plate_base, c(1.0, 1.1))
+  make_plate(paths$plate_add, c(1.2, 1.3))
+  make_curve(paths$curve_base, offset = 0)
+  make_curve(paths$curve_add, offset = 0.5)
+  paths
+}
+
+wait_for_dom_text <- function(app, output_id, pattern = NULL, timeout_sec = 60) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  last_text <- ""
+  while (Sys.time() < deadline) {
+    raw <- tryCatch(
+      app$get_js(sprintf(
+        "(function(){
+           var el = document.getElementById('%s');
+           return el ? (el.innerText || el.textContent || '') : '';
+         })()",
+        output_id
+      )),
+      error = function(e) ""
+    )
+    last_text <- trimws(normalize_js_scalar(raw))
+    matches <- if (is.null(pattern)) {
+      nzchar(last_text)
+    } else {
+      grepl(pattern, last_text, ignore.case = TRUE, perl = TRUE)
+    }
+    if (isTRUE(matches)) return(last_text)
+    Sys.sleep(0.5)
+  }
+  fail(sprintf("Output '%s' did not match '%s'. Last text: %s", output_id, pattern %||% "non-empty", last_text))
+}
+
+close_active_modal <- function(app) {
+  normalize_js_bool(app$get_js(
+    "(function(){
+       var modal = document.querySelector('.modal.show, .modal.in');
+       if (!modal) return true;
+       var button = modal.querySelector('[data-bs-dismiss=\"modal\"], [data-dismiss=\"modal\"], .btn-close, .modal-footer button');
+       if (!button) return false;
+       button.click();
+       return true;
+     })()"
+  ))
+}
+
+wait_for_enabled_element <- function(app, element_id, timeout_sec = 60) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  while (Sys.time() < deadline) {
+    enabled <- tryCatch(
+      normalize_js_bool(app$get_js(sprintf(
+        "(function(){
+           var el = document.getElementById('%s');
+           return !!el && !el.disabled && !el.classList.contains('disabled');
+         })()",
+        element_id
+      ))),
+      error = function(e) FALSE
+    )
+    if (isTRUE(enabled)) return(TRUE)
+    Sys.sleep(0.5)
+  }
+  FALSE
+}
+
 wait_for_growth_status <- function(app, timeout_sec = 90) {
   deadline <- Sys.time() + as.numeric(timeout_sec)
   last_status <- ""
@@ -3162,6 +3330,213 @@ test_that("large platemap keeps final group order, filters, plot, and downloads"
   plot_array <- png::readPNG(plot_download)
   expect_true(length(dim(plot_array)) >= 2L)
   expect_true(all(dim(plot_array)[1:2] > 0L))
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("dose-response runs end to end from upload through scientific export", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("drc")
+  skip_if_not_installed("openxlsx")
+
+  fixture <- tempfile("dose_response_e2e_", fileext = ".xlsx")
+  on.exit(unlink(fixture, force = TRUE), add = TRUE)
+  make_dose_response_e2e_workbook(fixture)
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(
+    dataFile = normalizePath(fixture, winslash = "/", mustWork = TRUE),
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  app$wait_for_value(input = "param", timeout = 120000)
+  app$set_inputs(
+    tipo = "DoseResponse",
+    scope = "Combinado",
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  app$wait_for_value(input = "dose_series", timeout = 120000)
+  app$wait_for_value(input = "dose_strains", timeout = 120000)
+  app$set_inputs(
+    dose_strains = c("A", "B"),
+    dose_point_display = "mean_error",
+    errbar_stat = "SEM",
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+
+  expect_true(wait_for_plot_idle(app, timeout_sec = 90))
+  validation_html <- app$get_html(selector = "#doseConcentrationValidationUI")
+  expect_match(validation_html, "alert-success", fixed = TRUE)
+
+  parameter_text <- wait_for_stats_output_text(
+    app,
+    "doseCurveParametersTable",
+    timeout_sec = 120
+  )
+  expect_match(parameter_text, "A")
+  expect_match(parameter_text, "B")
+
+  statistics_path <- app$get_download(output = "downloadStats")
+  expect_nonempty_download(statistics_path, "dose-response statistics workbook")
+  expect_identical(
+    openxlsx::getSheetNames(statistics_path),
+    c(
+      "Replicate values", "Curve parameters", "IC50 results",
+      "Strain comparisons", "Model diagnostics", "Analysis settings"
+    )
+  )
+  parameters <- openxlsx::read.xlsx(statistics_path, sheet = "Curve parameters")
+  diagnostics <- openxlsx::read.xlsx(statistics_path, sheet = "Model diagnostics")
+  expect_setequal(as.character(parameters$Strain), c("A", "B"))
+  expect_true(all(is.finite(as.numeric(parameters$IC50))))
+  expect_true(all(as.logical(diagnostics$Converged)))
+
+  plot_path <- app$get_download(output = "downloadPlot_png")
+  expect_nonempty_download(plot_path, "dose-response plot")
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("merge failures recover and merged data, curves, and bundle downloads remain valid", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("openxlsx")
+  skip_if_not_installed("zip")
+
+  fixture_dir <- tempfile("merge_bundle_e2e_")
+  on.exit(unlink(fixture_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  files <- make_merge_e2e_workbooks(fixture_dir)
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$click("openMergeModal")
+  app$click("mergePlatemaps", timeout_ = 120000)
+  missing_base <- wait_for_dom_text(
+    app,
+    "mergeStatus",
+    pattern = "base|archivo de datos",
+    timeout_sec = 30
+  )
+  expect_true(nzchar(missing_base))
+  expect_true(close_active_modal(app))
+
+  app$upload_file(
+    dataFile = normalizePath(files$plate_base, winslash = "/", mustWork = TRUE),
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  app$upload_file(
+    curveFile = normalizePath(files$curve_base, winslash = "/", mustWork = TRUE),
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  app$wait_for_value(input = "param", timeout = 120000)
+
+  app$click("openMergeModal")
+  app$click("mergePlatemaps", timeout_ = 120000)
+  missing_additional <- wait_for_dom_text(
+    app,
+    "mergeStatus",
+    pattern = "at least one|al menos un|agrega",
+    timeout_sec = 30
+  )
+  expect_true(nzchar(missing_additional))
+
+  app$upload_file(
+    mergeFiles = normalizePath(files$plate_add, winslash = "/", mustWork = TRUE),
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  app$click("mergePlatemaps", timeout_ = 120000)
+  merged_status <- wait_for_dom_text(
+    app,
+    "mergeStatus",
+    pattern = "ready|listo",
+    timeout_sec = 120
+  )
+  expect_match(merged_status, "4")
+
+  merged_plate <- app$get_download(output = "downloadMergedPlatemap")
+  expect_nonempty_download(merged_plate, "merged platemap")
+  merged_data <- openxlsx::read.xlsx(merged_plate, sheet = "Datos")
+  expect_equal(nrow(merged_data), 4L)
+  expect_equal(as.character(merged_data$Well), c("A1", "A2", "A3", "A4"))
+  expect_equal(as.character(merged_data$BiologicalReplicate), c("1", "1", "2", "2"))
+  expect_true(close_active_modal(app))
+
+  expect_true(wait_for_enabled_element(app, "openCurveMergeModal", timeout_sec = 60))
+  app$click("openCurveMergeModal")
+  app$upload_file(
+    mergeCurveFiles = normalizePath(files$curve_add, winslash = "/", mustWork = TRUE),
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  app$click("mergeCurves", timeout_ = 120000)
+  curve_status <- wait_for_dom_text(
+    app,
+    "curveMergeStatus",
+    pattern = "ready|lista",
+    timeout_sec = 120
+  )
+  expect_match(curve_status, "4")
+
+  merged_curves <- app$get_download(output = "downloadMergedCurves")
+  expect_nonempty_download(merged_curves, "merged curves")
+  curve_data <- openxlsx::read.xlsx(merged_curves, sheet = "Sheet1", check.names = FALSE)
+  expect_identical(names(curve_data), c("Time", "A1", "A2", "A3", "A4"))
+  expect_equal(as.numeric(curve_data$A3), 0.5 + c(0.10, 0.20, 0.35, 0.55, 0.75))
+  expect_true(close_active_modal(app))
+
+  app$set_inputs(
+    tipo = "Boxplot",
+    scope = "Por Cepa",
+    bundle_label = "merge-recovery",
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  expect_true(wait_for_plot_idle(app, timeout_sec = 90))
+  app$click("save_bundle_version", timeout_ = 180000)
+  expect_true(wait_for_enabled_element(app, "downloadBundleZip", timeout_sec = 90))
+
+  bundle_path <- app$get_download(output = "downloadBundleZip")
+  expect_nonempty_download(bundle_path, "BIOSZEN bundle")
+  bundle_entries <- chartr("\\", "/", utils::unzip(bundle_path, list = TRUE)$Name)
+  expect_true("versions/manifest.csv" %in% bundle_entries)
+  expect_true(any(grepl("^versions/png/.+[.]png$", bundle_entries)))
+  expect_true(any(grepl("^versions/pdf/.+[.]pdf$", bundle_entries)))
+  expect_true(any(grepl("^versions/ppt/.+[.]pptx$", bundle_entries)))
+  expect_true(any(grepl("^versions/metadata/.+[.]xlsx$", bundle_entries)))
+  expect_true(any(grepl("^datasets/", bundle_entries)))
+
+  extract_dir <- tempfile("bundle_manifest_")
+  dir.create(extract_dir, recursive = TRUE)
+  on.exit(unlink(extract_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  utils::unzip(bundle_path, files = "versions/manifest.csv", exdir = extract_dir)
+  manifest <- utils::read.csv(
+    file.path(extract_dir, "versions", "manifest.csv"),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  expect_equal(nrow(manifest), 1L)
+  expect_identical(as.character(manifest$Label[[1]]), "merge-recovery")
+  expect_identical(as.character(manifest$Type[[1]]), "Boxplot")
+  expect_true(nzchar(as.character(manifest$Dataset[[1]])))
 
   critical <- find_critical_frontend_logs(app$get_logs())
   expect_equal(

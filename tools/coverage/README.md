@@ -14,6 +14,7 @@ Open **Actions > App test coverage > Run workflow**. The workflow is manual-only
 - the `bioszen-app-coverage-<run number>` artifact contains the derived reports;
 - `uncovered-line-ranges.csv` identifies functions and line ranges not executed by the tests;
 - `coverage-test-summary.csv` and `coverage-test-issues.csv` record the test status without suppressing the coverage report.
+- `coverage-by-test-lane.csv` separates browser E2E, direct-source, and other in-process test execution.
 
 The artifact does not contain an HTML source listing, package bundle, or application source copy. It is retained for 14 days.
 
@@ -27,4 +28,4 @@ Rscript tools/coverage/report-app-coverage.R coverage-report
 
 The command runs the full existing test suite, including browser tests. It can therefore take a long time and may open child R/Chrome processes. Test failures and warnings are recorded in derived CSV files but do not suppress the diagnostic coverage report; failures in app loading or coverage instrumentation still return a non-zero exit status.
 
-Coverage for code executed only inside the separate Shiny browser-test process can be conservatively under-counted by `covr::file_coverage()`. This limitation is stated in every generated report.
+Focused source-based tests use the instrumented environment when the coverage command provides one, so their executed functions can contribute to line coverage without changing application code. Browser E2E tests still run in a separate Shiny process; their results are reported in a dedicated functional lane instead of being used to inflate parent-process line coverage. This distinction is stated in every generated report.

@@ -108,6 +108,8 @@ writeLines(c(
   "  shinytest2.timeout = 240000,",
   "  shinytest2.load_timeout = 240000",
   ")",
+  ".bioszen_coverage_source_env <- environment()",
+  "options(BIOSZEN.coverage_source_env = .bioszen_coverage_source_env)",
   ".bioszen_coverage_test_results <- as.data.frame(testthat::test_dir(",
   "  path = file.path(getwd(), 'tests', 'testthat'),",
   "  reporter = 'summary',",
@@ -177,6 +179,63 @@ test_results <- if (file.exists(test_results_file)) {
   as.data.frame(readRDS(test_results_file))
 } else {
   empty_test_results
+}
+
+suite_test_files <- sort(list.files(
+  file.path(project_root, "tests", "testthat"),
+  pattern = "^test.*[.]R$",
+  full.names = TRUE
+))
+direct_source_files <- basename(suite_test_files[vapply(suite_test_files, function(path) {
+  text <- paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  grepl(
+    "(?:sys[.])?source[[:space:]]*[(]|app_test_source_env[[:space:]]*[(]",
+    text,
+    perl = TRUE
+  )
+}, logical(1))])
+browser_test_files <- c(
+  "test-shinytest2-integration.R",
+  "test-growth-live-browser.R"
+)
+
+lane_for_test_file <- function(path) {
+  filename <- basename(as.character(path))
+  if (filename %in% browser_test_files) return("Browser E2E")
+  if (filename %in% direct_source_files) return("Direct-source app tests")
+  "Other in-process tests"
+}
+
+if (nrow(test_results)) {
+  test_results$lane <- vapply(test_results$file, lane_for_test_file, character(1))
+  lane_order <- c("Browser E2E", "Direct-source app tests", "Other in-process tests")
+  lane_summary <- do.call(rbind, lapply(lane_order, function(lane) {
+    rows <- test_results[test_results$lane == lane, , drop = FALSE]
+    data.frame(
+      lane = lane,
+      test_files = length(unique(basename(as.character(rows$file)))),
+      test_blocks = nrow(rows),
+      passed_expectations = sum(rows$passed, na.rm = TRUE),
+      failed_expectations = sum(rows$failed, na.rm = TRUE),
+      error_blocks = sum(rows$error, na.rm = TRUE),
+      warning_expectations = sum(rows$warning, na.rm = TRUE),
+      skipped_blocks = sum(rows$skipped, na.rm = TRUE),
+      stringsAsFactors = FALSE
+    )
+  }))
+  rownames(lane_summary) <- NULL
+} else {
+  lane_summary <- data.frame(
+    lane = character(),
+    test_files = integer(),
+    test_blocks = integer(),
+    passed_expectations = integer(),
+    failed_expectations = integer(),
+    error_blocks = integer(),
+    warning_expectations = integer(),
+    skipped_blocks = integer(),
+    stringsAsFactors = FALSE
+  )
 }
 
 test_counts <- data.frame(
@@ -419,6 +478,12 @@ utils::write.csv(
   row.names = FALSE,
   na = ""
 )
+utils::write.csv(
+  lane_summary,
+  file.path(output_dir, "coverage-by-test-lane.csv"),
+  row.names = FALSE,
+  na = ""
+)
 
 format_percent <- function(value) {
   ifelse(is.na(value), "N/A", sprintf("%.2f%%", value))
@@ -455,6 +520,19 @@ file_markdown <- data.frame(
   `Measured lines` = file_summary$measured_lines,
   Coverage = format_percent(file_summary$coverage_percent),
   Status = file_summary$status,
+  check.names = FALSE,
+  stringsAsFactors = FALSE
+)
+
+lane_markdown <- data.frame(
+  Lane = lane_summary$lane,
+  `Test files` = lane_summary$test_files,
+  `Test blocks` = lane_summary$test_blocks,
+  `Passed expectations` = lane_summary$passed_expectations,
+  `Failed expectations` = lane_summary$failed_expectations,
+  `Error blocks` = lane_summary$error_blocks,
+  Warnings = lane_summary$warning_expectations,
+  `Skipped blocks` = lane_summary$skipped_blocks,
   check.names = FALSE,
   stringsAsFactors = FALSE
 )
@@ -502,6 +580,12 @@ summary_lines <- c(
   "",
   "Any test issues are listed without source snippets in `coverage-test-issues.csv`; they do not suppress the diagnostic coverage report.",
   "",
+  "## Test execution by lane",
+  "",
+  markdown_table(lane_markdown),
+  "",
+  "Direct-source and browser E2E tests are shown explicitly so their successful execution is not hidden by parent-process line counters. Browser execution is reported as a separate functional lane and does not artificially increase line coverage.",
+  "",
   "## Coverage by section",
   "",
   markdown_table(section_markdown),
@@ -523,7 +607,8 @@ summary_lines <- c(
   "- The scope is the R source under `inst/app`; no application source file is edited.",
   "- The percentage is line coverage: a line is covered when the current tests execute an expression instrumented by `covr` on that line.",
   "- The full existing `tests/testthat` suite is run. Test failures and warnings are recorded separately instead of suppressing the coverage artifact; the regular R tests workflow remains the test gate.",
-  "- Browser tests launch the Shiny app in a separate R process. Code executed only in that child process may not increment `file_coverage()` counters, so E2E-only paths can appear conservatively under-covered.",
+  "- Focused tests can reuse the instrumented app environment through `app_test_source_env()`, allowing direct source-based scientific tests to contribute to line coverage without changing production code.",
+  "- Browser tests launch the Shiny app in a separate R process. Their pass/fail results are represented in the Browser E2E lane, while code executed only in that child process does not inflate parent-process `file_coverage()` counters.",
   "- Coverage measures execution, not assertion quality; it is one confidence indicator rather than proof that behavior is correct.",
   "- No `pkgcheck`, Codecov, Coveralls, SonarQube, or other external coverage upload is used. The workflow artifact contains derived Markdown/CSV reports only, without source-code snippets.",
   "- The workflow reports the percentage but does not enforce a minimum coverage threshold."
