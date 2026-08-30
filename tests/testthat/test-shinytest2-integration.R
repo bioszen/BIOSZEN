@@ -829,6 +829,23 @@ current_notification_text <- function(app) {
   ))
 }
 
+wait_for_notification_text <- function(app, pattern, timeout_sec = 20) {
+  deadline <- Sys.time() + as.numeric(timeout_sec)
+  last_text <- ""
+  while (Sys.time() < deadline) {
+    last_text <- tryCatch(current_notification_text(app), error = function(e) "")
+    if (nzchar(last_text) && grepl(pattern, last_text, ignore.case = TRUE, perl = TRUE)) {
+      return(last_text)
+    }
+    Sys.sleep(0.25)
+  }
+  fail(sprintf(
+    "Notification matching '%s' did not appear. Last notification text: %s",
+    pattern,
+    last_text
+  ))
+}
+
 activate_stats_tab <- function(app, pattern) {
   js <- sprintf(
     "(function(){
@@ -1310,8 +1327,21 @@ expect_grouped_download_accepts_filtered_tabs <- function(path, require_filtered
     differs_from_base <- vapply(filtered, function(sheet) {
       base_sheet <- sub("_filt$", "", sheet)
       if (!base_sheet %in% tabs) return(FALSE)
-      base_data <- suppressMessages(readxl::read_excel(path, sheet = base_sheet, col_names = FALSE))
-      filt_data <- suppressMessages(readxl::read_excel(path, sheet = sheet, col_names = FALSE))
+      # Grouped exports intentionally contain sparse text columns. Reading all
+      # cells as text avoids readxl guessing "logical" from the first 1,000
+      # empty rows and then warning when later rows contain group labels.
+      base_data <- suppressMessages(readxl::read_excel(
+        path,
+        sheet = base_sheet,
+        col_names = FALSE,
+        col_types = "text"
+      ))
+      filt_data <- suppressMessages(readxl::read_excel(
+        path,
+        sheet = sheet,
+        col_names = FALSE,
+        col_types = "text"
+      ))
       !identical(base_data, filt_data)
     }, logical(1))
     expect_true(
@@ -1325,7 +1355,13 @@ expect_grouped_download_accepts_filtered_tabs <- function(path, require_filtered
   check_tabs <- check_tabs[!is.na(check_tabs) & nzchar(check_tabs)]
   for (sheet in check_tabs) {
     expect_no_error(
-      readxl::read_excel(path, sheet = sheet, col_names = FALSE, n_max = 20)
+      readxl::read_excel(
+        path,
+        sheet = sheet,
+        col_names = FALSE,
+        col_types = "text",
+        n_max = 20
+      )
     )
   }
 
@@ -1356,6 +1392,97 @@ test_that("browser upload flow keeps searchable selectors and no critical fronte
   param_search <- app$get_html(selector = "#param + .selectize-control .selectize-input input")
   expect_match(strain_search, "id=\"strain-selectized\"", fixed = TRUE)
   expect_match(param_search, "id=\"param-selectized\"", fixed = TRUE)
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("malformed data and curve uploads recover after valid replacements", {
+  skip_if_shiny_e2e_unavailable()
+
+  data_fixture <- app_test_path(
+    "www", "reference_files", "Ejemplo_platemap_parametros.xlsx"
+  )
+  curve_fixture <- app_test_path(
+    "www", "reference_files", "Ejemplo_curvas.xlsx"
+  )
+  expect_true(file.exists(data_fixture))
+  expect_true(file.exists(curve_fixture))
+
+  malformed <- tempfile("bioszen_malformed_upload_", fileext = ".xlsx")
+  writeLines(c("this is not", "an Excel workbook"), malformed, useBytes = TRUE)
+  on.exit(unlink(malformed, force = TRUE), add = TRUE)
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  clear_shiny_notifications(app)
+  app$upload_file(
+    dataFile = normalizePath(malformed, winslash = "/", mustWork = TRUE),
+    wait_ = FALSE,
+    timeout_ = 120000
+  )
+  data_error <- wait_for_notification_text(
+    app,
+    "Invalid data file|Archivo de datos inv[aá]lido",
+    timeout_sec = 30
+  )
+  expect_match(
+    data_error,
+    "Invalid data file|Archivo de datos inv[aá]lido",
+    ignore.case = TRUE,
+    perl = TRUE
+  )
+  expect_true(wait_for_shiny_connected(app, timeout_sec = 30))
+
+  app$upload_file(
+    dataFile = normalizePath(data_fixture, winslash = "/", mustWork = TRUE),
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  app$wait_for_value(input = "strain", timeout = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  recovered_strain <- as.character(app$get_value(input = "strain"))
+  recovered_param <- as.character(app$get_value(input = "param"))
+  expect_true(length(recovered_strain) > 0L && nzchar(recovered_strain[[1]]))
+  expect_true(length(recovered_param) > 0L && nzchar(recovered_param[[1]]))
+  recovered_data <- app$get_download(output = "downloadExcel")
+  expect_nonempty_download(recovered_data, "data export after malformed upload recovery")
+
+  clear_shiny_notifications(app)
+  app$upload_file(
+    curveFile = normalizePath(malformed, winslash = "/", mustWork = TRUE),
+    wait_ = FALSE,
+    timeout_ = 120000
+  )
+  curve_error <- wait_for_notification_text(
+    app,
+    "Invalid curves file|Archivo de curvas inv[aá]lido",
+    timeout_sec = 30
+  )
+  expect_match(
+    curve_error,
+    "Invalid curves file|Archivo de curvas inv[aá]lido",
+    ignore.case = TRUE,
+    perl = TRUE
+  )
+  expect_true(wait_for_shiny_connected(app, timeout_sec = 30))
+  expect_identical(as.character(app$get_value(input = "param"))[[1]], recovered_param[[1]])
+
+  app$upload_file(
+    curveFile = normalizePath(curve_fixture, winslash = "/", mustWork = TRUE),
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  app$set_inputs(tipo = "Curvas", wait_ = FALSE, timeout_ = 120000)
+  expect_true(wait_for_plot_idle(app, timeout_sec = 120))
+  recovered_curve_plot <- app$get_download(output = "downloadPlot_png")
+  expect_nonempty_download(recovered_curve_plot, "curve plot after malformed upload recovery")
 
   critical <- find_critical_frontend_logs(app$get_logs())
   expect_equal(
