@@ -8,7 +8,9 @@
 options(
   warn = 1,
   keep.source = TRUE,
+  keep.source.pkgs = TRUE,
   keep.parse.data = TRUE,
+  keep.parse.data.pkgs = TRUE,
   testthat.progress.max_fails = Inf,
   shinytest2.timeout = 240000,
   shinytest2.load_timeout = 240000
@@ -90,20 +92,35 @@ if (length(missing_sources)) {
 }
 
 driver_file <- tempfile("bioszen-coverage-tests-", fileext = ".R")
-on.exit(unlink(driver_file), add = TRUE)
+test_results_file <- tempfile("bioszen-coverage-test-results-", fileext = ".rds")
+on.exit(unlink(c(driver_file, test_results_file)), add = TRUE)
+test_results_literal <- encodeString(
+  normalizePath(test_results_file, winslash = "/", mustWork = FALSE),
+  quote = "\""
+)
 writeLines(c(
   "options(",
+  "  keep.source = TRUE,",
+  "  keep.source.pkgs = TRUE,",
+  "  keep.parse.data = TRUE,",
+  "  keep.parse.data.pkgs = TRUE,",
   "  testthat.progress.max_fails = Inf,",
   "  shinytest2.timeout = 240000,",
   "  shinytest2.load_timeout = 240000",
   ")",
-  "testthat::test_dir(",
+  ".bioszen_coverage_test_results <- as.data.frame(testthat::test_dir(",
   "  path = file.path(getwd(), 'tests', 'testthat'),",
   "  reporter = 'summary',",
   "  env = environment(),",
-  "  stop_on_failure = TRUE,",
+  "  stop_on_failure = FALSE,",
   "  stop_on_warning = FALSE",
-  ")"
+  "))",
+  ".bioszen_coverage_test_results$result <- NULL",
+  paste0(
+    "saveRDS(.bioszen_coverage_test_results, file = ",
+    test_results_literal,
+    ")"
+  )
 ), con = driver_file, useBytes = TRUE)
 
 generated_at <- format(Sys.time(), tz = "UTC", usetz = TRUE)
@@ -139,6 +156,54 @@ coverage <- tryCatch(
     stop(error)
   }
 )
+
+empty_test_results <- data.frame(
+  file = character(),
+  context = character(),
+  test = character(),
+  nb = integer(),
+  failed = integer(),
+  skipped = logical(),
+  error = logical(),
+  warning = integer(),
+  user = numeric(),
+  system = numeric(),
+  real = numeric(),
+  passed = integer(),
+  stringsAsFactors = FALSE
+)
+
+test_results <- if (file.exists(test_results_file)) {
+  as.data.frame(readRDS(test_results_file))
+} else {
+  empty_test_results
+}
+
+test_counts <- data.frame(
+  test_blocks = nrow(test_results),
+  passed_expectations = sum(test_results$passed, na.rm = TRUE),
+  failed_expectations = sum(test_results$failed, na.rm = TRUE),
+  error_blocks = sum(test_results$error, na.rm = TRUE),
+  warning_expectations = sum(test_results$warning, na.rm = TRUE),
+  skipped_blocks = sum(test_results$skipped, na.rm = TRUE),
+  stringsAsFactors = FALSE
+)
+
+test_status <- if (!nrow(test_results)) {
+  "not recorded"
+} else if (test_counts$failed_expectations == 0L && test_counts$error_blocks == 0L) {
+  "passed"
+} else {
+  "completed with non-fatal test issues"
+}
+
+test_issue_rows <- test_results[
+  test_results$failed > 0L |
+    test_results$error |
+    test_results$warning > 0L,
+  c("file", "context", "test", "failed", "error", "warning"),
+  drop = FALSE
+]
 
 to_repository_path <- function(path) {
   path <- gsub("\\\\", "/", as.character(path))
@@ -342,6 +407,18 @@ utils::write.csv(
   row.names = FALSE,
   na = ""
 )
+utils::write.csv(
+  cbind(status = test_status, test_counts),
+  file.path(output_dir, "coverage-test-summary.csv"),
+  row.names = FALSE,
+  na = ""
+)
+utils::write.csv(
+  test_issue_rows,
+  file.path(output_dir, "coverage-test-issues.csv"),
+  row.names = FALSE,
+  na = ""
+)
 
 format_percent <- function(value) {
   ifelse(is.na(value), "N/A", sprintf("%.2f%%", value))
@@ -409,6 +486,22 @@ summary_lines <- c(
   "",
   paste0("Uncovered measured lines: **", total_uncovered, "**."),
   "",
+  "## Test execution",
+  "",
+  paste0("Status: **", test_status, "**."),
+  "",
+  paste0(
+    "Test blocks: ", test_counts$test_blocks,
+    "; passed expectations: ", test_counts$passed_expectations,
+    "; failed expectations: ", test_counts$failed_expectations,
+    "; error blocks: ", test_counts$error_blocks,
+    "; warnings: ", test_counts$warning_expectations,
+    "; skipped blocks: ", test_counts$skipped_blocks,
+    "."
+  ),
+  "",
+  "Any test issues are listed without source snippets in `coverage-test-issues.csv`; they do not suppress the diagnostic coverage report.",
+  "",
   "## Coverage by section",
   "",
   markdown_table(section_markdown),
@@ -429,7 +522,7 @@ summary_lines <- c(
   "",
   "- The scope is the R source under `inst/app`; no application source file is edited.",
   "- The percentage is line coverage: a line is covered when the current tests execute an expression instrumented by `covr` on that line.",
-  "- The full existing `tests/testthat` suite is run. A test failure stops coverage and makes the workflow fail.",
+  "- The full existing `tests/testthat` suite is run. Test failures and warnings are recorded separately instead of suppressing the coverage artifact; the regular R tests workflow remains the test gate.",
   "- Browser tests launch the Shiny app in a separate R process. Code executed only in that child process may not increment `file_coverage()` counters, so E2E-only paths can appear conservatively under-covered.",
   "- Coverage measures execution, not assertion quality; it is one confidence indicator rather than proof that behavior is correct.",
   "- No `pkgcheck`, Codecov, Coveralls, SonarQube, or other external coverage upload is used. The workflow artifact contains derived Markdown/CSV reports only, without source-code snippets.",

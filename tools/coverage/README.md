@@ -12,7 +12,8 @@ Open **Actions > App test coverage > Run workflow**. The workflow is manual-only
 
 - the run summary shows total coverage and coverage by section and file;
 - the `bioszen-app-coverage-<run number>` artifact contains the derived reports;
-- `uncovered-line-ranges.csv` identifies functions and line ranges not executed by the tests.
+- `uncovered-line-ranges.csv` identifies functions and line ranges not executed by the tests;
+- `coverage-test-summary.csv` and `coverage-test-issues.csv` record the test status without suppressing the coverage report.
 
 The artifact does not contain an HTML source listing, package bundle, or application source copy. It is retained for 14 days.
 
@@ -24,6 +25,6 @@ From the repository root, with package dependencies plus `covr` and `testthat` i
 Rscript tools/coverage/report-app-coverage.R coverage-report
 ```
 
-The command runs the full existing test suite, including browser tests. It can therefore take a long time and may open child R/Chrome processes. A failing test stops the report and returns a non-zero exit status.
+The command runs the full existing test suite, including browser tests. It can therefore take a long time and may open child R/Chrome processes. Test failures and warnings are recorded in derived CSV files but do not suppress the diagnostic coverage report; failures in app loading or coverage instrumentation still return a non-zero exit status.
 
 Coverage for code executed only inside the separate Shiny browser-test process can be conservatively under-counted by `covr::file_coverage()`. This limitation is stated in every generated report.
