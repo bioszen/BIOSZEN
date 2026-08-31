@@ -967,6 +967,25 @@ make_dose_response_e2e_workbook <- function(path) {
   invisible(path)
 }
 
+make_statistical_reference_e2e_workbook <- function(path) {
+  dat <- bioszen_read_reference("three_groups.csv")
+  cfg <- data.frame(
+    Parameter = "Value",
+    Y_Max = 15,
+    Interval = 1,
+    Y_Title = "Reference value",
+    stringsAsFactors = FALSE
+  )
+
+  wb <- openxlsx::createWorkbook()
+  openxlsx::addWorksheet(wb, "Datos")
+  openxlsx::writeData(wb, "Datos", dat)
+  openxlsx::addWorksheet(wb, "PlotSettings")
+  openxlsx::writeData(wb, "PlotSettings", cfg)
+  openxlsx::saveWorkbook(wb, path, overwrite = TRUE)
+  invisible(path)
+}
+
 make_merge_e2e_workbooks <- function(directory) {
   dir.create(directory, recursive = TRUE, showWarnings = FALSE)
   paths <- list(
@@ -1265,6 +1284,23 @@ wait_for_stats_output_text <- function(app, output_id, timeout_sec = 45) {
     Sys.sleep(0.5)
   }
   fail(sprintf("Stats output '%s' did not populate. Last text: %s", output_id, last_text))
+}
+
+full_stats_output_text <- function(app, output_id) {
+  raw <- app$get_js(sprintf(
+    "(function(){
+       var values = window.Shiny && Shiny.shinyapp && Shiny.shinyapp.$values;
+       var val = values ? values['%s'] : null;
+       if (!val || !val.x || !Array.isArray(val.x.data)) return '';
+       return JSON.stringify(val.x.data);
+     })()",
+    output_id
+  ))
+  payload <- normalize_js_scalar(raw)
+  parsed <- tryCatch(jsonlite::fromJSON(payload), error = function(e) NULL)
+  if (is.null(parsed)) return("")
+  text <- paste(unlist(parsed, use.names = FALSE), collapse = " ")
+  trimws(gsub("\\s+", " ", gsub("\u00a0", " ", text, fixed = TRUE), perl = TRUE))
 }
 
 expect_nonempty_download <- function(path, label) {
@@ -3572,6 +3608,123 @@ test_that("dose-response runs end to end from upload through scientific export",
 
   plot_path <- app$get_download(output = "downloadPlot_png")
   expect_nonempty_download(plot_path, "dose-response plot")
+
+  critical <- find_critical_frontend_logs(app$get_logs())
+  expect_equal(
+    nrow(critical),
+    0,
+    info = paste(unique(as.character(critical$message)), collapse = "\n")
+  )
+})
+
+test_that("reference statistics agree across panel, plot, and Excel export", {
+  skip_if_shiny_e2e_unavailable()
+  skip_if_not_installed("jsonlite")
+  skip_if_not_installed("openxlsx")
+  skip_if_not_installed("png")
+  skip_if_not_installed("rstatix")
+
+  fixture <- tempfile("bioszen_statistics_reference_", fileext = ".xlsx")
+  on.exit(unlink(fixture, force = TRUE), add = TRUE)
+  make_statistical_reference_e2e_workbook(fixture)
+  reference <- bioszen_read_reference("three_groups.csv")
+  reference$Media <- factor(reference$Media, levels = unique(reference$Media))
+
+  ctx <- start_bioszen_driver()
+  on.exit(stop_bioszen_driver(ctx), add = TRUE)
+  app <- ctx$app
+
+  app$upload_file(
+    dataFile = normalizePath(fixture, winslash = "/", mustWork = TRUE),
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  app$wait_for_value(input = "strain", timeout = 120000)
+  app$wait_for_value(input = "param", timeout = 120000)
+  app$set_inputs(
+    tipo = "Boxplot",
+    scope = "Por Cepa",
+    strain = "S1",
+    param = "Value",
+    wait_ = TRUE,
+    timeout_ = 120000
+  )
+  expect_true(wait_for_plot_idle(app, timeout_sec = 90))
+
+  expect_true(activate_stats_tab(app, "normal|normalidad"))
+  app$set_inputs(normTests = c("shapiro", "ks", "ad"), wait_ = TRUE, timeout_ = 60000)
+  app$click("runNorm", timeout_ = 120000)
+  norm_text <- wait_for_stats_output_text(app, "normTable", timeout_sec = 120)
+
+  expected_shapiro <- vapply(
+    split(reference$Value, reference$Media),
+    function(values) stats::shapiro.test(values)$p.value,
+    numeric(1)
+  )
+  expect_true(all(vapply(
+    levels(reference$Media),
+    function(label) grepl(label, norm_text, fixed = TRUE),
+    logical(1)
+  )))
+  for (p_value in expected_shapiro) {
+    expect_match(norm_text, bioszen_reference_format_p(p_value), fixed = TRUE)
+  }
+
+  expect_true(activate_stats_tab(app, "signif|significancia"))
+  app$set_inputs(sigTest = "ANOVA", wait_ = TRUE, timeout_ = 60000)
+  expect_true(wait_for_bound_input(app, "postHoc", timeout_sec = 60))
+  app$set_inputs(
+    postHoc = "Tukey",
+    compMode = "all",
+    multitest_method = "none",
+    wait_ = TRUE,
+    timeout_ = 60000
+  )
+  app$click("runSig", timeout_ = 120000)
+  wait_for_stats_output_text(app, "sigTable", timeout_sec = 120)
+  sig_text <- full_stats_output_text(app, "sigTable")
+
+  expected_tukey <- rstatix::tukey_hsd(reference, Value ~ Media)
+  expected_groups <- unique(c(
+    as.character(expected_tukey$group1),
+    as.character(expected_tukey$group2)
+  ))
+  expect_true(all(vapply(
+    expected_groups,
+    function(label) grepl(label, sig_text, fixed = TRUE),
+    logical(1)
+  )))
+  for (p_value in expected_tukey$p.adj) {
+    expect_match(sig_text, bioszen_reference_format_p(p_value), fixed = TRUE)
+  }
+
+  statistics_path <- app$get_download(output = "downloadStats")
+  expect_nonempty_download(statistics_path, "reference statistics workbook")
+  expect_true("Value" %in% openxlsx::getSheetNames(statistics_path))
+  workbook_values <- openxlsx::read.xlsx(
+    statistics_path,
+    sheet = "Value",
+    colNames = FALSE,
+    skipEmptyRows = FALSE,
+    check.names = FALSE
+  )
+  workbook_tokens <- as.character(unlist(workbook_values, use.names = FALSE))
+  workbook_numeric <- suppressWarnings(as.numeric(workbook_tokens))
+  workbook_numeric <- workbook_numeric[is.finite(workbook_numeric)]
+  expect_true(any(workbook_tokens == "Normalidad"))
+  expect_true(any(workbook_tokens == "Significancia"))
+  for (p_value in expected_shapiro) {
+    expect_true(any(abs(workbook_numeric - p_value) <= max(1e-12, abs(p_value) * 1e-10)))
+  }
+  for (p_value in expected_tukey$p.adj) {
+    expect_true(any(abs(workbook_numeric - p_value) <= max(1e-12, abs(p_value) * 1e-10)))
+  }
+
+  plot_path <- app$get_download(output = "downloadPlot_png")
+  expect_nonempty_download(plot_path, "reference statistics plot")
+  plot_array <- png::readPNG(plot_path)
+  expect_true(length(dim(plot_array)) >= 2L)
+  expect_true(all(dim(plot_array)[1:2] > 0L))
 
   critical <- find_critical_frontend_logs(app$get_logs())
   expect_equal(

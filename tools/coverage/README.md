@@ -29,3 +29,10 @@ Rscript tools/coverage/report-app-coverage.R coverage-report
 The command runs the full existing test suite, including browser tests. It can therefore take a long time and may open child R/Chrome processes. Test failures and warnings are recorded in derived CSV files but do not suppress the diagnostic coverage report; failures in app loading or coverage instrumentation still return a non-zero exit status.
 
 Focused source-based tests use the instrumented environment when the coverage command provides one, so their executed functions can contribute to line coverage without changing application code. Browser E2E tests still run in a separate Shiny process; their results are reported in a dedicated functional lane instead of being used to inflate parent-process line coverage. This distinction is stated in every generated report.
+
+`inst/app/params/params_growth.R` is a compatibility loader and can appear as
+`N/A` because it has no separately attributable executable expression for
+`covr`. That status does not mean growth extraction is untested. The canonical
+implementation is in `R/growth_core.R` and `R/growth_parameters.R`, outside the
+app-only `inst/app` denominator, and is exercised by the growth parameter,
+input-format, RAPA-parity, stability, public-API, module, and browser tests.

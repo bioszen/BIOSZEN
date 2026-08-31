@@ -553,6 +553,15 @@ not_instrumented_block <- if (length(not_instrumented)) {
   "Every source file contributed at least one instrumented line."
 }
 
+growth_loader_note <- if ("inst/app/params/params_growth.R" %in% not_instrumented) {
+  c(
+    "",
+    "> **Growth-parameter coverage note:** `inst/app/params/params_growth.R` is a compatibility loader, not the canonical calculation implementation. Its `N/A` result does not mean that growth parameters are untested. The production calculations live in `R/growth_core.R` and `R/growth_parameters.R`, which are outside this report's `inst/app` line-count scope and are exercised by the growth parameter, input-format, RAPA-parity, stability, public-API, module, and browser tests."
+  )
+} else {
+  character(0)
+}
+
 summary_lines <- c(
   "# BIOSZEN application test coverage",
   "",
@@ -599,6 +608,7 @@ summary_lines <- c(
   uncovered_block,
   "",
   not_instrumented_block,
+  growth_loader_note,
   "",
   "Detailed function names and uncovered line ranges are in `uncovered-line-ranges.csv`.",
   "",
@@ -608,6 +618,7 @@ summary_lines <- c(
   "- The percentage is line coverage: a line is covered when the current tests execute an expression instrumented by `covr` on that line.",
   "- The full existing `tests/testthat` suite is run. Test failures and warnings are recorded separately instead of suppressing the coverage artifact; the regular R tests workflow remains the test gate.",
   "- Focused tests can reuse the instrumented app environment through `app_test_source_env()`, allowing direct source-based scientific tests to contribute to line coverage without changing production code.",
+  "- The canonical growth calculations under `R/` are tested by the regular suite but are outside this app-only `inst/app` coverage denominator; the compatibility loader can therefore correctly appear as `N/A`.",
   "- Browser tests launch the Shiny app in a separate R process. Their pass/fail results are represented in the Browser E2E lane, while code executed only in that child process does not inflate parent-process `file_coverage()` counters.",
   "- Coverage measures execution, not assertion quality; it is one confidence indicator rather than proof that behavior is correct.",
   "- No `pkgcheck`, Codecov, Coveralls, SonarQube, or other external coverage upload is used. The workflow artifact contains derived Markdown/CSV reports only, without source-code snippets.",

@@ -1,0 +1,11 @@
+Well,Strain,Media,Orden,Replicate,BiologicalReplicate,TechnicalReplicate,Value
+A1,S1,Control,1,1,1,T1,1.0
+A2,S1,Control,1,2,2,T1,1.2
+A3,S1,Control,1,3,3,T1,NA
+A4,S1,Control,1,4,4,T1,0.9
+A5,S1,Control,1,5,5,T1,1.1
+B1,S1,Treatment,2,1,1,T1,2.0
+B2,S1,Treatment,2,2,2,T1,NA
+B3,S1,Treatment,2,3,3,T1,2.25
+B4,S1,Treatment,2,4,4,T1,1.85
+B5,S1,Treatment,2,5,5,T1,2.2

@@ -1,0 +1,13 @@
+Well,Strain,Media,Orden,Replicate,BiologicalReplicate,TechnicalReplicate,Value
+A1,S1,Extreme_A,1,1,1,T1,1.00000e100
+A2,S1,Extreme_A,1,2,2,T1,1.00001e100
+A3,S1,Extreme_A,1,3,3,T1,0.99999e100
+A4,S1,Extreme_A,1,4,4,T1,1.00002e100
+A5,S1,Extreme_A,1,5,5,T1,0.99998e100
+A6,S1,Extreme_A,1,6,6,T1,1.00003e100
+B1,S1,Extreme_B,2,1,1,T1,1.00020e100
+B2,S1,Extreme_B,2,2,2,T1,1.00021e100
+B3,S1,Extreme_B,2,3,3,T1,1.00019e100
+B4,S1,Extreme_B,2,4,4,T1,1.00022e100
+B5,S1,Extreme_B,2,5,5,T1,1.00018e100
+B6,S1,Extreme_B,2,6,6,T1,1.00023e100
